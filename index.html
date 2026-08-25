@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foundry Local Model Onboarding Concept</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("scoutTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--cp-bg);
+      color: var(--cp-text);
+      line-height: 1.35;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 20px;
+      padding: 20px;
+      background: var(--cp-bg);
+    }
+
+    .panel {
+      background: var(--cp-surface);
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .stepper {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: sticky;
+      top: 20px;
+      align-self: start;
+    }
+
+    .stepper h2 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .step-btn {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--cp-border);
+      background: var(--cp-surface);
+      color: var(--cp-text);
+      border-radius: 0.625rem;
+      padding: 10px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .step-btn[aria-current="step"] {
+      border-color: var(--cp-accent);
+      background: var(--cp-accent-soft);
+      font-weight: 600;
+    }
+
+    .step-btn:hover,
+    .step-btn:focus-visible {
+      outline: none;
+      border-color: var(--cp-accent);
+    }
+
+    .content {
+      display: grid;
+      gap: 16px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+      flex-wrap: wrap;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 1.4rem;
+      font-weight: 650;
+    }
+
+    .muted {
+      color: var(--cp-text-muted);
+    }
+
+    .label {
+      border: 1px solid var(--cp-accent);
+      color: var(--cp-accent);
+      background: var(--cp-accent-soft);
+      border-radius: 0.625rem;
+      padding: 6px 10px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .grid-two {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-three {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      position: relative;
+    }
+
+    label {
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    input[type="text"],
+    select {
+      width: 100%;
+      border: 1px solid var(--cp-border);
+      background: var(--cp-surface);
+      color: var(--cp-text);
+      border-radius: 0.625rem;
+      padding: 10px 12px;
+      font: inherit;
+    }
+
+    input[type="text"]:focus-visible,
+    select:focus-visible {
+      outline: none;
+      border-color: var(--cp-accent);
+      box-shadow: 0 0 0 1px var(--cp-accent);
+    }
+
+    .results {
+      border: 1px solid var(--cp-border);
+      background: var(--cp-surface);
+      border-radius: 0.625rem;
+      max-height: 220px;
+      overflow: auto;
+      padding: 6px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .result-item {
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: var(--cp-surface);
+      color: var(--cp-text);
+      text-align: left;
+      padding: 8px;
+      cursor: pointer;
+      font: inherit;
+      display: grid;
+      gap: 4px;
+    }
+
+    .result-item:hover,
+    .result-item:focus-visible {
+      outline: none;
+      border-color: var(--cp-accent);
+      background: var(--cp-accent-soft);
+    }
+
+    .meta-card {
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: var(--cp-surface);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 6px;
+      font-size: 0.9rem;
+    }
+
+    .kv dt {
+      color: var(--cp-text-muted);
+      font-weight: 600;
+    }
+
+    .kv dd {
+      margin: 0;
+    }
+
+    .target-card {
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: var(--cp-surface);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .target-card[data-selected="true"] {
+      border-color: var(--cp-accent);
+      background: var(--cp-accent-soft);
+    }
+
+    .target-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chip {
+      border: 1px solid var(--cp-border);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 0.74rem;
+      white-space: nowrap;
+    }
+
+    .chip-success {
+      color: var(--cp-success);
+      border-color: var(--cp-success);
+      background: var(--cp-surface);
+    }
+
+    .chip-warning {
+      color: var(--cp-warning);
+      border-color: var(--cp-warning);
+      background: var(--cp-surface);
+    }
+
+    .chip-danger {
+      color: var(--cp-danger);
+      border-color: var(--cp-danger);
+      background: var(--cp-surface);
+    }
+
+    .chip-neutral {
+      color: var(--cp-text-muted);
+      border-color: var(--cp-border-strong);
+      background: var(--cp-surface);
+    }
+
+    .tbl {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      overflow: hidden;
+      font-size: 0.88rem;
+    }
+
+    .tbl th,
+    .tbl td {
+      border-bottom: 1px solid var(--cp-border);
+      border-right: 1px solid var(--cp-border);
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .tbl th:last-child,
+    .tbl td:last-child {
+      border-right: none;
+    }
+
+    .tbl tr:last-child td {
+      border-bottom: none;
+    }
+
+    .tbl thead th {
+      background: var(--cp-surface-soft);
+      font-weight: 650;
+    }
+
+    .tbl tr.row-selected td {
+      background: var(--cp-highlight);
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: var(--cp-surface);
+      color: var(--cp-text);
+      padding: 8px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:hover,
+    button:focus-visible {
+      outline: none;
+      border-color: var(--cp-accent);
+    }
+
+    .btn-primary {
+      background: var(--cp-accent);
+      border-color: var(--cp-accent);
+      color: var(--cp-accent-fg);
+    }
+
+    .btn-primary:hover,
+    .btn-primary:focus-visible {
+      background: var(--cp-accent-hover);
+      border-color: var(--cp-accent-hover);
+    }
+
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .status-line {
+      font-size: 0.88rem;
+      color: var(--cp-text-muted);
+      min-height: 1.2em;
+    }
+
+    .toggle {
+      width: auto;
+      justify-self: start;
+    }
+
+    .details {
+      border: 1px solid var(--cp-border);
+      background: var(--cp-surface-soft);
+      border-radius: 0.625rem;
+      padding: 12px;
+      display: none;
+      gap: 8px;
+    }
+
+    .details[data-open="true"] {
+      display: grid;
+    }
+
+    .progress-group {
+      display: grid;
+      gap: 10px;
+    }
+
+    .progress-track {
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: var(--cp-surface-soft);
+      height: 12px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0;
+      background: var(--cp-accent);
+      transition: width 180ms linear;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 1.04rem;
+      font-weight: 640;
+    }
+
+    .evidence-card {
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: var(--cp-surface);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .metric {
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: var(--cp-surface-soft);
+      padding: 8px;
+    }
+
+    .metric b {
+      display: block;
+      font-size: 0.82rem;
+      color: var(--cp-text-muted);
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .metric span {
+      font-size: 0.95rem;
+      font-weight: 620;
+    }
+
+    .code-block {
+      font-family: Consolas, "Courier New", Courier, monospace;
+      font-size: 0.82rem;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: var(--cp-surface-soft);
+      padding: 8px;
+      overflow: auto;
+      white-space: pre;
+    }
+
+    .notice {
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 0.625rem;
+      background: var(--cp-surface-soft);
+      padding: 10px;
+      font-size: 0.88rem;
+      color: var(--cp-text-soft);
+    }
+
+    .publish-state {
+      border: 1px solid var(--cp-success);
+      border-radius: 0.625rem;
+      background: var(--cp-surface);
+      color: var(--cp-success);
+      padding: 8px 10px;
+      font-weight: 650;
+      display: inline-block;
+    }
+
+    @media (max-width: 1100px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .stepper {
+        position: static;
+      }
+
+      .grid-two,
+      .grid-three {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="panel stepper" aria-label="Onboarding stages">
+      <h2>Model onboarding stages</h2>
+      <div id="stepButtons"></div>
+      <div class="notice">Partner chooses targets. System advises and orchestrates mandatory checks.</div>
+      <button id="resetBtn" type="button">Reset / Start over</button>
+    </aside>
+
+    <main class="content">
+      <section class="panel">
+        <div class="header">
+          <div>
+            <h1>Foundry Local moonshot model onboarding</h1>
+            <p class="muted">Persona: OEM / IHV / ISV partner engineer onboarding Hugging Face models into Foundry Local.</p>
+          </div>
+          <span class="label">Concept prototype · Illustrative data</span>
+        </div>
+      </section>
+
+      <section class="panel" id="stagePanel" aria-live="polite"></section>
+
+      <section class="panel actions">
+        <div class="btn-row">
+          <button id="backBtn" type="button">Back</button>
+          <button id="continueBtn" class="btn-primary" type="button">Continue</button>
+        </div>
+        <div id="statusLine" class="status-line"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const steps = [
+      "1. Choose model",
+      "2. Select targets",
+      "3. Review onboarding plan",
+      "4. Build & optimize",
+      "5. Validate & benchmark",
+      "6. Publish"
+    ];
+
+    const models = [
+      {
+        id: "google/gemma-3n-E2B-it",
+        name: "Gemma 3n E2B IT",
+        modality: "Multimodal",
+        license: "From model card",
+        packageSize: "Estimated during onboarding (illustrative)",
+        params: "From model card (illustrative)",
+        onDeviceFit: "On-device multimodal candidate for partner scenarios",
+        catalogStatus: "Not in Foundry Local catalog (illustrative)",
+        inCatalog: false,
+        group: "curated"
+      },
+      {
+        id: "LiquidAI/LFM2.5-1.2B-Instruct",
+        name: "LFM2.5 1.2B Instruct",
+        modality: "LLM",
+        license: "From model card",
+        packageSize: "Estimated during onboarding (illustrative)",
+        params: "From model card (illustrative)",
+        onDeviceFit: "Compact local LLM candidate for constrained hardware",
+        catalogStatus: "Not in Foundry Local catalog (illustrative)",
+        inCatalog: false,
+        group: "curated"
+      },
+      {
+        id: "HuggingFaceTB/SmolLM3-3B",
+        name: "SmolLM3 3B",
+        modality: "LLM",
+        license: "From model card",
+        packageSize: "Estimated during onboarding (illustrative)",
+        params: "From model card (illustrative)",
+        onDeviceFit: "Compact local LLM candidate for app-side inference",
+        catalogStatus: "Not in Foundry Local catalog (illustrative)",
+        inCatalog: false,
+        group: "curated"
+      },
+      {
+        id: "Qwen/Qwen3.5-4B",
+        name: "Qwen3.5 4B",
+        modality: "Multimodal / VLM",
+        license: "From model card",
+        packageSize: "Estimated during onboarding (illustrative)",
+        params: "From model card (illustrative)",
+        onDeviceFit: "Reference multimodal path already represented in Foundry Local",
+        catalogStatus: "Already in Foundry Local (reference only, illustrative)",
+        inCatalog: true,
+        group: "reference"
+      },
+      {
+        id: "openai/whisper-large-v3-turbo",
+        name: "Whisper large-v3 turbo",
+        modality: "ASR",
+        license: "From model card",
+        packageSize: "Estimated during onboarding (illustrative)",
+        params: "From model card (illustrative)",
+        onDeviceFit: "Reference speech path already represented in Foundry Local",
+        catalogStatus: "Already in Foundry Local (reference only, illustrative)",
+        inCatalog: true,
+        group: "reference"
+      }
+    ];
+
+    const technicalGates = [
+      { key: "onnx", label: "Valid/exportable ONNX" },
+      { key: "ort", label: "ORT executable" },
+      { key: "oga", label: "OGA compatible" },
+      { key: "ep", label: "Target EP qualified" }
+    ];
+
+    const mandatoryPipeline = [
+      "Hugging Face source",
+      "ONNX export/build",
+      "OGA graph/config/processor contract",
+      "OGA runtime",
+      "ORT",
+      "Target execution provider",
+      "Foundry Local packaging/validation/catalog packet"
+    ];
+
+    const targetMeta = {
+      cpu: { name: "CPU", owner: "Foundry Local + ORT" },
+      gpu: { name: "GPU", owner: "Foundry Local + EP vendor" },
+      npu: { name: "NPU", owner: "IHV + EP vendor" }
+    };
+
+    const targetPathOptions = {
+      cpu: [
+        { id: "ort-cpu", label: "ORT CPU (standard baseline)" }
+      ],
+      gpu: [
+        { id: "webgpu", label: "WebGPU (via Dawn) — portable GPU baseline" },
+        { id: "cuda", label: "CUDA — NVIDIA optimized" }
+      ],
+      npu: [
+        { id: "qnn-qualcomm", label: "QNN — Qualcomm NPU" },
+        { id: "openvino-intel-npu", label: "OpenVINO NPU — Intel" },
+        { id: "vitisai-ryzen-ai-amd-npu", label: "VitisAI / Ryzen AI — AMD NPU (version-sensitive)" },
+        { id: "webnpu-moonshot", label: "Portable NPU (WebNPU concept)" }
+      ]
+    };
+
+    const finalOutcomes = {
+      cpu: {
+        state: "qualified",
+        gates: { onnx: "pass", ort: "pass", oga: "pass", ep: "pass" },
+        availability: "Qualified",
+        missing: "None",
+        blockerOwner: "None",
+        fallback: "Use as baseline deployment path"
+      },
+      gpu: {
+        state: "conditional",
+        gates: { onnx: "pass", ort: "pass", oga: "pass", ep: "pass" },
+        availability: "Conditionally ready",
+        missing: "Target GPU driver package alignment",
+        blockerOwner: "Partner + EP vendor",
+        fallback: "Publish with CPU target while GPU evidence matures"
+      },
+      npu: {
+        state: "blocked",
+        gates: { onnx: "pass", ort: "pass", oga: "blocked", ep: "blocked" },
+        availability: "Blocked",
+        missing: "EP/IHV enablement package",
+        blockerOwner: "IHV + EP vendor",
+        fallback: "Run CPU/GPU targets and re-queue NPU once enablement lands",
+        blockerReason: "NPU support requires EP/IHV enablement",
+        nextAction: "Coordinate enablement drop, then rerun target-hardware validation."
+      }
+    };
+
+    const state = {
+      step: 0,
+      search: models[0].id,
+      selectedModelId: models[0].id,
+      modelPicker: models[0].id,
+      customModelId: "",
+      showResults: false,
+      selectedTargets: { cpu: true, gpu: true, npu: true },
+      selectedPaths: { cpu: "ort-cpu", gpu: "webgpu", npu: "webnpu-moonshot" },
+      gpuRecommendation: "",
+      npuRecommendation: "",
+      showTechnical: false,
+      build: {
+        started: false,
+        running: false,
+        phaseIndex: 0,
+        timer: null,
+        completed: false
+      },
+      submissionSent: false,
+      status: ""
+    };
+
+    function currentModel() {
+      if (state.selectedModelId === "__custom__") {
+        return {
+          id: state.customModelId || "custom/model-id",
+          name: "Custom Hugging Face model",
+          modality: "LLM",
+          license: "From model card",
+          packageSize: "Estimated at onboarding time",
+          params: "From model card (if available)",
+          onDeviceFit: "Assessed during onboarding validation (illustrative)",
+          catalogStatus: "Not in Foundry Local catalog (illustrative default)",
+          inCatalog: false
+        };
+      }
+      return models.find((m) => m.id === state.selectedModelId) || models[0];
+    }
+
+    function selectedTargetKeys() {
+      return Object.keys(state.selectedTargets).filter((k) => state.selectedTargets[k]);
+    }
+
+    function stateChip(kind, text) {
+      const cls =
+        kind === "success"
+          ? "chip chip-success"
+          : kind === "warning"
+            ? "chip chip-warning"
+            : kind === "danger"
+              ? "chip chip-danger"
+              : "chip chip-neutral";
+      return '<span class="' + cls + '">' + text + "</span>";
+    }
+
+    function statusKindForTarget(targetKey) {
+      const outcome = finalOutcomes[targetKey];
+      if (outcome.state === "qualified") {
+        return ["success", "Qualified"];
+      }
+      if (outcome.state === "conditional") {
+        return ["warning", "Conditionally ready"];
+      }
+      return ["danger", "Blocked"];
+    }
+
+    function pathOptionExists(targetKey, pathId) {
+      return (targetPathOptions[targetKey] || []).some((p) => p.id === pathId);
+    }
+
+    function selectedPathLabel(targetKey) {
+      const pathId = state.selectedPaths[targetKey];
+      const option = (targetPathOptions[targetKey] || []).find((p) => p.id === pathId);
+      return option ? option.label : "Path not selected";
+    }
+
+    function executionPathRows() {
+      return [
+        {
+          target: "cpu",
+          pathId: "ort-cpu",
+          path: "ORT CPU — standard baseline",
+          status: "Current",
+          bestFor: "Broad compatibility and functional baseline",
+          limits: "Performance and memory still require target-device validation."
+        },
+        {
+          target: "gpu",
+          pathId: "webgpu",
+          path: "WebGPU (via Dawn) — portable GPU baseline",
+          status: "Current FL path · Experimental EP",
+          bestFor: "Cross-vendor GPU reach with fewer vendor-specific artifacts",
+          limits: "Requires OGA/WebGPU operator coverage, Dawn adapter and driver support; performance may trail vendor-tuned paths; target validation required."
+        },
+        {
+          target: "gpu",
+          pathId: "cuda",
+          path: "CUDA — NVIDIA optimized",
+          status: "Current · Vendor optimized",
+          bestFor: "Best utilization on NVIDIA GPUs",
+          limits: "NVIDIA only; CUDA/cuDNN/ORT version alignment, supported quantization/operators and target validation required."
+        },
+        {
+          target: "npu",
+          pathId: "qnn-qualcomm",
+          path: "QNN — Qualcomm optimized",
+          status: "Current · Vendor optimized",
+          bestFor: "Qualcomm NPU devices",
+          limits: "QNN/QAIRT package, supported operators/quantization, firmware/driver and target hardware required."
+        },
+        {
+          target: "npu",
+          pathId: "openvino-intel-npu",
+          path: "OpenVINO NPU — Intel optimized",
+          status: "Current · Version sensitive",
+          bestFor: "Intel NPU devices",
+          limits: "NPU plugin/model support, precision/static-shape limitations, driver and target validation required."
+        },
+        {
+          target: "npu",
+          pathId: "vitisai-ryzen-ai-amd-npu",
+          path: "VitisAI / Ryzen AI — AMD optimized",
+          status: "Version sensitive · Vendor optimized",
+          bestFor: "AMD Ryzen AI NPU devices",
+          limits: "OGA/provider version alignment, AMD compiler/quantization/artifact/driver and target validation required."
+        },
+        {
+          target: "npu",
+          pathId: "webnpu-moonshot",
+          path: "Portable NPU (WebNPU concept)",
+          status: "Moonshot · Not available today",
+          bestFor: "Future cross-vendor NPU baseline with fewer provider-specific artifacts",
+          limits: "No existing standard or current FL/OGA EP. WebNN is the closest primitive; OS/driver/IHV backends, universal operator coverage and performance remain unresolved."
+        }
+      ];
+    }
+
+    function isSelectedExecutionRow(row) {
+      return state.selectedTargets[row.target] && state.selectedPaths[row.target] === row.pathId;
+    }
+
+    function selectionChip(targetKey) {
+      if (!state.selectedTargets[targetKey]) return stateChip("neutral", "Not requested");
+      if (targetKey === "cpu") return stateChip("neutral", "Current");
+      if (targetKey === "gpu" && state.selectedPaths.gpu === "webgpu") return stateChip("warning", "Portable baseline");
+      if (targetKey === "npu" && state.selectedPaths.npu === "webnpu-moonshot") return stateChip("warning", "Moonshot baseline");
+      return stateChip("neutral", "Requested");
+    }
+
+    function getGateView(targetKey, gateKey) {
+      if (!state.selectedTargets[targetKey]) {
+        return { label: "Not requested", kind: "neutral" };
+      }
+      if (!state.build.started) {
+        return { label: "Not run", kind: "neutral" };
+      }
+
+      const gateOrder = ["onnx", "ort", "oga", "ep"];
+      const gateIndex = gateOrder.indexOf(gateKey);
+
+      if (state.build.running) {
+        if (gateIndex < state.build.phaseIndex) {
+          return { label: "Completed", kind: "success" };
+        }
+        if (gateIndex === state.build.phaseIndex) {
+          return { label: "Running", kind: "warning" };
+        }
+        return { label: "Queued", kind: "neutral" };
+      }
+
+      const finalGate = finalOutcomes[targetKey].gates[gateKey];
+      if (finalGate === "pass") {
+        return { label: "Pass", kind: "success" };
+      }
+      if (finalGate === "blocked") {
+        return { label: "Blocked", kind: "danger" };
+      }
+      return { label: "Review", kind: "warning" };
+    }
+
+    function filteredModels() {
+      const q = state.search.trim().toLowerCase();
+      if (!q) return models;
+      return models.filter((m) => (m.id + " " + m.name).toLowerCase().includes(q));
+    }
+
+    function setStatus(msg) {
+      state.status = msg;
+      document.getElementById("statusLine").textContent = msg;
+    }
+
+    function clearBuildTimer() {
+      if (state.build.timer) {
+        window.clearInterval(state.build.timer);
+        state.build.timer = null;
+      }
+    }
+
+    function resetBuildState() {
+      clearBuildTimer();
+      state.build.started = false;
+      state.build.running = false;
+      state.build.phaseIndex = 0;
+      state.build.completed = false;
+      state.submissionSent = false;
+    }
+
+    function startOnboardingSimulation() {
+      if (state.build.running) return;
+      state.build.started = true;
+      state.build.running = true;
+      state.build.phaseIndex = 0;
+      state.build.completed = false;
+      state.submissionSent = false;
+      setStatus("Onboarding simulation started. Mandatory ONNX → OGA → ORT → EP flow is running.");
+      render();
+
+      clearBuildTimer();
+      state.build.timer = window.setInterval(() => {
+        state.build.phaseIndex += 1;
+        if (state.build.phaseIndex >= technicalGates.length) {
+          clearBuildTimer();
+          state.build.running = false;
+          state.build.completed = true;
+          setStatus("Simulation complete: CPU qualified, GPU conditionally ready, NPU blocked with owner and next action.");
+        }
+        render();
+      }, 700);
+    }
+
+    function evidencePackage(targetKey) {
+      const model = currentModel();
+      const targetLabel = targetMeta[targetKey].name;
+      return JSON.stringify(
+        {
+          model: model.id,
+          modality: model.modality,
+          target: targetLabel,
+          runtime: "OGA runtime + ORT (illustrative)",
+          versions: {
+            foundryLocal: "0.11.x-preview (illustrative)",
+            oga: "contract vNext draft (illustrative)",
+            ort: "1.22.x-preview (illustrative)"
+          },
+          hardware: targetLabel === "CPU" ? "x64 reference desktop" : targetLabel === "GPU" ? "Discrete GPU validation rig" : "OEM NPU validation rig (blocked)",
+          logs: "Attached in validation bundle (illustrative)",
+          repro: "include exact command line and seed (illustrative)"
+        },
+        null,
+        2
+      );
+    }
+
+    function copyEvidence(targetKey) {
+      const text = evidencePackage(targetKey);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          setStatus(targetMeta[targetKey].name + " evidence package copied.");
+        }).catch(() => {
+          setStatus("Clipboard access unavailable in this browser context.");
+        });
+      } else {
+        setStatus("Clipboard API unavailable; copy manually from the evidence text.");
+      }
+    }
+
+    function renderStepButtons() {
+      const host = document.getElementById("stepButtons");
+      host.innerHTML = "";
+      steps.forEach((stepLabel, idx) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "step-btn";
+        btn.textContent = stepLabel;
+        btn.setAttribute("aria-current", state.step === idx ? "step" : "false");
+        btn.addEventListener("click", () => {
+          state.step = idx;
+          setStatus("Moved to " + stepLabel + ".");
+          render();
+        });
+        host.appendChild(btn);
+      });
+    }
+
+    function renderChooseModel() {
+      const model = currentModel();
+      const curatedModels = models.filter((m) => m.group === "curated");
+      const referenceModels = models.filter((m) => m.group === "reference");
+      const results = filteredModels();
+      const showCustomOption = state.search.trim() && !models.some((m) => m.id.toLowerCase() === state.search.trim().toLowerCase());
+      const browseMode = state.modelPicker === "__browse__";
+      return `
+        <h2 class="section-title">Choose model</h2>
+        <div class="grid-two">
+          <div class="field">
+            <label for="modelSelect">Choose a curated on-device candidate or browse any Hugging Face model</label>
+            <select id="modelSelect" aria-describedby="modelSelectHelp" value="${state.modelPicker}">
+              <optgroup label="Curated on-device candidates (not in FL catalog, illustrative)">
+                ${curatedModels.map((m) => `<option value="${m.id}" ${state.modelPicker === m.id ? "selected" : ""}>${m.id}</option>`).join("")}
+              </optgroup>
+              <optgroup label="Reference: already in Foundry Local (illustrative)">
+                ${referenceModels.map((m) => `<option value="${m.id}" ${state.modelPicker === m.id ? "selected" : ""}>${m.id}</option>`).join("")}
+              </optgroup>
+              <option value="__browse__" ${browseMode ? "selected" : ""}>Browse another Hugging Face model…</option>
+            </select>
+            <span id="modelSelectHelp" class="muted">Primary path: curated on-device candidates. Secondary path: browse or type any Hugging Face model ID.</span>
+            ${browseMode ? `
+              <label for="modelInput" style="margin-top:8px;">Browse any Hugging Face model ID</label>
+              <input id="modelInput" type="text" autocomplete="off" aria-controls="modelResults" aria-expanded="${state.showResults}" value="${state.search}">
+              <div class="results" id="modelResults" role="listbox" ${state.showResults ? "" : 'hidden'}>
+                ${results.map((m) => `
+                  <button type="button" class="result-item" data-model-id="${m.id}">
+                    <strong>${m.id}</strong>
+                    <span>${m.name}</span>
+                    <span class="muted">${m.catalogStatus}</span>
+                  </button>
+                `).join("")}
+                ${showCustomOption ? `
+                  <button type="button" class="result-item" data-custom-id="${state.search.trim()}">
+                    <strong>${state.search.trim()}</strong>
+                    <span>Use this model ID</span>
+                    <span class="muted">Default status: not in catalog (illustrative)</span>
+                  </button>
+                ` : ""}
+              </div>
+            ` : ""}
+            <div class="notice" style="margin-top:8px;">
+              Catalog status values are illustrative mock data. Production availability is determined during real onboarding.
+            </div>
+          </div>
+          <article class="meta-card" aria-label="Selected model metadata">
+            <h3 style="margin:0;">Selected model</h3>
+            <dl class="kv">
+              <dt>Model ID</dt><dd>${model.id}</dd>
+              <dt>Modality</dt><dd>${model.modality}</dd>
+              <dt>Parameters</dt><dd>${model.params}</dd>
+              <dt>On-device fit</dt><dd>${model.onDeviceFit || "Assessed during onboarding (illustrative)"}</dd>
+              <dt>License</dt><dd>${model.license}</dd>
+              <dt>Package size</dt><dd>${model.packageSize}</dd>
+              <dt>Catalog status</dt><dd>${model.catalogStatus}</dd>
+            </dl>
+            ${model.inCatalog ? '<div class="notice">Reference model selected. For onboarding happy path, choose a model not already in Foundry Local catalog.</div>' : ""}
+          </article>
+        </div>
+      `;
+    }
+
+    function renderSelectTargets() {
+      if (!pathOptionExists("gpu", state.selectedPaths.gpu)) {
+        state.selectedPaths.gpu = "webgpu";
+      }
+      if (!pathOptionExists("npu", state.selectedPaths.npu)) {
+        state.selectedPaths.npu = "webnpu-moonshot";
+      }
+      state.selectedPaths.cpu = "ort-cpu";
+
+      const cards = ["cpu", "gpu", "npu"].map((key) => {
+        return `
+          <article class="target-card" data-selected="${state.selectedTargets[key]}">
+            <div class="target-head">
+              <label for="target-${key}" style="margin:0;">${targetMeta[key].name} target</label>
+              ${selectionChip(key)}
+            </div>
+            <div>
+              <input id="target-${key}" type="checkbox" ${state.selectedTargets[key] ? "checked" : ""} data-target="${key}">
+              <label for="target-${key}" style="font-weight:500;">Include this target in onboarding</label>
+            </div>
+            ${state.selectedTargets[key] ? `
+              ${key === "cpu" ? `
+                <div class="field">
+                  <label>Execution path</label>
+                  <div class="notice">ORT CPU — standard baseline</div>
+                </div>
+              ` : `
+                <div class="field">
+                  <label for="path-${key}">Execution path</label>
+                  <select id="path-${key}" data-path-target="${key}">
+                    ${(targetPathOptions[key] || []).map((option) => `
+                      <option value="${option.id}" ${state.selectedPaths[key] === option.id ? "selected" : ""}>${option.label}</option>
+                    `).join("")}
+                  </select>
+                </div>
+                <div class="field">
+                  <button type="button" data-suggest-path="${key}">Suggest from hardware inventory</button>
+                  ${key === "gpu" && state.gpuRecommendation ? `<div class="muted">${state.gpuRecommendation}</div>` : ""}
+                  ${key === "npu" && state.npuRecommendation ? `<div class="muted">${state.npuRecommendation}</div>` : ""}
+                </div>
+              `}
+              ${key === "npu" && state.selectedPaths.npu === "webnpu-moonshot" ? `
+                <div class="notice">
+                  <strong>Moonshot · Not available today</strong><br>
+                  Proposed cross-vendor NPU baseline. No existing standard or current FL/OGA EP.<br>
+                  <span class="muted">WebNN is the closest primitive but does not provide a confirmed FL/OGA route or universal NPU artifacts/coverage.</span>
+                </div>
+              ` : ""}
+            ` : '<div class="muted">Select this target to choose an execution path.</div>'}
+          </article>
+        `;
+      }).join("");
+
+      const rows = executionPathRows();
+
+      return `
+        <h2 class="section-title">Select support targets</h2>
+        <p class="muted">Choose the device classes your app must support and the execution path to evaluate. Model qualification happens in later steps.</p>
+        <div class="grid-three">${cards}</div>
+        <div class="target-head" style="margin-top:10px;">
+          <h3 class="section-title">Compare execution paths</h3>
+          ${stateChip("neutral", "Illustrative")}
+        </div>
+        <p class="muted">Understand portability, optimization, requirements, and fallback for each selected target.</p>
+        <table class="tbl" aria-label="Per-target status matrix">
+          <thead>
+            <tr>
+              <th>Target</th>
+              <th>Execution path</th>
+              <th>Path status</th>
+              <th>Why choose it</th>
+              <th>Key requirements and limitations</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr class="${isSelectedExecutionRow(row) ? "row-selected" : ""}">
+                <td>${targetMeta[row.target].name}</td>
+                <td>${row.path}</td>
+                <td>${row.status}</td>
+                <td>${row.bestFor}</td>
+                <td>${row.limits}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderReviewPlan() {
+      const selected = selectedTargetKeys();
+      return `
+        <h2 class="section-title">Review onboarding plan</h2>
+        <p class="muted">No direct ORT bypass path is offered for Foundry Local onboarding. ONNX success alone is not readiness.</p>
+        <table class="tbl" aria-label="Onboarding plan">
+          <thead>
+            <tr>
+              <th>Target</th>
+              <th>Plan summary</th>
+              <th>Owner routing</th>
+              <th>Fallback</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${selected.map((key) => `
+              <tr>
+                <td>${targetMeta[key].name}</td>
+                <td>Run mandatory ONNX → OGA contract/runtime → ORT → EP qualification → packaging/validation.</td>
+                <td>${targetMeta[key].owner}</td>
+                <td>${finalOutcomes[key].fallback}</td>
+              </tr>
+            `).join("") || '<tr><td colspan="4">No target selected yet.</td></tr>'}
+          </tbody>
+        </table>
+        <button type="button" class="toggle" id="toggleTechnical">${state.showTechnical ? "Hide" : "Show"} technical details</button>
+        <section class="details" data-open="${state.showTechnical}" id="technicalDetails">
+          <strong>Technical details (collapsed by default)</strong>
+          <div>Mandatory path: ${mandatoryPipeline.join(" → ")}.</div>
+          <div>Four distinct gates are tracked separately: ${technicalGates.map((g) => g.label).join(", ")}.</div>
+          <div>Backstage orchestration can include Olive recipes and Mobius flow management; partner UI stays focused on outcomes and blockers.</div>
+        </section>
+      `;
+    }
+
+    function renderBuildOptimize() {
+      const selected = selectedTargetKeys();
+      const gateRows = technicalGates.map((gate) => `
+        <tr>
+          <td>${gate.label}</td>
+          ${["cpu", "gpu", "npu"].map((target) => {
+            const view = getGateView(target, gate.key);
+            return `<td>${stateChip(view.kind, view.label)}</td>`;
+          }).join("")}
+        </tr>
+      `).join("");
+
+      const progressCards = selected.map((key) => {
+        const phaseCount = technicalGates.length;
+        const done = state.build.completed
+          ? phaseCount
+          : state.build.running
+            ? Math.min(state.build.phaseIndex, phaseCount)
+            : 0;
+        const pct = Math.round((done / phaseCount) * 100);
+        const [kind, text] = state.build.completed ? statusKindForTarget(key) : ["neutral", state.build.running ? "In progress" : "Pending"];
+        const blocker = key === "npu" && state.build.completed
+          ? `<div class="notice"><strong>${finalOutcomes.npu.blockerReason}</strong><br>Owner: ${finalOutcomes.npu.blockerOwner}<br>Next action: ${finalOutcomes.npu.nextAction}</div>`
+          : "";
+        return `
+          <article class="meta-card">
+            <div class="target-head">
+              <strong>${targetMeta[key].name}</strong>
+              ${stateChip(kind, text)}
+            </div>
+            <div class="progress-group">
+              <div class="progress-track"><div class="progress-fill" style="width:${pct}%;"></div></div>
+              <div class="muted">${pct}% complete through technical gates</div>
+            </div>
+            ${blocker}
+          </article>
+        `;
+      }).join("");
+
+      return `
+        <h2 class="section-title">Build & optimize</h2>
+        <p class="muted">Simulation shows one successful path, one conditionally ready path, and one blocked path for transparent partner decisions.</p>
+        <div class="btn-row">
+          <button type="button" class="btn-primary" id="startOnboardingBtn" ${state.build.running ? "disabled" : ""}>Start onboarding</button>
+          <span class="muted">${state.build.running ? "Running mandatory gates..." : state.build.completed ? "Run complete." : "Not started."}</span>
+        </div>
+        <div class="grid-three" style="margin-top:10px;">
+          ${progressCards || "<div class='notice'>Select at least one target to run onboarding.</div>"}
+        </div>
+        <h3 class="section-title" style="margin-top:12px;">Gate status by target</h3>
+        <table class="tbl" aria-label="Gate statuses">
+          <thead>
+            <tr>
+              <th>Gate</th>
+              <th>CPU</th>
+              <th>GPU</th>
+              <th>NPU</th>
+            </tr>
+          </thead>
+          <tbody>${gateRows}</tbody>
+        </table>
+      `;
+    }
+
+    function benchmarkCard(targetKey, modality) {
+      const target = targetMeta[targetKey].name;
+      const conditionLine = targetKey === "cpu"
+        ? "Conditions: batch=1, context=4k, x64 reference desktop, exact versions captured."
+        : targetKey === "gpu"
+          ? "Conditions: batch=1, context=8k, vendor driver aligned build, exact versions captured."
+          : "Conditions: representative OEM NPU rig required after EP/IHV enablement.";
+
+      if (modality === "ASR") {
+        const values = targetKey === "cpu"
+          ? { rtf: "0.68x", ttfw: "420 ms", wer: "7.9%", mem: "8.2 GB RAM", pkg: "1.7 GB model + 380 MB runtime" }
+          : targetKey === "gpu"
+            ? { rtf: "0.34x", ttfw: "210 ms", wer: "7.8%", mem: "3.1 GB VRAM", pkg: "1.7 GB model + 470 MB runtime" }
+            : { rtf: "Blocked", ttfw: "Blocked", wer: "Blocked", mem: "Blocked", pkg: "Pending enablement" };
+        return `
+          <article class="evidence-card">
+            <div class="target-head"><strong>${target}</strong>${stateChip(targetKey === "npu" ? "danger" : "success", targetKey === "npu" ? "Blocked" : "Illustrative")}</div>
+            <div class="muted">${conditionLine}</div>
+            <div class="metrics">
+              <div class="metric"><b>RTF</b><span>${values.rtf}</span></div>
+              <div class="metric"><b>TTFW</b><span>${values.ttfw}</span></div>
+              <div class="metric"><b>WER</b><span>${values.wer}</span></div>
+              <div class="metric"><b>Peak RAM/VRAM</b><span>${values.mem}</span></div>
+              <div class="metric"><b>Model package size</b><span>${values.pkg}</span></div>
+              <div class="metric"><b>EP/runtime size</b><span>Included above</span></div>
+            </div>
+          </article>
+        `;
+      }
+
+      const values = targetKey === "cpu"
+        ? { prefill: "96 tok/s", decode: "31 tok/s", ttft: "620 ms", mem: "9.4 GB RAM", pkg: "2.1 GB model + 420 MB runtime" }
+        : targetKey === "gpu"
+          ? { prefill: "188 tok/s", decode: "58 tok/s", ttft: "290 ms", mem: "4.9 GB VRAM", pkg: "2.1 GB model + 540 MB runtime" }
+          : { prefill: "Blocked", decode: "Blocked", ttft: "Blocked", mem: "Blocked", pkg: "Pending enablement" };
+
+      return `
+        <article class="evidence-card">
+          <div class="target-head"><strong>${target}</strong>${stateChip(targetKey === "npu" ? "danger" : "success", targetKey === "npu" ? "Blocked" : "Illustrative")}</div>
+          <div class="muted">${conditionLine}</div>
+          <div class="metrics">
+            <div class="metric"><b>Prefill throughput</b><span>${values.prefill}</span></div>
+            <div class="metric"><b>Decode throughput</b><span>${values.decode}</span></div>
+            <div class="metric"><b>TTFT</b><span>${values.ttft}</span></div>
+            <div class="metric"><b>Peak RAM/VRAM</b><span>${values.mem}</span></div>
+            <div class="metric"><b>Model package size</b><span>${values.pkg}</span></div>
+            <div class="metric"><b>EP/runtime size</b><span>Contained in package report</span></div>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderValidateBenchmark() {
+      const model = currentModel();
+      const selected = selectedTargetKeys();
+      const requiredChecks = [
+        "Functional lifecycle checks",
+        "Scenario + quality checks",
+        "Target hardware + EP compatibility checks",
+        "Metadata/package correctness",
+        "Release compatibility checks",
+        "Benchmark run with exact versions, hardware, logs, and repro details"
+      ];
+      return `
+        <h2 class="section-title">Validate & benchmark</h2>
+        <p class="muted">Validation is mandatory and cannot be skipped. Evidence is reproducible and target-specific.</p>
+        <table class="tbl" aria-label="Validation checklist">
+          <thead><tr><th>Validation check</th><th>Status</th></tr></thead>
+          <tbody>
+            ${requiredChecks.map((c) => `
+              <tr>
+                <td>${c}</td>
+                <td>${stateChip(state.build.completed ? "success" : "neutral", state.build.completed ? "Captured (illustrative)" : "Pending build run")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+        <h3 class="section-title" style="margin-top:12px;">Evidence package snapshots</h3>
+        <div class="grid-three">
+          ${selected.map((key) => `
+            <article class="evidence-card">
+              <div class="target-head">
+                <strong>${targetMeta[key].name}</strong>
+                ${(() => {
+                  if (!state.build.completed) return stateChip("neutral", "Pending");
+                  const outcome = finalOutcomes[key].state;
+                  if (outcome === "qualified") return stateChip("success", "Qualified");
+                  if (outcome === "conditional") return stateChip("warning", "Conditionally ready");
+                  return stateChip("danger", "Blocked");
+                })()}
+              </div>
+              <button type="button" data-copy-evidence="${key}">Copy evidence package</button>
+              <div class="code-block">${evidencePackage(key)}</div>
+            </article>
+          `).join("") || "<div class='notice'>Select target(s) to produce evidence cards.</div>"}
+        </div>
+        <h3 class="section-title" style="margin-top:12px;">Benchmarks (${model.modality === "ASR" ? "ASR-focused" : "LLM-focused"})</h3>
+        <p class="muted">All figures are illustrative only and include explicit test conditions.</p>
+        <div class="grid-three">
+          ${selected.map((key) => benchmarkCard(key, model.modality)).join("") || "<div class='notice'>Benchmarks appear after selecting target(s).</div>"}
+        </div>
+      `;
+    }
+
+    function renderPublish() {
+      const selected = selectedTargetKeys();
+      const qualified = selected.filter((k) => finalOutcomes[k].state === "qualified");
+      const conditional = selected.filter((k) => finalOutcomes[k].state === "conditional");
+      const blocked = selected.filter((k) => finalOutcomes[k].state === "blocked");
+      const selectedCount = selected.length;
+      const qualifiedCount = qualified.length;
+      let readiness = { kind: "danger", label: "Not ready for catalog promotion" };
+      if (selectedCount > 0 && qualifiedCount === selectedCount) {
+        readiness = { kind: "success", label: "Ready for catalog promotion" };
+      } else if (qualifiedCount > 0) {
+        readiness = {
+          kind: "warning",
+          label: "Partial readiness · " + qualifiedCount + " of " + selectedCount + " targets qualified"
+        };
+      }
+      return `
+        <h2 class="section-title">Publish</h2>
+        <p class="muted">Catalog promotion mechanism is intentionally undecided in this concept. This stage is neutral.</p>
+        <div>${stateChip(readiness.kind, readiness.label)}</div>
+        <table class="tbl" aria-label="Publish summary" style="margin-top:10px;">
+          <thead><tr><th>Category</th><th>Targets</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Qualified</td>
+              <td>${qualified.map((k) => targetMeta[k].name).join(", ") || "None"}</td>
+              <td>Validation complete (illustrative).</td>
+            </tr>
+            <tr>
+              <td>Conditionally ready</td>
+              <td>${conditional.map((k) => targetMeta[k].name).join(", ") || "None"}</td>
+              <td>Not included until remaining validation evidence is complete.</td>
+            </tr>
+            <tr>
+              <td>Blocked</td>
+              <td>${blocked.map((k) => targetMeta[k].name).join(", ") || "None"}</td>
+              <td>${blocked.length ? "Blocker: NPU support requires EP/IHV enablement. Owner: IHV + EP vendor." : "No active blockers."}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="btn-row" style="margin-top:10px;">
+          <button type="button" class="btn-primary" id="submitBtn" ${state.build.completed && qualifiedCount > 0 ? "" : "disabled"}>Submit for publication</button>
+          <span class="muted">${state.submissionSent ? "Submission packet prepared for qualified targets only (illustrative). Blocked targets remain excluded and open." : "Neutral action: prepares a packet for qualified targets only; blocked targets remain excluded and open."}</span>
+        </div>
+      `;
+    }
+
+    function renderStage() {
+      if (state.step === 0) return renderChooseModel();
+      if (state.step === 1) return renderSelectTargets();
+      if (state.step === 2) return renderReviewPlan();
+      if (state.step === 3) return renderBuildOptimize();
+      if (state.step === 4) return renderValidateBenchmark();
+      return renderPublish();
+    }
+
+    function wireEvents() {
+      const modelSelect = document.getElementById("modelSelect");
+      if (modelSelect) {
+        modelSelect.addEventListener("change", (e) => {
+          const selected = e.target.value;
+          state.modelPicker = selected;
+          if (selected === "__browse__") {
+            state.showResults = true;
+            setStatus("Browse mode enabled. Search or enter any Hugging Face model ID.");
+            render();
+            return;
+          }
+          state.selectedModelId = selected;
+          state.search = selected;
+          state.customModelId = "";
+          state.showResults = false;
+          resetBuildState();
+          setStatus("Selected model " + selected + ".");
+          render();
+        });
+      }
+
+      const modelInput = document.getElementById("modelInput");
+      if (modelInput) {
+        modelInput.addEventListener("focus", () => {
+          state.showResults = true;
+          render();
+        });
+        modelInput.addEventListener("input", (e) => {
+          state.search = e.target.value;
+          state.showResults = true;
+          render();
+        });
+        modelInput.addEventListener("blur", () => {
+          window.setTimeout(() => {
+            state.showResults = false;
+            render();
+          }, 120);
+        });
+      }
+
+      document.querySelectorAll("[data-model-id]").forEach((node) => {
+        node.addEventListener("click", () => {
+          const id = node.getAttribute("data-model-id");
+          state.selectedModelId = id;
+          state.modelPicker = id;
+          state.search = id;
+          state.showResults = false;
+          resetBuildState();
+          setStatus("Selected model " + id + ".");
+          render();
+        });
+      });
+
+      document.querySelectorAll("[data-custom-id]").forEach((node) => {
+        node.addEventListener("click", () => {
+          const id = node.getAttribute("data-custom-id") || "";
+          state.customModelId = id;
+          state.selectedModelId = "__custom__";
+          state.modelPicker = "__browse__";
+          state.search = id;
+          state.showResults = false;
+          resetBuildState();
+          setStatus("Using custom model ID " + id + " (illustrative metadata).");
+          render();
+        });
+      });
+
+      document.querySelectorAll("[data-target]").forEach((checkbox) => {
+        checkbox.addEventListener("change", (e) => {
+          const key = e.target.getAttribute("data-target");
+          state.selectedTargets[key] = e.target.checked;
+          resetBuildState();
+          setStatus("Updated target selection.");
+          render();
+        });
+      });
+
+      document.querySelectorAll("[data-path-target]").forEach((selectNode) => {
+        selectNode.addEventListener("change", (e) => {
+          const key = e.target.getAttribute("data-path-target");
+          state.selectedPaths[key] = e.target.value;
+          if (key === "gpu") state.gpuRecommendation = "";
+          if (key === "npu") state.npuRecommendation = "";
+          resetBuildState();
+          setStatus("Updated " + targetMeta[key].name + " execution path.");
+          render();
+        });
+      });
+
+      document.querySelectorAll("[data-suggest-path]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const key = button.getAttribute("data-suggest-path");
+          if (key === "gpu") {
+            state.gpuRecommendation = "Hardware inventory required to recommend WebGPU (via Dawn) or CUDA. Recommendation only; selection remains unchanged.";
+            setStatus("GPU recommendation helper ran (illustrative). Selected path remains unchanged.");
+          }
+          if (key === "npu") {
+            state.npuRecommendation = "Hardware inventory required to recommend QNN, OpenVINO NPU, or VitisAI/Ryzen AI. Recommendation only; selection remains unchanged.";
+            setStatus("NPU recommendation helper ran (illustrative). Selected path remains unchanged.");
+          }
+          render();
+        });
+      });
+
+      const toggleBtn = document.getElementById("toggleTechnical");
+      if (toggleBtn) {
+        toggleBtn.addEventListener("click", () => {
+          state.showTechnical = !state.showTechnical;
+          render();
+        });
+      }
+
+      const startBtn = document.getElementById("startOnboardingBtn");
+      if (startBtn) {
+        startBtn.addEventListener("click", () => {
+          if (!selectedTargetKeys().length) {
+            setStatus("Select at least one target before starting onboarding.");
+            return;
+          }
+          startOnboardingSimulation();
+        });
+      }
+
+      const submitBtn = document.getElementById("submitBtn");
+      if (submitBtn) {
+        submitBtn.addEventListener("click", () => {
+          state.submissionSent = true;
+          setStatus("Submission package prepared (illustrative). Publication flow remains intentionally undecided.");
+          render();
+        });
+      }
+
+      document.querySelectorAll("[data-copy-evidence]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const key = button.getAttribute("data-copy-evidence");
+          copyEvidence(key);
+        });
+      });
+    }
+
+    function handleContinue() {
+      if (state.step === 0) {
+        if (!currentModel().id) {
+          setStatus("Choose a model ID before continuing.");
+          return;
+        }
+      }
+      if (state.step === 1) {
+        const selected = selectedTargetKeys();
+        if (!selected.length) {
+          setStatus("Pick at least one target before continuing.");
+          return;
+        }
+        const missingPath = selected.find((key) =>
+          key === "cpu" ? state.selectedPaths.cpu !== "ort-cpu" : !pathOptionExists(key, state.selectedPaths[key])
+        );
+        if (missingPath) {
+          setStatus("Choose an execution path for " + targetMeta[missingPath].name + " before continuing.");
+          return;
+        }
+      }
+      if (state.step === 3 && !state.build.completed) {
+        setStatus("Run Start onboarding to complete gate simulation before validation.");
+        return;
+      }
+      if (state.step < steps.length - 1) {
+        state.step += 1;
+        setStatus("Moved to " + steps[state.step] + ".");
+        render();
+      }
+    }
+
+    function handleBack() {
+      if (state.step > 0) {
+        state.step -= 1;
+        setStatus("Moved to " + steps[state.step] + ".");
+        render();
+      }
+    }
+
+    function resetAll() {
+      clearBuildTimer();
+      state.step = 0;
+      state.search = models[0].id;
+      state.selectedModelId = models[0].id;
+      state.modelPicker = models[0].id;
+      state.customModelId = "";
+      state.showResults = false;
+      state.selectedTargets = { cpu: true, gpu: true, npu: true };
+      state.selectedPaths = { cpu: "ort-cpu", gpu: "webgpu", npu: "webnpu-moonshot" };
+      state.gpuRecommendation = "";
+      state.npuRecommendation = "";
+      state.showTechnical = false;
+      state.submissionSent = false;
+      state.build.started = false;
+      state.build.running = false;
+      state.build.phaseIndex = 0;
+      state.build.completed = false;
+      setStatus("Prototype state reset.");
+      render();
+    }
+
+    function render() {
+      renderStepButtons();
+      const panel = document.getElementById("stagePanel");
+      panel.innerHTML = renderStage();
+      document.getElementById("backBtn").disabled = state.step === 0;
+      document.getElementById("continueBtn").disabled = state.step === steps.length - 1;
+      document.getElementById("continueBtn").textContent = state.step === steps.length - 1 ? "Done" : "Continue";
+      document.getElementById("statusLine").textContent = state.status;
+      wireEvents();
+    }
+
+    document.getElementById("continueBtn").addEventListener("click", handleContinue);
+    document.getElementById("backBtn").addEventListener("click", handleBack);
+    document.getElementById("resetBtn").addEventListener("click", resetAll);
+
+    render();
+    setStatus("Prototype loaded. All statuses and metrics are illustrative.");
+  </script>
+</body>
+</html>
