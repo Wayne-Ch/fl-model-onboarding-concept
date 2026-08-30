@@ -88,6 +88,7 @@ class BuildRequest:
     workspace_root: Path
     model_cache_dir: Path
     output_dir: Path
+    task_profile: str = "default"
     hf_revision: str | None = None
     runtime: str = "ort-genai"
     external_data_format: str = "safetensors"
@@ -99,6 +100,7 @@ class BuildRequest:
 
 @dataclass(frozen=True)
 class BuildArtifact:
+    artifact_id: str
     kind: ArtifactKind
     path: Path
     description: str
@@ -148,6 +150,7 @@ class PreflightResult:
     huggingface_sha: str | None
     huggingface_private: bool | None
     huggingface_gated: bool | None
+    cache_key: str | None
     blockers: tuple[FailureInfo, ...]
     warnings: tuple[str, ...]
 
@@ -173,6 +176,7 @@ class BuildJob:
     artifacts: list[BuildArtifact] = field(default_factory=list)
     validations: list[ValidationResult] = field(default_factory=list)
     failure: FailureInfo | None = None
+    result_artifact_id: str | None = None
     started_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     finished_utc: datetime | None = None
 
@@ -185,3 +189,14 @@ class BuildJob:
                 message=message,
             )
         )
+
+    def events_after(self, sequence: int) -> tuple[JobEvent, ...]:
+        return tuple(event for event in self.events if event.sequence > sequence)
+
+    def register_artifact(self, artifact: BuildArtifact) -> None:
+        if self.result_artifact_id and self.result_artifact_id != artifact.artifact_id:
+            raise ValueError(
+                "Build job already finalized with a different artifact_id; artifact identity is immutable."
+            )
+        self.artifacts.append(artifact)
+        self.result_artifact_id = artifact.artifact_id

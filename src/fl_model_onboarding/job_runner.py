@@ -31,15 +31,16 @@ class LocalJobRunner:
     def __init__(self, preflight: PreflightInspector) -> None:
         self._preflight = preflight
 
-    def create_job(self, request: BuildRequest) -> BuildJob:
-        return BuildJob(job_id=str(uuid.uuid4()), request=request)
+    def create_job(self, request: BuildRequest, job_id_override: str | None = None) -> BuildJob:
+        return BuildJob(job_id=job_id_override or str(uuid.uuid4()), request=request)
 
     def run_dry(
         self,
         request: BuildRequest,
         commands: tuple[CommandSpec, ...] = (),
+        job_id_override: str | None = None,
     ) -> DryRunPlan:
-        job = self.create_job(request)
+        job = self.create_job(request, job_id_override=job_id_override)
         transition(job, JobState.PREFLIGHT, "Starting preflight checks")
         preflight = self._preflight.inspect(request)
         preflight_status = (

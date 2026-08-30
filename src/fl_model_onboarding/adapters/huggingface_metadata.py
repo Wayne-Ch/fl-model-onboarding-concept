@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from .interfaces import HuggingFaceMetadata, HuggingFaceSearchResult
+from ..hf_safetensors import coerce_total_bytes, derive_parameter_count, to_dict
 
 
 class HuggingFaceMetadataAdapter:
@@ -42,12 +43,7 @@ class HuggingFaceMetadataAdapter:
         api = HfApi()
         info = api.model_info(repo_id=model_id, revision=revision, files_metadata=files_metadata)
         siblings = getattr(info, "siblings", None)
-        safetensors = getattr(info, "safetensors", None)
-        safetensors_total = None
-        if isinstance(safetensors, dict):
-            total = safetensors.get("total")
-            if isinstance(total, int):
-                safetensors_total = total
+        safetensors = to_dict(getattr(info, "safetensors", None))
         return HuggingFaceMetadata(
             model_id=info.id,
             revision=revision or getattr(info, "sha", None),
@@ -57,9 +53,10 @@ class HuggingFaceMetadataAdapter:
             last_modified=_normalize_datetime(
                 getattr(info, "lastModified", None) or getattr(info, "last_modified", None)
             ),
-            config=_coerce_dict(getattr(info, "config", None)),
-            safetensors_total_bytes=safetensors_total,
-            card_data=_coerce_dict(getattr(info, "cardData", None) or getattr(info, "card_data", None)),
+            config=to_dict(getattr(info, "config", None)),
+            safetensors_total_bytes=coerce_total_bytes(safetensors),
+            safetensors_parameter_count=derive_parameter_count(safetensors),
+            card_data=to_dict(getattr(info, "cardData", None) or getattr(info, "card_data", None)),
             sibling_count=len(siblings) if siblings is not None else None,
         )
 
@@ -70,9 +67,3 @@ def _normalize_datetime(value: Any) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
     return str(value)
-
-
-def _coerce_dict(value: Any) -> dict[str, object] | None:
-    if isinstance(value, dict):
-        return dict(value)
-    return None

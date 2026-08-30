@@ -33,6 +33,9 @@ class FakeRunner:
                     ]
                 }
             return CommandResult(spec=spec, exit_code=0, stdout=json.dumps(payload), stderr="")
+        if spec.argv[:3] == ("foundry", "model", "info"):
+            payload = {"model": {"alias": spec.argv[3], "id": "id-1"}}
+            return CommandResult(spec=spec, exit_code=0, stdout=json.dumps(payload), stderr="")
         if spec.argv[:3] == ("foundry", "cache", "location"):
             return CommandResult(
                 spec=spec,
@@ -63,3 +66,9 @@ def test_list_matches_handles_missing_sections() -> None:
     adapter = FoundryCliCatalogAdapter(MissingSectionsRunner())  # type: ignore[arg-type]
     matches = adapter.list_matches("anything")
     assert matches == ()
+
+
+def test_model_info_requires_model_object() -> None:
+    adapter = FoundryCliCatalogAdapter(FakeRunner())  # type: ignore[arg-type]
+    info = adapter.model_info("qwen3.5-0.8b")
+    assert info["alias"] == "qwen3.5-0.8b"

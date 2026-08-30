@@ -1,39 +1,22 @@
 from __future__ import annotations
 
 from .contracts import BuildJob, FailureClassification, FailureInfo, JobState
+from .state_contract import (
+    cancellable_states_from_contract,
+    execution_order_from_contract,
+    load_state_contract,
+    transition_map_from_contract,
+)
 
 
 class StateTransitionError(ValueError):
     pass
 
 
-ALLOWED_TRANSITIONS: dict[JobState, set[JobState]] = {
-    JobState.QUEUED: {JobState.PREFLIGHT, JobState.CANCELLED},
-    JobState.PREFLIGHT: {JobState.DOWNLOADING, JobState.FAILED, JobState.CANCELLED},
-    JobState.DOWNLOADING: {JobState.MOBIUS_BUILDING, JobState.FAILED, JobState.CANCELLED},
-    JobState.MOBIUS_BUILDING: {JobState.MOBIUS_VALIDATING, JobState.FAILED, JobState.CANCELLED},
-    JobState.MOBIUS_VALIDATING: {JobState.OLIVE_OPTIMIZING, JobState.FAILED, JobState.CANCELLED},
-    JobState.OLIVE_OPTIMIZING: {JobState.PACKAGING, JobState.FAILED, JobState.CANCELLED},
-    JobState.PACKAGING: {JobState.RUNTIME_VALIDATING, JobState.FAILED, JobState.CANCELLED},
-    JobState.RUNTIME_VALIDATING: {JobState.FL_LOADING, JobState.FAILED, JobState.CANCELLED},
-    JobState.FL_LOADING: {JobState.INFERENCING, JobState.FAILED, JobState.CANCELLED},
-    JobState.INFERENCING: {JobState.SUCCEEDED, JobState.FAILED, JobState.CANCELLED},
-    JobState.SUCCEEDED: set(),
-    JobState.FAILED: set(),
-    JobState.CANCELLED: set(),
-}
-
-EXECUTION_ORDER: tuple[JobState, ...] = (
-    JobState.PREFLIGHT,
-    JobState.DOWNLOADING,
-    JobState.MOBIUS_BUILDING,
-    JobState.MOBIUS_VALIDATING,
-    JobState.OLIVE_OPTIMIZING,
-    JobState.PACKAGING,
-    JobState.RUNTIME_VALIDATING,
-    JobState.FL_LOADING,
-    JobState.INFERENCING,
-)
+_STATE_CONTRACT = load_state_contract()
+ALLOWED_TRANSITIONS: dict[JobState, set[JobState]] = transition_map_from_contract(_STATE_CONTRACT)
+EXECUTION_ORDER: tuple[JobState, ...] = execution_order_from_contract(_STATE_CONTRACT)
+CANCELLABLE_STATES = cancellable_states_from_contract(_STATE_CONTRACT)
 
 
 def ensure_transition(current: JobState, target: JobState) -> None:
@@ -55,6 +38,8 @@ def fail_job(job: BuildJob, failure: FailureInfo) -> None:
 
 
 def cancel_job(job: BuildJob, reason: str) -> None:
+    if job.state not in CANCELLABLE_STATES:
+        raise StateTransitionError(f"State '{job.state.value}' is not cancellable.")
     ensure_transition(job.state, JobState.CANCELLED)
     job.failure = FailureInfo(
         stage=job.state,

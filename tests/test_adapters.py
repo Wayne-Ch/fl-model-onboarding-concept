@@ -60,6 +60,7 @@ def test_artifact_assembler_copies_files_and_writes_descriptor(tmp_path: Path) -
 
     assembler = FoundryArtifactAssembler()
     artifacts = assembler.package_for_foundry_cache(
+        artifact_id="artifact-1",
         model_name="my-model",
         source_dir=source,
         model_cache_dir=cache,
@@ -69,6 +70,7 @@ def test_artifact_assembler_copies_files_and_writes_descriptor(tmp_path: Path) -
     assert (target / "genai_config.json").exists()
     descriptor = json.loads((target / "inference_model.json").read_text(encoding="utf-8"))
     assert descriptor["Name"] == "my-model"
+    assert all(a.artifact_id == "artifact-1" for a in artifacts)
     assert any(a.path.name == "inference_model.json" for a in artifacts)
 
 
@@ -81,6 +83,7 @@ def test_artifact_assembler_rejects_path_traversal(tmp_path: Path) -> None:
     assembler = FoundryArtifactAssembler()
     with pytest.raises(PathContainmentError):
         assembler.package_for_foundry_cache(
+            artifact_id="artifact-1",
             model_name="..\\escape",
             source_dir=source,
             model_cache_dir=cache,

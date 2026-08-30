@@ -19,6 +19,7 @@ class CommandSpec:
     argv: tuple[str, ...]
     cwd: Path | None = None
     timeout_seconds: int = 900
+    max_capture_bytes: int = 2_000_000
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class HuggingFaceMetadata:
     last_modified: str | None
     config: dict[str, object] | None
     safetensors_total_bytes: int | None
+    safetensors_parameter_count: int | None
     card_data: dict[str, object] | None
     sibling_count: int | None
 
@@ -101,6 +103,9 @@ class FoundryCatalogClient(Protocol):
     def list_matches(self, search_query: str) -> tuple[CatalogMatchAssessment, ...]:
         ...
 
+    def model_info(self, model_ref: str) -> dict[str, object]:
+        ...
+
     def cache_location(self) -> Path:
         ...
 
@@ -133,6 +138,7 @@ class OliveOptimizeClient(Protocol):
 class ArtifactAssemblerClient(Protocol):
     def package_for_foundry_cache(
         self,
+        artifact_id: str,
         model_name: str,
         source_dir: Path,
         model_cache_dir: Path,

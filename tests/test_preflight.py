@@ -35,6 +35,9 @@ class FakeFoundry:
     def list_matches(self, search_query: str) -> tuple[CatalogMatchAssessment, ...]:
         return ()
 
+    def model_info(self, model_ref: str) -> dict[str, object]:
+        return {"alias": model_ref}
+
     def cache_location(self) -> Path:
         raise NotImplementedError
 
@@ -54,13 +57,14 @@ class FakeHF:
     ) -> HuggingFaceMetadata:
         return HuggingFaceMetadata(
             model_id=model_id,
-            revision=revision or "abc123",
-            sha="abc123",
+            revision=revision or "1234567890abcdef1234567890abcdef12345678",
+            sha="1234567890abcdef1234567890abcdef12345678",
             is_private=False,
             is_gated=False,
             last_modified="2026-01-01T00:00:00Z",
             config={"model_type": "llama"},
             safetensors_total_bytes=1024,
+            safetensors_parameter_count=256,
             card_data={"license": "apache-2.0"},
             sibling_count=12,
         )
@@ -122,3 +126,60 @@ def test_preflight_keeps_likely_match_semantics(tmp_path: Path) -> None:
     result = inspector.inspect(request)
     assert result.foundry_catalog_matches
     assert result.foundry_catalog_matches[0].confidence == MatchConfidence.MEDIUM
+    assert result.cache_key is not None
+
+
+def test_preflight_rejects_gated_models(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class GatedHF(FakeHF):
+        def get_metadata(  # type: ignore[override]
+            self, model_id: str, revision: str | None = None, files_metadata: bool = False
+        ) -> HuggingFaceMetadata:
+            base = super().get_metadata(model_id, revision=revision, files_metadata=files_metadata)
+            return HuggingFaceMetadata(
+                model_id=base.model_id,
+                revision=base.revision,
+                sha=base.sha,
+                is_private=base.is_private,
+                is_gated=True,
+                last_modified=base.last_modified,
+                config=base.config,
+                safetensors_total_bytes=base.safetensors_total_bytes,
+                safetensors_parameter_count=base.safetensors_parameter_count,
+                card_data=base.card_data,
+                sibling_count=base.sibling_count,
+            )
+
+    request = _request(tmp_path, tmp_path / "out")
+    inspector = PreflightInspector(FakeRunner(), FakeFoundry(), GatedHF())
+    result = inspector.inspect(request)
+    assert any("rejects gated" in blocker.message for blocker in result.blockers)
+
+
+def test_preflight_rejects_remote_code_models(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class AutoMapHF(FakeHF):
+        def get_metadata(  # type: ignore[override]
+            self, model_id: str, revision: str | None = None, files_metadata: bool = False
+        ) -> HuggingFaceMetadata:
+            base = super().get_metadata(model_id, revision=revision, files_metadata=files_metadata)
+            return HuggingFaceMetadata(
+                model_id=base.model_id,
+                revision=base.revision,
+                sha=base.sha,
+                is_private=base.is_private,
+                is_gated=base.is_gated,
+                last_modified=base.last_modified,
+                config={"auto_map": {"AutoModelForCausalLM": "remote.module.Model"}},
+                safetensors_total_bytes=base.safetensors_total_bytes,
+                safetensors_parameter_count=base.safetensors_parameter_count,
+                card_data=base.card_data,
+                sibling_count=base.sibling_count,
+            )
+
+    request = _request(tmp_path, tmp_path / "out")
+    inspector = PreflightInspector(FakeRunner(), FakeFoundry(), AutoMapHF())
+    result = inspector.inspect(request)
+    assert any("requires remote code" in blocker.message for blocker in result.blockers)

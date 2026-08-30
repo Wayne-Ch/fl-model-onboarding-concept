@@ -36,6 +36,17 @@ class FoundryCliCatalogAdapter:
             raise RuntimeError("Foundry cache location response did not include path.")
         return Path(path)
 
+    def model_info(self, model_ref: str) -> dict[str, object]:
+        spec = CommandSpec(argv=("foundry", "model", "info", model_ref, "-o", "json"), timeout_seconds=60)
+        result = self._runner.run(spec)
+        if not result.ok:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+        payload = json.loads(result.stdout or "{}")
+        model_payload = payload.get("model")
+        if not isinstance(model_payload, dict):
+            raise RuntimeError("Foundry model info response did not contain top-level 'model' object.")
+        return model_payload
+
     def status(self) -> dict[str, object]:
         spec = CommandSpec(argv=("foundry", "status", "-o", "json"), timeout_seconds=60)
         result = self._runner.run(spec)

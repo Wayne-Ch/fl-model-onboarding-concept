@@ -55,6 +55,7 @@ def _preflight_ok(request: BuildRequest) -> PreflightResult:
         huggingface_sha="abc",
         huggingface_private=False,
         huggingface_gated=False,
+        cache_key="key-1",
         blockers=(),
         warnings=(),
     )

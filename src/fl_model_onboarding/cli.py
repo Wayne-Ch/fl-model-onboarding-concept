@@ -42,6 +42,7 @@ def _build_request(args: argparse.Namespace) -> BuildRequest:
         workspace_root=workspace_root,
         model_cache_dir=model_cache_dir,
         output_dir=output_dir,
+        task_profile=getattr(args, "task_profile", "default"),
         hf_revision=args.hf_revision,
         skip_olive=bool(args.skip_olive),
         dry_run=bool(getattr(args, "dry_run", False)),
@@ -63,6 +64,7 @@ def _create_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--workspace-root")
     doctor.add_argument("--model-cache-dir")
     doctor.add_argument("--output-dir")
+    doctor.add_argument("--task-profile", default="default")
     doctor.add_argument("--hf-revision")
     doctor.add_argument("--skip-olive", action="store_true")
 
@@ -71,6 +73,7 @@ def _create_parser() -> argparse.ArgumentParser:
     preflight.add_argument("--workspace-root")
     preflight.add_argument("--model-cache-dir")
     preflight.add_argument("--output-dir")
+    preflight.add_argument("--task-profile", default="default")
     preflight.add_argument("--hf-revision")
     preflight.add_argument("--skip-olive", action="store_true")
 
@@ -79,6 +82,7 @@ def _create_parser() -> argparse.ArgumentParser:
     dry.add_argument("--workspace-root")
     dry.add_argument("--model-cache-dir")
     dry.add_argument("--output-dir")
+    dry.add_argument("--task-profile", default="default")
     dry.add_argument("--hf-revision")
     dry.add_argument("--skip-olive", action="store_true")
 

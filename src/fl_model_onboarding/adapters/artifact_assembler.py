@@ -21,6 +21,7 @@ DEFAULT_CHATML_TEMPLATE = {
 class FoundryArtifactAssembler(ArtifactAssemblerClient):
     def package_for_foundry_cache(
         self,
+        artifact_id: str,
         model_name: str,
         source_dir: Path,
         model_cache_dir: Path,
@@ -45,6 +46,7 @@ class FoundryArtifactAssembler(ArtifactAssemblerClient):
 
         artifacts: list[BuildArtifact] = [
             BuildArtifact(
+                artifact_id=artifact_id,
                 kind=ArtifactKind.DESCRIPTOR,
                 path=inference_model_path,
                 description="Foundry Local inference descriptor",
@@ -56,6 +58,7 @@ class FoundryArtifactAssembler(ArtifactAssemblerClient):
             if artifact_path.exists():
                 artifacts.append(
                     BuildArtifact(
+                        artifact_id=artifact_id,
                         kind=ArtifactKind.CONFIG
                         if candidate == "genai_config.json"
                         else ArtifactKind.RUNTIME_COMPATIBILITY,

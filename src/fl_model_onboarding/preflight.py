@@ -22,7 +22,9 @@ from .contracts import (
     ToolAvailability,
 )
 from .failures import classify_exception, failure
+from .hf_policy import config_requires_remote_code
 from .paths import ensure_within
+from .preflight_cache import PreflightResultCache, build_preflight_cache_key
 
 
 _SEMVER_RE = re.compile(r"(?P<version>\d+\.\d+\.\d+(?:\.\d+)?)")
@@ -41,11 +43,13 @@ class PreflightInspector:
         foundry: FoundryCatalogClient,
         hf_metadata: HuggingFaceMetadataClient,
         policy: PreflightPolicy | None = None,
+        cache: PreflightResultCache | None = None,
     ) -> None:
         self._runner = runner
         self._foundry = foundry
         self._hf_metadata = hf_metadata
         self._policy = policy or PreflightPolicy()
+        self._cache = cache or PreflightResultCache.create()
 
     def inspect(self, request: BuildRequest) -> PreflightResult:
         blockers: list[FailureInfo] = []
@@ -56,10 +60,30 @@ class PreflightInspector:
         except Exception as exc:
             blockers.append(classify_exception(JobState.PREFLIGHT, exc))
 
-        workspace_usage = shutil.disk_usage(request.workspace_root)
-        cache_usage = shutil.disk_usage(request.model_cache_dir)
-        workspace_free_gb = workspace_usage.free / (1024**3)
-        cache_free_gb = cache_usage.free / (1024**3)
+        workspace_free_gb = 0.0
+        cache_free_gb = 0.0
+        try:
+            workspace_usage = shutil.disk_usage(request.workspace_root)
+            workspace_free_gb = workspace_usage.free / (1024**3)
+        except FileNotFoundError:
+            blockers.append(
+                failure(
+                    JobState.PREFLIGHT,
+                    FailureClassification.INVALID_REQUEST,
+                    f"Workspace root does not exist: {request.workspace_root}",
+                )
+            )
+        try:
+            cache_usage = shutil.disk_usage(request.model_cache_dir)
+            cache_free_gb = cache_usage.free / (1024**3)
+        except FileNotFoundError:
+            blockers.append(
+                failure(
+                    JobState.PREFLIGHT,
+                    FailureClassification.INVALID_REQUEST,
+                    f"Model cache directory does not exist: {request.model_cache_dir}",
+                )
+            )
         if workspace_free_gb < self._policy.min_workspace_free_gb:
             blockers.append(
                 failure(
@@ -140,6 +164,55 @@ class PreflightInspector:
             )
 
         catalog_matches = ()
+
+        hf_revision: str | None = None
+        hf_sha: str | None = None
+        hf_private: bool | None = None
+        hf_gated: bool | None = None
+        try:
+            metadata = self._hf_metadata.get_metadata(
+                request.candidate.huggingface_model_id,
+                revision=request.hf_revision,
+            )
+            hf_revision = metadata.revision
+            hf_sha = metadata.sha
+            hf_private = metadata.is_private
+            hf_gated = metadata.is_gated
+            if hf_gated:
+                blockers.append(
+                    failure(
+                        JobState.PREFLIGHT,
+                        FailureClassification.INVALID_REQUEST,
+                        "POC phase-0 rejects gated Hugging Face models (no token flow in scope).",
+                    )
+                )
+            if config_requires_remote_code(metadata.config):
+                blockers.append(
+                    failure(
+                        JobState.PREFLIGHT,
+                        FailureClassification.INVALID_REQUEST,
+                        "Model config requires remote code (`auto_map`/`trust_remote_code`), which POC policy blocks.",
+                    )
+                )
+        except Exception as exc:
+            classified = classify_exception(JobState.PREFLIGHT, exc)
+            if classified.classification == FailureClassification.INVALID_REQUEST:
+                blockers.append(classified)
+            else:
+                warnings.append(f"Hugging Face metadata probe failed: {classified.message}")
+
+        cache_key: str | None = None
+        if hf_sha:
+            try:
+                cache_key = build_preflight_cache_key(request, huggingface_sha=hf_sha, tools=tools)
+                cached = self._cache.get(cache_key)
+                if cached is not None:
+                    return cached
+            except Exception as exc:
+                warnings.append(f"Preflight cache key unavailable: {exc}")
+        else:
+            warnings.append("Hugging Face revision SHA unavailable; preflight result not cacheable.")
+
         try:
             query = request.candidate.huggingface_model_id.split("/")[-1]
             matches = self._foundry.list_matches(query)
@@ -155,27 +228,7 @@ class PreflightInspector:
         except Exception as exc:
             warnings.append(f"Foundry catalog probe failed: {exc}")
 
-        hf_revision: str | None = None
-        hf_sha: str | None = None
-        hf_private: bool | None = None
-        hf_gated: bool | None = None
-        try:
-            metadata = self._hf_metadata.get_metadata(
-                request.candidate.huggingface_model_id,
-                revision=request.hf_revision,
-            )
-            hf_revision = metadata.revision
-            hf_sha = metadata.sha
-            hf_private = metadata.is_private
-            hf_gated = metadata.is_gated
-        except Exception as exc:
-            classified = classify_exception(JobState.PREFLIGHT, exc)
-            if classified.classification == FailureClassification.INVALID_REQUEST:
-                blockers.append(classified)
-            else:
-                warnings.append(f"Hugging Face metadata probe failed: {classified.message}")
-
-        return PreflightResult(
+        result = PreflightResult(
             candidate=request.candidate,
             workspace_root=request.workspace_root,
             model_cache_dir=request.model_cache_dir,
@@ -188,9 +241,13 @@ class PreflightInspector:
             huggingface_sha=hf_sha,
             huggingface_private=hf_private,
             huggingface_gated=hf_gated,
+            cache_key=cache_key,
             blockers=tuple(blockers),
             warnings=tuple(warnings),
         )
+        if cache_key:
+            self._cache.put(cache_key, result)
+        return result
 
     def _probe_command(self, name: str, args: tuple[str, ...]) -> ToolAvailability:
         spec = CommandSpec(argv=(name, *args), timeout_seconds=30)

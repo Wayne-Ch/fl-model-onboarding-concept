@@ -61,3 +61,11 @@ def test_cancel_job_sets_terminal_state(tmp_path: Path) -> None:
     assert job.state == JobState.CANCELLED
     assert job.failure is not None
     assert job.failure.classification == FailureClassification.CANCELLED
+
+
+def test_cancel_job_rejects_terminal_state(tmp_path: Path) -> None:
+    job = BuildJob(job_id="job-1", request=_request(tmp_path))
+    transition(job, JobState.PREFLIGHT, "preflight")
+    cancel_job(job, "cancelled by user")
+    with pytest.raises(StateTransitionError):
+        cancel_job(job, "cancelled twice")
