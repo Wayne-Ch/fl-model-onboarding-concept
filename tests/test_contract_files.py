@@ -19,6 +19,11 @@ def test_openapi_contains_required_paths() -> None:
     idempotency = next(p for p in parameters if p["name"] == "Idempotency-Key")
     assert idempotency["required"] is True
 
+    build_job = spec["components"]["schemas"]["BuildJob"]
+    assert "request" in build_job["properties"]
+    assert "started_utc" in build_job["properties"]
+    assert "finished_utc" in build_job["properties"]
+
 
 def test_state_machine_contract_contains_cancellable_flags() -> None:
     path = Path("contracts") / "job-state-machine.json"

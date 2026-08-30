@@ -28,6 +28,16 @@ def test_preflight_cache_key_uses_full_sha_and_profile(tmp_path: Path) -> None:
     key = build_preflight_cache_key(request=request, huggingface_sha=full_sha, tools=tools)
     assert full_sha in key
     assert "llm-cpu-int4" in key
+    request_skip = BuildRequest(
+        candidate=request.candidate,
+        workspace_root=request.workspace_root,
+        model_cache_dir=request.model_cache_dir,
+        output_dir=request.output_dir,
+        task_profile=request.task_profile,
+        skip_olive=True,
+    )
+    skip_key = build_preflight_cache_key(request=request_skip, huggingface_sha=full_sha, tools=tools)
+    assert key != skip_key
 
 
 def test_preflight_result_cache_put_get() -> None:

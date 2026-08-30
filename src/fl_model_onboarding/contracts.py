@@ -194,6 +194,8 @@ class BuildJob:
         return tuple(event for event in self.events if event.sequence > sequence)
 
     def register_artifact(self, artifact: BuildArtifact) -> None:
+        if artifact in self.artifacts:
+            return
         if self.result_artifact_id and self.result_artifact_id != artifact.artifact_id:
             raise ValueError(
                 "Build job already finalized with a different artifact_id; artifact identity is immutable."

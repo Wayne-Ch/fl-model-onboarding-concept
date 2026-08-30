@@ -52,13 +52,15 @@ class PreflightInspector:
         self._cache = cache or PreflightResultCache.create()
 
     def inspect(self, request: BuildRequest) -> PreflightResult:
-        blockers: list[FailureInfo] = []
+        environment_blockers: list[FailureInfo] = []
+        compatibility_blockers: list[FailureInfo] = []
+        environment_warnings: list[str] = []
         warnings: list[str] = []
 
         try:
             ensure_within(request.workspace_root, request.output_dir)
         except Exception as exc:
-            blockers.append(classify_exception(JobState.PREFLIGHT, exc))
+            environment_blockers.append(classify_exception(JobState.PREFLIGHT, exc))
 
         workspace_free_gb = 0.0
         cache_free_gb = 0.0
@@ -66,7 +68,7 @@ class PreflightInspector:
             workspace_usage = shutil.disk_usage(request.workspace_root)
             workspace_free_gb = workspace_usage.free / (1024**3)
         except FileNotFoundError:
-            blockers.append(
+            environment_blockers.append(
                 failure(
                     JobState.PREFLIGHT,
                     FailureClassification.INVALID_REQUEST,
@@ -77,7 +79,7 @@ class PreflightInspector:
             cache_usage = shutil.disk_usage(request.model_cache_dir)
             cache_free_gb = cache_usage.free / (1024**3)
         except FileNotFoundError:
-            blockers.append(
+            environment_blockers.append(
                 failure(
                     JobState.PREFLIGHT,
                     FailureClassification.INVALID_REQUEST,
@@ -85,7 +87,7 @@ class PreflightInspector:
                 )
             )
         if workspace_free_gb < self._policy.min_workspace_free_gb:
-            blockers.append(
+            environment_blockers.append(
                 failure(
                     JobState.PREFLIGHT,
                     FailureClassification.INVALID_REQUEST,
@@ -96,7 +98,7 @@ class PreflightInspector:
                 )
             )
         if cache_free_gb < self._policy.min_cache_free_gb:
-            blockers.append(
+            environment_blockers.append(
                 failure(
                     JobState.PREFLIGHT,
                     FailureClassification.INVALID_REQUEST,
@@ -123,7 +125,7 @@ class PreflightInspector:
                 f"Foundry CLI {foundry_version} is older than 0.11.0; command contracts may differ."
             )
         if not by_name["foundry"].available:
-            blockers.append(
+            compatibility_blockers.append(
                 failure(
                     JobState.PREFLIGHT,
                     FailureClassification.MISSING_DEPENDENCY,
@@ -131,7 +133,7 @@ class PreflightInspector:
                 )
             )
         if not by_name["mobius"].available:
-            blockers.append(
+            compatibility_blockers.append(
                 failure(
                     JobState.MOBIUS_BUILDING,
                     FailureClassification.MISSING_DEPENDENCY,
@@ -139,7 +141,7 @@ class PreflightInspector:
                 )
             )
         if not by_name["olive"].available and not request.skip_olive:
-            blockers.append(
+            compatibility_blockers.append(
                 failure(
                     JobState.OLIVE_OPTIMIZING,
                     FailureClassification.MISSING_DEPENDENCY,
@@ -147,7 +149,7 @@ class PreflightInspector:
                 )
             )
         if not by_name["onnxruntime-genai"].available:
-            blockers.append(
+            compatibility_blockers.append(
                 failure(
                     JobState.RUNTIME_VALIDATING,
                     FailureClassification.MISSING_DEPENDENCY,
@@ -155,7 +157,7 @@ class PreflightInspector:
                 )
             )
         if not by_name["foundry-local-sdk"].available:
-            blockers.append(
+            compatibility_blockers.append(
                 failure(
                     JobState.FL_LOADING,
                     FailureClassification.MISSING_DEPENDENCY,
@@ -179,7 +181,7 @@ class PreflightInspector:
             hf_private = metadata.is_private
             hf_gated = metadata.is_gated
             if hf_gated:
-                blockers.append(
+                compatibility_blockers.append(
                     failure(
                         JobState.PREFLIGHT,
                         FailureClassification.INVALID_REQUEST,
@@ -187,7 +189,7 @@ class PreflightInspector:
                     )
                 )
             if config_requires_remote_code(metadata.config):
-                blockers.append(
+                compatibility_blockers.append(
                     failure(
                         JobState.PREFLIGHT,
                         FailureClassification.INVALID_REQUEST,
@@ -197,7 +199,7 @@ class PreflightInspector:
         except Exception as exc:
             classified = classify_exception(JobState.PREFLIGHT, exc)
             if classified.classification == FailureClassification.INVALID_REQUEST:
-                blockers.append(classified)
+                compatibility_blockers.append(classified)
             else:
                 warnings.append(f"Hugging Face metadata probe failed: {classified.message}")
 
@@ -207,7 +209,16 @@ class PreflightInspector:
                 cache_key = build_preflight_cache_key(request, huggingface_sha=hf_sha, tools=tools)
                 cached = self._cache.get(cache_key)
                 if cached is not None:
-                    return cached
+                    return self._merge_with_environment(
+                        request=request,
+                        cache_key=cache_key,
+                        workspace_free_gb=workspace_free_gb,
+                        cache_free_gb=cache_free_gb,
+                        compatibility=cached,
+                        environment_blockers=tuple(environment_blockers),
+                        environment_warnings=tuple(environment_warnings),
+                        add_cache_hit_warning=True,
+                    )
             except Exception as exc:
                 warnings.append(f"Preflight cache key unavailable: {exc}")
         else:
@@ -228,7 +239,7 @@ class PreflightInspector:
         except Exception as exc:
             warnings.append(f"Foundry catalog probe failed: {exc}")
 
-        result = PreflightResult(
+        compatibility_result = PreflightResult(
             candidate=request.candidate,
             workspace_root=request.workspace_root,
             model_cache_dir=request.model_cache_dir,
@@ -242,12 +253,53 @@ class PreflightInspector:
             huggingface_private=hf_private,
             huggingface_gated=hf_gated,
             cache_key=cache_key,
-            blockers=tuple(blockers),
+            blockers=tuple(compatibility_blockers),
             warnings=tuple(warnings),
         )
         if cache_key:
-            self._cache.put(cache_key, result)
-        return result
+            self._cache.put(cache_key, compatibility_result)
+        return self._merge_with_environment(
+            request=request,
+            cache_key=cache_key,
+            workspace_free_gb=workspace_free_gb,
+            cache_free_gb=cache_free_gb,
+            compatibility=compatibility_result,
+            environment_blockers=tuple(environment_blockers),
+            environment_warnings=tuple(environment_warnings),
+        )
+
+    def _merge_with_environment(
+        self,
+        request: BuildRequest,
+        cache_key: str | None,
+        workspace_free_gb: float,
+        cache_free_gb: float,
+        compatibility: PreflightResult,
+        environment_blockers: tuple[FailureInfo, ...],
+        environment_warnings: tuple[str, ...],
+        add_cache_hit_warning: bool = False,
+    ) -> PreflightResult:
+        merged_warnings = list(environment_warnings)
+        merged_warnings.extend(compatibility.warnings)
+        if add_cache_hit_warning:
+            merged_warnings.append("preflight-cache-hit")
+        return PreflightResult(
+            candidate=request.candidate,
+            workspace_root=request.workspace_root,
+            model_cache_dir=request.model_cache_dir,
+            output_dir=request.output_dir,
+            disk_free_gb_workspace=workspace_free_gb,
+            disk_free_gb_cache=cache_free_gb,
+            tools=compatibility.tools,
+            foundry_catalog_matches=compatibility.foundry_catalog_matches,
+            huggingface_revision=compatibility.huggingface_revision,
+            huggingface_sha=compatibility.huggingface_sha,
+            huggingface_private=compatibility.huggingface_private,
+            huggingface_gated=compatibility.huggingface_gated,
+            cache_key=cache_key,
+            blockers=tuple(environment_blockers) + tuple(compatibility.blockers),
+            warnings=tuple(merged_warnings),
+        )
 
     def _probe_command(self, name: str, args: tuple[str, ...]) -> ToolAvailability:
         spec = CommandSpec(argv=(name, *args), timeout_seconds=30)

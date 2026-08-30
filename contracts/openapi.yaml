@@ -255,12 +255,21 @@ components:
           type: string
     BuildJob:
       type: object
-      required: [job_id, state, events, artifacts]
+      required: [job_id, state, request, started_utc, events, artifacts]
       properties:
         job_id:
           type: string
         state:
           $ref: "#/components/schemas/BuildState"
+        request:
+          $ref: "#/components/schemas/BuildRequestContext"
+        started_utc:
+          type: string
+          format: date-time
+        finished_utc:
+          type: string
+          format: date-time
+          nullable: true
         events:
           type: array
           items:
@@ -274,6 +283,51 @@ components:
         result_artifact_id:
           type: string
           nullable: true
+    BuildRequestContext:
+      type: object
+      required: [candidate, workspace_root, model_cache_dir, output_dir, task_profile, runtime]
+      properties:
+        candidate:
+          type: object
+          required: [key, huggingface_model_id, modality]
+          properties:
+            key:
+              type: string
+            huggingface_model_id:
+              type: string
+            modality:
+              type: string
+            recommended_mobius_dtype:
+              type: string
+              nullable: true
+            recommended_olive_precision:
+              type: string
+              nullable: true
+            notes:
+              type: string
+        workspace_root:
+          type: string
+        model_cache_dir:
+          type: string
+        output_dir:
+          type: string
+        task_profile:
+          type: string
+        hf_revision:
+          type: string
+          nullable: true
+        runtime:
+          type: string
+        external_data_format:
+          type: string
+        max_shard_size:
+          type: string
+        enforce_cpu_target:
+          type: boolean
+        skip_olive:
+          type: boolean
+        dry_run:
+          type: boolean
     BuildCreateRequest:
       type: object
       required: [candidate_key, task_profile]

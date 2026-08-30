@@ -20,10 +20,16 @@ def build_preflight_cache_key(
         foundry_cli_version=versions.get("foundry") or "missing",
         foundry_sdk_version=versions.get("foundry-local-sdk") or "missing",
     )
+    semantic_profile = (
+        f"{request.task_profile}"
+        f"|skip_olive={int(request.skip_olive)}"
+        f"|runtime={request.runtime}"
+        f"|cpu={int(request.enforce_cpu_target)}"
+    )
     return build_cache_key(
         model_id=request.candidate.huggingface_model_id,
         hf_revision_sha=huggingface_sha,
-        task_profile=request.task_profile,
+        task_profile=semantic_profile,
         toolchain=fingerprint,
     )
 

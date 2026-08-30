@@ -8,7 +8,7 @@ htmlcov/
 build/
 dist/
 *.egg-info/
-.venv/
+.venv*/
 
 # Local POC artifacts/caches (must never be committed)
 .local-artifacts/

@@ -106,3 +106,18 @@ def test_inference_requires_succeeded_job_and_capability_match(tmp_path: Path) -
     job.state = JobState.FAILED
     with pytest.raises(ArtifactNotReadyError):
         service.ensure_inference_target("artifact-1", "text")
+
+
+def test_record_artifact_is_idempotent_for_replay(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    body = BuildCreateBody(candidate_key="smollm2-1.7b-instruct", task_profile="llm-cpu-int4")
+    job, _ = service.create_build(body, idempotency_key="k1")
+    artifact = BuildArtifact(
+        artifact_id="artifact-1",
+        kind=ArtifactKind.MODEL,
+        path=Path("C:\\model"),
+        description="model",
+    )
+    service.record_artifact(job.job_id, artifact)
+    service.record_artifact(job.job_id, artifact)
+    assert len(service.get_build(job.job_id).artifacts) == 1

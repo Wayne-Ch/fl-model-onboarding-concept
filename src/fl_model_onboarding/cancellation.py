@@ -72,6 +72,11 @@ def _terminate_process_tree(pid: int) -> None:
         return
 
     try:
-        os.killpg(os.getpgid(pid), signal.SIGTERM)
+        target_pgid = os.getpgid(pid)
+        parent_pgid = os.getpgid(0)
+        if target_pgid == parent_pgid:
+            os.kill(pid, signal.SIGTERM)
+        else:
+            os.killpg(target_pgid, signal.SIGTERM)
     except ProcessLookupError:
         return

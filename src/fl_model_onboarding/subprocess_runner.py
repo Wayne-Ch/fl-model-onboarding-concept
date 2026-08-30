@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 
@@ -60,6 +61,7 @@ class SafeSubprocessRunner:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=False,
+            start_new_session=(os.name != "nt"),
         )
         assert process.stdout is not None
         assert process.stderr is not None
