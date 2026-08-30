@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.venv/
+
+# Local POC artifacts/caches (must never be committed)
+.local-artifacts/
+.local-cache/
+.local-model-output/
+toolchain-probes/

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fl-model-onboarding"
+version = "0.1.0"
+description = "Foundation contracts and CLI for Foundry Local model onboarding."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "huggingface_hub>=1.22.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0,<9.0.0",
+]
+runtime = [
+  "foundry-local-sdk==1.2.0",
+  "onnxruntime-genai>=0.14.0,<0.15.0",
+]
+
+[project.scripts]
+fl-onboarding = "fl_model_onboarding.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
