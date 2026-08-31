@@ -5,42 +5,47 @@
 - [Open a feedback issue](https://github.com/Wayne-Ch/fl-model-onboarding-concept/issues/new)
 
 Interactive concept prototype for a moonshot Foundry Local model-onboarding experience. All model statuses, capabilities, and benchmark values are illustrative and are not product commitments.
+The GitHub Pages URL above is a concept-only mock and cannot run local Mobius/Olive/Foundry tooling.
 
-## Local service + CLI (POC)
+## Local reproducible POC setup (Windows x64)
 
-Build the web UI once when working from source:
+First check out the PR branch:
 
 ```powershell
-Set-Location web
-npm ci
-npm run build
-Set-Location ..
+git checkout wayne-ch-linus-ui-api-integration
 ```
 
-Launch the packaged UI and API together with one command:
+Then run exactly two commands:
 
 ```powershell
-fl-onboarding service serve --host 127.0.0.1 --port 8777
+.\scripts\bootstrap-local-poc.ps1
+.\scripts\run-local-ui.ps1
 ```
 
-With the pinned short-path toolchain installed, enable the verified production SmolLM2 path:
+`bootstrap-local-poc.ps1` defaults to `C:\fl-onboarding-venv`, verifies Windows x64 and Python 3.11+, installs
+`.[dev,runtime]`, and builds `web/`. Use script parameters to override paths/interpreter.
+
+`run-local-ui.ps1` prepends `<venv>\Scripts` to `PATH` and starts the real local API + packaged React UI with:
+
+- loopback-only host (`127.0.0.1` by default)
+- production runner enabled
+- short defaults (`--workspace-base C:\fmo\w`, `--model-cache-dir C:\fmo\cache`)
+- browser auto-open enabled
+
+## Manual browser validation (real local UI/API)
+
+1. Run `.\scripts\run-local-ui.ps1` and wait for the browser to open.
+2. In the UI search box, search for and select **HuggingFaceTB/SmolLM2-1.7B-Instruct**.
+3. Choose the **Mobius + Olive / INT4** path and start build.
+4. Wait for build completion, then submit a simple chat prompt (for example, `Say hello in one sentence.`).
+5. Confirm that the response is returned through the local runtime flow.
+
+Optional retained-package E2E (only if the local retained artifact already exists):
 
 ```powershell
-fl-onboarding service serve --workspace-base C:\fmo\w --model-cache-dir C:\fmo\cache --enable-production-runner
-```
-
-Run the real retained-package E2E only in an explicitly configured local toolchain:
-
-```powershell
-$env:FL_ONBOARDING_E2E_PYTHON = "C:\flprobe-venv\Scripts\python.exe"
-$env:FL_ONBOARDING_E2E_MODEL_DIR = "C:\fmo-poc\work\<run>\olive\llm"
+$env:FL_ONBOARDING_E2E_PYTHON = "C:\fl-onboarding-venv\Scripts\python.exe"
+$env:FL_ONBOARDING_E2E_MODEL_DIR = "C:\fmo\w\<run>\olive\llm"
 python -m pytest -m e2e tests\test_real_toolchain_e2e.py
-```
-
-Non-loopback binding is blocked by default and requires explicit opt-in:
-
-```powershell
-fl-onboarding service serve --host 0.0.0.0 --allow-non-loopback
 ```
 
 Doctor + model commands:

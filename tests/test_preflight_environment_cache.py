@@ -21,9 +21,9 @@ class AllToolsRunner:
         if cmd == "python":
             source = spec.argv[2]
             for pkg, version in (
-                ("onnxruntime", "1.26.0"),
-                ("onnxruntime-genai", "0.14.0"),
-                ("foundry-local-sdk", "1.2.0"),
+                ("onnxruntime", "1.29.0"),
+                ("onnxruntime-genai", "0.15.2"),
+                ("foundry-local-sdk", "1.2.4"),
                 ("huggingface_hub", "1.22.0"),
             ):
                 if f"version('{pkg}')" in source:

@@ -21,11 +21,11 @@ class FakeRunner:
         if cmd == "python":
             source = spec.argv[2]
             if "version('onnxruntime')" in source:
-                return CommandResult(spec=spec, exit_code=0, stdout="1.26.0\n", stderr="")
+                return CommandResult(spec=spec, exit_code=0, stdout="1.29.0\n", stderr="")
             if "version('onnxruntime-genai')" in source:
-                return CommandResult(spec=spec, exit_code=0, stdout="0.14.0\n", stderr="")
+                return CommandResult(spec=spec, exit_code=0, stdout="0.15.2\n", stderr="")
             if "version('foundry-local-sdk')" in source:
-                return CommandResult(spec=spec, exit_code=0, stdout="1.2.0\n", stderr="")
+                return CommandResult(spec=spec, exit_code=0, stdout="1.2.4\n", stderr="")
             if "version('huggingface_hub')" in source:
                 return CommandResult(spec=spec, exit_code=0, stdout="1.22.0\n", stderr="")
         raise RuntimeError(f"Unhandled fake command: {spec.argv}")

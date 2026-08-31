@@ -27,9 +27,9 @@ _TOOLS = (
     ToolAvailability("foundry", "command", True, "0.11.0"),
     ToolAvailability("mobius", "command", True, "0.1.0"),
     ToolAvailability("olive", "command", True, "0.13.0"),
-    ToolAvailability("onnxruntime", "python-package", True, "1.26.0"),
-    ToolAvailability("onnxruntime-genai", "python-package", True, "0.14.0"),
-    ToolAvailability("foundry-local-sdk", "python-package", True, "1.2.0"),
+    ToolAvailability("onnxruntime", "python-package", True, "1.29.0"),
+    ToolAvailability("onnxruntime-genai", "python-package", True, "0.15.2"),
+    ToolAvailability("foundry-local-sdk", "python-package", True, "1.2.4"),
     ToolAvailability("huggingface_hub", "python-package", True, "1.22.0"),
 )
 

@@ -14,15 +14,15 @@ def test_cache_key_includes_full_sha_and_versions() -> None:
         toolchain=ToolchainFingerprint(
             mobius_version="0.1.0",
             olive_version="0.13.0",
-            oga_version="0.14.0",
-            ort_version="1.26.0",
+            oga_version="0.15.2",
+            ort_version="1.29.0",
             foundry_cli_version="0.11.0",
-            foundry_sdk_version="1.2.0",
+            foundry_sdk_version="1.2.4",
         ),
     )
     assert full_sha in key
     assert "mobius-0.1.0" in key
-    assert "flsdk-1.2.0" in key
+    assert "flsdk-1.2.4" in key
 
 
 def test_cache_key_rejects_short_sha() -> None:
