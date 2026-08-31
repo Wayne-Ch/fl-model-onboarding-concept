@@ -16,6 +16,8 @@ import type {
   ModelPreflight,
   ModelSummary,
   ModelTask,
+  RecipeStatus,
+  SupportedOptimization,
   TestedStatus,
   TextInferenceResult
 } from "./types";
@@ -75,6 +77,52 @@ function normalizeTestedStatus(value: string | undefined): TestedStatus {
   return "not_verified";
 }
 
+function normalizeRecipeStatus(value: string | undefined): RecipeStatus {
+  const normalized = (value ?? "").toLowerCase();
+  if (normalized === "verified") {
+    return "verified";
+  }
+  if (normalized === "experimental") {
+    return "experimental";
+  }
+  if (normalized === "blocked") {
+    return "blocked";
+  }
+  return "unregistered";
+}
+
+function normalizeCandidateClassification(value: string): string {
+  const normalized = value.toLowerCase();
+  if (normalized === "oga_runtime_contract_incompatible") {
+    return "source_runtime_contract_incompatible";
+  }
+  return normalized;
+}
+
+function parseSupportedOptimizations(input: unknown): SupportedOptimization[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const parsed: SupportedOptimization[] = [];
+  for (const item of input) {
+    const record = asRecord(item, "supported optimization");
+    const strategy = readOptionalString(record, ["strategy"]);
+    const precision = readOptionalString(record, ["precision"]);
+    const taskProfile = readOptionalString(record, ["task_profile", "taskProfile"]);
+    if (!strategy || !precision || !taskProfile) {
+      continue;
+    }
+    parsed.push({
+      strategy,
+      precision,
+      taskProfile,
+      skipOlive: readBoolean(record, ["skip_olive", "skipOlive"], false),
+      default: readBoolean(record, ["default"], false)
+    });
+  }
+  return parsed;
+}
+
 function parseModelSummary(input: unknown): ModelSummary {
   const record = asRecord(input, "model summary");
   const verification = readRecord(record, ["verification"]) ?? {};
@@ -119,7 +167,40 @@ function parseModelDetail(input: unknown): ModelDetail {
   const matches = readUnknown(record, ["foundry_catalog_matches"]);
   const firstMatch = Array.isArray(matches) && matches.length > 0 ? asRecord(matches[0], "catalog match") : {};
   const verification = readRecord(record, ["verification"]) ?? {};
+  const recipe = readRecord(record, ["recipe"]) ?? {};
+  const recipeStatus = normalizeRecipeStatus(
+    readOptionalString(record, ["recipe_status"]) ?? readOptionalString(recipe, ["status"])
+  );
+  const recipeReason =
+    readOptionalString(record, ["recipe_reason"]) ??
+    readOptionalString(recipe, ["reason"]) ??
+    "No recipe is registered for this model profile.";
+  const topLevelSupported = readUnknown(record, ["supported_optimizations"]);
+  const recipeSupported = readUnknown(recipe, ["supported_optimizations"]);
+  const supportedOptimizations = parseSupportedOptimizations(
+    Array.isArray(topLevelSupported) ? topLevelSupported : recipeSupported
+  );
   const bytes = readNumber(record, ["safetensors_total_bytes"]);
+  const requiresExperimentalOptIn = readBoolean(
+    record,
+    ["requires_experimental_opt_in"],
+    recipeStatus === "experimental"
+  );
+  const buildableWithExperimentalOptIn = readBoolean(
+    record,
+    ["buildable_with_experimental_opt_in"],
+    recipeStatus === "experimental"
+  );
+  const mobiusSupport =
+    recipeStatus === "verified"
+      ? "verified"
+      : recipeStatus === "experimental"
+        ? requiresExperimentalOptIn
+          ? "experimental (opt-in required)"
+          : "experimental"
+        : recipeStatus === "blocked"
+          ? "blocked"
+          : "not registered";
   return {
     id: readString(record, ["id", "model_id", "hf_id"]),
     displayName: readString(record, ["display_name", "name", "model_id", "id"]),
@@ -134,9 +215,16 @@ function parseModelDetail(input: unknown): ModelDetail {
     requiresRemoteCode: readBoolean(record, ["requires_remote_code", "remote_code"], false),
     estimatedSizeMb: bytes === undefined ? undefined : Math.round(bytes / (1024 * 1024)),
     likelyCatalogMatch: readString(firstMatch, ["model_or_variant_id"], "none"),
-    mobiusSupport: readBoolean(record, ["buildable"], false) ? "preflight required" : "blocked",
-    mobiusRisk: readStringArray(record, ["warnings", "build_blockers"]).join("; ") || "not verified",
+    mobiusSupport,
+    mobiusRisk: readStringArray(record, ["warnings", "build_blockers"]).join("; ") || recipeReason,
     testedStatus: normalizeTestedStatus(readOptionalString(verification, ["status"])),
+    recipeStatus,
+    recipeReason,
+    recipeId: readOptionalString(recipe, ["id"]),
+    recipeVersion: readOptionalString(recipe, ["version"]),
+    requiresExperimentalOptIn,
+    buildableWithExperimentalOptIn,
+    supportedOptimizations,
     candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"]))
   };
 }
@@ -172,7 +260,7 @@ function parseCandidateOutcome(input: unknown): CandidateOutcome | undefined {
     status: "blocked",
     testedStatus: "not_verified",
     failedStage: readString(record, ["failed_stage"]),
-    classification: readString(record, ["classification"]),
+    classification: normalizeCandidateClassification(readString(record, ["classification"])),
     errorSummary: readString(record, ["error_summary"]),
     versions,
     gateOutcomes,
@@ -186,13 +274,39 @@ function parsePreflight(input: unknown): ModelPreflight {
   const record = asRecord(input, "preflight response");
   const result = readRecord(record, ["result"]) ?? record;
   const candidate = readRecord(result, ["candidate"]) ?? {};
+  const recipe = readRecord(record, ["recipe"]) ?? readRecord(result, ["recipe"]) ?? {};
+  const recipeStatus = normalizeRecipeStatus(
+    readOptionalString(record, ["recipe_status"]) ?? readOptionalString(recipe, ["status"])
+  );
+  const recipeReason =
+    readOptionalString(record, ["recipe_reason"]) ??
+    readOptionalString(recipe, ["reason"]) ??
+    "No recipe is registered for this model profile.";
+  const requiresExperimentalOptIn = readBoolean(
+    record,
+    ["requires_experimental_opt_in"],
+    recipeStatus === "experimental"
+  );
   const blockers = readUnknown(result, ["blockers"]);
   const firstBlocker =
     Array.isArray(blockers) && blockers.length > 0 ? asRecord(blockers[0], "preflight blocker") : undefined;
   const task = normalizeTask(readOptionalString(candidate, ["modality"]));
-  const olivePrecision = readOptionalString(candidate, ["recommended_olive_precision"]);
-  const mobiusPrecision = readOptionalString(candidate, ["recommended_mobius_dtype"]);
-  const precisions = Array.from(new Set([olivePrecision, mobiusPrecision].filter((value): value is string => !!value)));
+  const topLevelSupported = readUnknown(record, ["supported_optimizations"]);
+  const recipeSupported = readUnknown(recipe, ["supported_optimizations"]);
+  const supportedOptimizations = parseSupportedOptimizations(
+    Array.isArray(topLevelSupported) ? topLevelSupported : recipeSupported
+  );
+  const fallbackOlivePrecision = readOptionalString(candidate, ["recommended_olive_precision"]);
+  const fallbackMobiusPrecision = readOptionalString(candidate, ["recommended_mobius_dtype"]);
+  const defaultOptimization = supportedOptimizations.find((item) => item.default) ?? supportedOptimizations[0];
+  const strategies = Array.from(new Set(supportedOptimizations.map((item) => item.strategy)));
+  const precisions = Array.from(new Set(supportedOptimizations.map((item) => item.precision)));
+  const fallbackPrecisions = Array.from(
+    new Set([fallbackOlivePrecision, fallbackMobiusPrecision].filter((value): value is string => !!value))
+  );
+  const resolvedStrategies =
+    strategies.length > 0 ? strategies : fallbackPrecisions.length > 0 ? ["mobius-olive"] : [];
+  const resolvedPrecisions = precisions.length > 0 ? precisions : fallbackPrecisions;
 
   return {
     modelId: readString(candidate, ["huggingface_model_id"]),
@@ -200,12 +314,21 @@ function parsePreflight(input: unknown): ModelPreflight {
     target: "cpu",
     buildable: readBoolean(record, ["ok"], false),
     blockedReason: firstBlocker ? readString(firstBlocker, ["message"], "Preflight blocked.") : undefined,
-    strategies: task === "asr" ? [] : ["mobius-olive", "mobius-only"],
-    precisions: task === "asr" ? [] : precisions.length > 0 ? precisions : ["default"],
+    strategies: task === "asr" ? [] : resolvedStrategies,
+    precisions: task === "asr" ? [] : resolvedPrecisions,
     verifiedAudioFormats: [],
-    defaultStrategy: task === "asr" ? undefined : "mobius-olive",
-    defaultPrecision: task === "asr" ? undefined : olivePrecision ?? mobiusPrecision ?? "default",
+    defaultStrategy: task === "asr" ? undefined : defaultOptimization?.strategy ?? resolvedStrategies[0],
+    defaultPrecision:
+      task === "asr"
+        ? undefined
+        : defaultOptimization?.precision ?? fallbackOlivePrecision ?? fallbackMobiusPrecision ?? "default",
     defaultAudioFormat: undefined,
+    recipeStatus,
+    recipeReason,
+    recipeId: readOptionalString(recipe, ["id"]),
+    recipeVersion: readOptionalString(recipe, ["version"]),
+    requiresExperimentalOptIn,
+    supportedOptimizations,
     candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"]))
   };
 }
@@ -252,6 +375,7 @@ function parseBuildStatus(input: unknown): BuildStatus {
       : undefined;
   const artifactSummary = parseArtifactSummary(resultArtifact);
   const stage = readString(record, ["state"], "unknown");
+  const recipeId = readOptionalString(request, ["recipe_id", "recipeId"]);
 
   return {
     jobId: readString(record, ["job_id", "id", "jobId"]),
@@ -261,6 +385,7 @@ function parseBuildStatus(input: unknown): BuildStatus {
     cancellable: !["succeeded", "failed", "cancelled"].includes(stage),
     artifactId: resultArtifactId,
     artifactSummary,
+    reproducibility: recipeId ? { recipeId } : undefined,
     failure: parseFailure(readUnknown(record, ["failure", "error"])),
     updatedAt: readOptionalString(record, ["finished_utc", "started_utc"])
   };
@@ -454,6 +579,7 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
       modelId: string;
       task: "llm" | "asr";
       target: "cpu";
+      allowExperimental?: boolean;
     }): Promise<ModelPreflight> {
       const { data } = await parseResponse(
         transport,
@@ -464,7 +590,8 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
           body: JSON.stringify({
             model_id: request.modelId,
             task: request.task,
-            task_profile: `${request.task}-cpu-default`
+            task_profile: `${request.task}-cpu-default`,
+            allow_experimental: request.allowExperimental === true
           })
         },
         parsePreflight
@@ -485,7 +612,10 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
             model_id: request.modelId,
             task: request.task,
             task_profile: `${request.task}-cpu-${request.optimization.precision}`,
-            skip_olive: request.optimization.strategy === "mobius-only"
+            skip_olive: request.optimization.strategy === "mobius-only",
+            allow_experimental: request.allowExperimental === true,
+            optimization_strategy: request.optimization.strategy,
+            optimization_precision: request.optimization.precision
           })
         },
         parseBuildStatus

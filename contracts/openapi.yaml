@@ -359,6 +359,7 @@ components:
         - network
         - process_failed
         - compatibility
+        - source_runtime_contract_incompatible
         - oga_runtime_contract_incompatible
         - cancelled
         - unknown
@@ -486,6 +487,73 @@ components:
         notes:
           type: string
 
+    RecipeStatus:
+      type: string
+      enum: [verified, experimental, blocked, unregistered]
+
+    SupportedOptimization:
+      type: object
+      required: [strategy, precision, task_profile, skip_olive, default]
+      properties:
+        strategy:
+          type: string
+        precision:
+          type: string
+        task_profile:
+          type: string
+        skip_olive:
+          type: boolean
+        default:
+          type: boolean
+
+    ModelRecipe:
+      type: object
+      required: [id, version, status, reason, model_id, task_profile, modality, supported_optimizations]
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        status:
+          $ref: "#/components/schemas/RecipeStatus"
+        reason:
+          type: string
+        model_id:
+          type: string
+        task_profile:
+          type: string
+        modality:
+          $ref: "#/components/schemas/CandidateModality"
+        verified_revision:
+          type: string
+          nullable: true
+        preferred_revision:
+          type: string
+          nullable: true
+        runtime_validation:
+          type: string
+        inference_modality:
+          $ref: "#/components/schemas/CandidateModality"
+        mobius:
+          type: object
+          nullable: true
+          additionalProperties: true
+        olive:
+          type: object
+          nullable: true
+          additionalProperties: true
+        ancillary_files:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        supported_optimizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportedOptimization"
+        requires_experimental_opt_in:
+          type: boolean
+
     BuildRequestContext:
       type: object
       required: [candidate, workspace_root, model_cache_dir, output_dir, task_profile, runtime]
@@ -515,6 +583,26 @@ components:
           type: boolean
         dry_run:
           type: boolean
+        recipe_id:
+          type: string
+          nullable: true
+        recipe_version:
+          type: string
+          nullable: true
+        recipe_status:
+          $ref: "#/components/schemas/RecipeStatus"
+          nullable: true
+        recipe_reason:
+          type: string
+          nullable: true
+        allow_experimental:
+          type: boolean
+        optimization_strategy:
+          type: string
+          nullable: true
+        optimization_precision:
+          type: string
+          nullable: true
 
     BuildJob:
       type: object
@@ -576,6 +664,15 @@ components:
         skip_olive:
           type: boolean
           default: false
+        allow_experimental:
+          type: boolean
+          default: false
+        optimization_strategy:
+          type: string
+          nullable: true
+        optimization_precision:
+          type: string
+          nullable: true
 
     BuildCreateResponse:
       type: object
@@ -602,7 +699,15 @@ components:
 
     PreflightResponse:
       type: object
-      required: [cache_key, ok, cached, result]
+      required:
+        - cache_key
+        - ok
+        - cached
+        - result
+        - recipe_status
+        - recipe_reason
+        - requires_experimental_opt_in
+        - supported_optimizations
       properties:
         cache_key:
           type: string
@@ -616,6 +721,20 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CandidateOutcome"
             - type: "null"
+        recipe:
+          oneOf:
+            - $ref: "#/components/schemas/ModelRecipe"
+            - type: "null"
+        recipe_status:
+          $ref: "#/components/schemas/RecipeStatus"
+        recipe_reason:
+          type: string
+        requires_experimental_opt_in:
+          type: boolean
+        supported_optimizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportedOptimization"
 
     ModelSearchResult:
       type: object
@@ -661,6 +780,11 @@ components:
         - task_hints
         - foundry_catalog_matches
         - warnings
+        - recipe_status
+        - recipe_reason
+        - requires_experimental_opt_in
+        - buildable_with_experimental_opt_in
+        - supported_optimizations
       properties:
         model_id:
           type: string
@@ -715,6 +839,22 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CandidateOutcome"
             - type: "null"
+        recipe:
+          oneOf:
+            - $ref: "#/components/schemas/ModelRecipe"
+            - type: "null"
+        recipe_status:
+          $ref: "#/components/schemas/RecipeStatus"
+        recipe_reason:
+          type: string
+        requires_experimental_opt_in:
+          type: boolean
+        buildable_with_experimental_opt_in:
+          type: boolean
+        supported_optimizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportedOptimization"
 
     CancelBuildRequest:
       type: object

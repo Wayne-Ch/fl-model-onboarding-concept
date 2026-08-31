@@ -45,8 +45,15 @@ from .preflight import PreflightInspector
 from .production_runner import (
     FoundrySdkTextInferenceBackend,
     ProductionBuildStageRunner,
-    SMOLLM2_MODEL_ID,
     production_package_paths,
+)
+from .recipes import (
+    DEFAULT_RECIPE_REGISTRY,
+    DISTIL_WHISPER_BLOCKED_REVISION,
+    DISTIL_WHISPER_MODEL_ID,
+    RecipeRegistry,
+    RecipeResolution,
+    RecipeStatus,
 )
 from .serialization import to_jsonable
 from .state_machine import CANCELLABLE_STATES, fail_job, transition
@@ -58,21 +65,28 @@ _BEARER_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{8,})")
 _API_KEY_RE = re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)")
 
 _DEFAULT_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
-_ASR_MODEL_ID = "distil-whisper/distil-medium.en"
-_ASR_REVISION = "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7"
+_ASR_MODEL_ID = DISTIL_WHISPER_MODEL_ID
+_ASR_REVISION = DISTIL_WHISPER_BLOCKED_REVISION
+_ASR_RUNTIME_BLOCKER_DETAIL: dict[str, str] = {
+    "required_input": "position_ids",
+    "runtime_component": "WhisperDecoderState",
+    "runtime_gap": "position_ids_not_bound_or_updated",
+    "error_signature": "Missing Input: position_ids",
+}
 
 
 def _asr_candidate_outcome() -> dict[str, object]:
     return {
         "model_id": _ASR_MODEL_ID,
         "revision": _ASR_REVISION,
-        "profile": "cpu/ort-genai; mobius=f32; olive=existing-onnx-decoder/fp32",
+        "profile": "cpu/ort-genai; mobius=f32; deterministic-adapter=parser+model-load",
         "status": "blocked",
         "tested_status": "not_verified",
-        "failed_stage": JobState.FL_LOADING.value,
-        "classification": FailureClassification.OGA_RUNTIME_CONTRACT_INCOMPATIBLE.value,
+        "failed_stage": JobState.INFERENCING.value,
+        "classification": FailureClassification.SOURCE_RUNTIME_CONTRACT_INCOMPATIBLE.value,
         "error_summary": (
-            "Generated Whisper genai_config rejected while parsing decoder_input_ids."
+            "Decoder ONNX requires position_ids, but OGA WhisperDecoderState does not bind/update it; "
+            "OGA and Foundry Local transcription fail with Missing Input: position_ids."
         ),
         "versions": {
             "mobius": "0.1.0",
@@ -90,32 +104,36 @@ def _asr_candidate_outcome() -> dict[str, object]:
                 "summary": "Mobius CPU ort-genai f32 build succeeded.",
             },
             {
-                "stage": JobState.OLIVE_OPTIMIZING.value,
-                "status": "passed",
-                "summary": "Olive existing-ONNX decoder FP32 optimization succeeded.",
-            },
-            {
                 "stage": JobState.RUNTIME_VALIDATING.value,
                 "status": "passed",
                 "summary": "ONNX checker and ORT CPU load succeeded.",
             },
             {
                 "stage": JobState.FL_LOADING.value,
+                "status": "passed",
+                "summary": "Deterministic config adaptation advanced OGA parser/model-load gates.",
+            },
+            {
+                "stage": JobState.INFERENCING.value,
                 "status": "failed",
-                "summary": "OGA and Foundry Local SDK rejected decoder_input_ids.",
+                "summary": (
+                    "OGA and Foundry Local transcription fail with Missing Input: position_ids "
+                    "(WhisperDecoderState does not bind/update position_ids)."
+                ),
             },
         ],
         "evidence_reference": (
-            "docs/contract-probe-results.md#candidate-outcome-summary "
-            "(run 20260830-225442-66553c73)"
+            "docs/asr-contract-repair.md#irreducible-failure-boundary "
+            "(run 20260831-124030-fc016713)"
         ),
         "capability_owner": (
-            "Mobius-generated Whisper config <-> OGA/Foundry Local runtime contract integration"
+            "Primary owner: microsoft/onnxruntime-genai Whisper runtime; "
+            "coordinate Mobius Whisper regression coverage."
         ),
         "next_action": (
-            "Compare the generated config to the pinned OGA Whisper schema/runtime, update the "
-            "responsible component in a later source-adaptation phase, then rerun the same "
-            "candidate profile."
+            "Implement optional position_ids binding/updates from prompt + past sequence length, "
+            "regression-test a Mobius-exported Whisper package, then rerun OGA + Foundry Local SDK "
+            "transcription."
         ),
     }
 
@@ -174,6 +192,9 @@ class BuildSubmission:
     task_profile: str = "default"
     hf_revision: str | None = None
     skip_olive: bool = False
+    allow_experimental: bool = False
+    optimization_strategy: str | None = None
+    optimization_precision: str | None = None
 
     def normalized(self) -> "BuildSubmission":
         return BuildSubmission(
@@ -182,6 +203,13 @@ class BuildSubmission:
             task_profile=self.task_profile.strip() or "default",
             hf_revision=self.hf_revision.strip() if self.hf_revision else None,
             skip_olive=bool(self.skip_olive),
+            allow_experimental=bool(self.allow_experimental),
+            optimization_strategy=self.optimization_strategy.strip()
+            if self.optimization_strategy
+            else None,
+            optimization_precision=self.optimization_precision.strip()
+            if self.optimization_precision
+            else None,
         )
 
     def cache_identity(self) -> dict[str, object]:
@@ -191,6 +219,9 @@ class BuildSubmission:
             "task_profile": self.task_profile,
             "hf_revision": self.hf_revision,
             "skip_olive": self.skip_olive,
+            "allow_experimental": self.allow_experimental,
+            "optimization_strategy": self.optimization_strategy,
+            "optimization_precision": self.optimization_precision,
         }
 
 
@@ -631,6 +662,7 @@ class LocalOnboardingService:
         build_stage_runner: BuildStageRunner | None = None,
         text_inference_backend: TextInferenceBackend | None = None,
         asr_inference_backend: AsrInferenceBackend | None = None,
+        recipe_registry: RecipeRegistry | None = None,
         enable_production_runner: bool = False,
     ) -> None:
         data_root = default_data_root() if (db_path is None or model_cache_dir is None) else None
@@ -656,6 +688,7 @@ class LocalOnboardingService:
         self._queue: Queue[str | None] = Queue()
         self._shutdown = Event()
         self._closed = False
+        self._recipe_registry = recipe_registry or DEFAULT_RECIPE_REGISTRY
 
         self._process_runner = process_runner or SafeSubprocessRunner()
         self._hf_metadata = hf_metadata or HuggingFaceMetadataAdapter()
@@ -667,7 +700,10 @@ class LocalOnboardingService:
         )
         self._process_registry = process_registry or ProcessOwnershipRegistry()
         self._build_stage_runner = build_stage_runner or (
-            ProductionBuildStageRunner(self._process_runner)
+            ProductionBuildStageRunner(
+                self._process_runner,
+                recipe_registry=self._recipe_registry,
+            )
             if enable_production_runner
             else UnverifiedBuildStageRunner()
         )
@@ -682,10 +718,9 @@ class LocalOnboardingService:
             for artifact in job.artifacts:
                 self._artifact_to_job[artifact.artifact_id] = job.job_id
             if job.state in CANCELLABLE_STATES:
-                if job.request.candidate.huggingface_model_id == SMOLLM2_MODEL_ID:
-                    for package_path in production_package_paths(job):
-                        if package_path.exists():
-                            shutil.rmtree(package_path)
+                for package_path in production_package_paths(job, recipe_registry=self._recipe_registry):
+                    if package_path.exists():
+                        shutil.rmtree(package_path)
                 job.state = JobState.FAILED
                 job.failure = FailureInfo(
                     stage=JobState.PREFLIGHT,
@@ -785,7 +820,6 @@ class LocalOnboardingService:
                 status_code=502,
             ) from exc
         requires_remote_code = config_requires_remote_code(metadata.config)
-        buildable = not bool(metadata.is_gated) and not requires_remote_code
         blockers: list[str] = []
         if metadata.is_gated:
             blockers.append("gated_model_blocked")
@@ -800,6 +834,28 @@ class LocalOnboardingService:
             warnings.append(_sanitize_text(f"Foundry catalog probe failed: {exc}"))
 
         task_hints = _derive_task_hints(model_id=normalized, config=metadata.config)
+        hinted_task = task_hints[0] if task_hints else CandidateModality.LLM.value
+        hinted_modality = CandidateModality(hinted_task)
+        recipe_match = self._recipe_registry.resolve(
+            model_id=metadata.model_id,
+            modality=hinted_modality,
+            task_profile="default",
+            allow_experimental=False,
+        )
+        if not recipe_match.buildable:
+            blockers.append(_recipe_blocker_code(recipe_match))
+        buildable = not bool(metadata.is_gated) and not requires_remote_code and recipe_match.buildable
+        recipe = recipe_match.recipe
+        recipe_payload = self._recipe_payload(recipe_match)
+        supported_optimizations = (
+            recipe_payload.get("supported_optimizations", []) if recipe_payload else []
+        )
+        buildable_with_experimental_opt_in = (
+            recipe is not None
+            and recipe.status == RecipeStatus.EXPERIMENTAL
+            and not bool(metadata.is_gated)
+            and not requires_remote_code
+        )
         return {
             "model_id": metadata.model_id,
             "revision": metadata.revision,
@@ -820,11 +876,92 @@ class LocalOnboardingService:
             "candidate_outcome": (
                 _asr_candidate_outcome() if metadata.model_id == _ASR_MODEL_ID else None
             ),
+            "recipe": recipe_payload,
+            "recipe_status": recipe_match.status,
+            "recipe_reason": recipe_match.reason,
+            "requires_experimental_opt_in": recipe_match.requires_experimental_opt_in,
+            "buildable_with_experimental_opt_in": buildable_with_experimental_opt_in,
+            "supported_optimizations": supported_optimizations,
         }
 
     def preflight(self, submission: BuildSubmission) -> dict[str, object]:
         normalized = submission.normalized()
-        request = self._build_request(normalized, job_id="_preflight")
+        recipe_match = self._recipe_registry.resolve(
+            model_id=normalized.model_id,
+            modality=normalized.task,
+            task_profile=normalized.task_profile,
+            allow_experimental=normalized.allow_experimental,
+        )
+        request = self._build_request(
+            normalized,
+            job_id="_preflight",
+            recipe_match=recipe_match,
+            enforce_recipe_buildable=False,
+        )
+        recipe_payload = self._recipe_payload(recipe_match)
+        supported_optimizations = (
+            recipe_payload.get("supported_optimizations", []) if recipe_payload else []
+        )
+        candidate_outcome = (
+            _asr_candidate_outcome()
+            if normalized.task == CandidateModality.ASR and normalized.model_id == _ASR_MODEL_ID
+            else None
+        )
+        if not recipe_match.buildable:
+            blockers = [
+                failure(
+                    stage=JobState.PREFLIGHT,
+                    classification=FailureClassification.INVALID_REQUEST,
+                    message=recipe_match.reason,
+                )
+            ]
+            if candidate_outcome is not None:
+                blockers.insert(
+                    0,
+                    FailureInfo(
+                        stage=JobState(str(candidate_outcome["failed_stage"])),
+                        classification=FailureClassification(str(candidate_outcome["classification"])),
+                        message=str(candidate_outcome["error_summary"]),
+                        detail=dict(_ASR_RUNTIME_BLOCKER_DETAIL),
+                    ),
+                )
+            blocked = PreflightResult(
+                candidate=request.candidate,
+                workspace_root=request.workspace_root,
+                model_cache_dir=request.model_cache_dir,
+                output_dir=request.output_dir,
+                disk_free_gb_workspace=0.0,
+                disk_free_gb_cache=0.0,
+                tools=(),
+                foundry_catalog_matches=(),
+                huggingface_revision=request.hf_revision,
+                huggingface_sha=request.hf_revision,
+                huggingface_private=None,
+                huggingface_gated=None,
+                cache_key=None,
+                blockers=tuple(blockers),
+                warnings=(),
+            )
+            cache_key = _sha256_json(
+                {
+                    **normalized.cache_identity(),
+                    "recipe_status": recipe_match.status,
+                    "recipe_reason": recipe_match.reason,
+                }
+            )
+            return {
+                "cache_key": cache_key,
+                "ok": False,
+                "cached": False,
+                "result": to_jsonable(blocked),
+                "candidate_outcome": candidate_outcome,
+                "recipe": recipe_payload,
+                "recipe_status": recipe_match.status,
+                "recipe_reason": recipe_match.reason,
+                "requires_experimental_opt_in": recipe_match.requires_experimental_opt_in,
+                "supported_optimizations": supported_optimizations,
+            }
+
         output, cached, cache_key = self._inspect_preflight_with_cache_state(
             request,
             fallback_cache_payload=normalized.cache_identity(),
@@ -832,18 +969,16 @@ class LocalOnboardingService:
         payload = to_jsonable(output)
         payload["cache_key"] = cache_key
         supported = output.ok
-        candidate_outcome = None
         if (
             normalized.task == CandidateModality.ASR
             and normalized.model_id == _ASR_MODEL_ID
         ):
-            candidate_outcome = _asr_candidate_outcome()
             payload["blockers"] = [
                 {
                     "stage": candidate_outcome["failed_stage"],
                     "classification": candidate_outcome["classification"],
                     "message": candidate_outcome["error_summary"],
-                    "detail": {"decoder_input_ids": "parse_error"},
+                    "detail": dict(_ASR_RUNTIME_BLOCKER_DETAIL),
                 },
                 *payload.get("blockers", []),
             ]
@@ -854,6 +989,11 @@ class LocalOnboardingService:
             "cached": cached,
             "result": payload,
             "candidate_outcome": candidate_outcome,
+            "recipe": recipe_payload,
+            "recipe_status": recipe_match.status,
+            "recipe_reason": recipe_match.reason,
+            "requires_experimental_opt_in": recipe_match.requires_experimental_opt_in,
+            "supported_optimizations": supported_optimizations,
         }
 
     def create_build(self, submission: BuildSubmission, idempotency_key: str) -> tuple[BuildJob, bool]:
@@ -899,7 +1039,18 @@ class LocalOnboardingService:
                 )
 
             job_id = str(uuid.uuid4())
-            request = self._build_request(normalized, job_id=job_id)
+            recipe_match = self._recipe_registry.resolve(
+                model_id=normalized.model_id,
+                modality=normalized.task,
+                task_profile=normalized.task_profile,
+                allow_experimental=normalized.allow_experimental,
+            )
+            request = self._build_request(
+                normalized,
+                job_id=job_id,
+                recipe_match=recipe_match,
+                enforce_recipe_buildable=True,
+            )
             job = BuildJob(job_id=job_id, request=request)
             job.add_event("Build job queued.")
             self._jobs[job_id] = job
@@ -1034,6 +1185,15 @@ class LocalOnboardingService:
             "artifact_id": record["artifact_id"],
             "verified_utc": record["verified_utc"],
         }
+
+    def _recipe_payload(self, match: RecipeResolution) -> dict[str, object] | None:
+        if match.recipe is None:
+            return None
+        payload = self._recipe_registry.describe_recipe(match.recipe)
+        payload["status"] = match.status
+        payload["reason"] = match.reason
+        payload["requires_experimental_opt_in"] = match.requires_experimental_opt_in
+        return payload
 
     def _resolve_inference_target(
         self,
@@ -1202,6 +1362,9 @@ class LocalOnboardingService:
                 "revision": request.hf_revision,
                 "skip_olive": request.skip_olive,
                 "runtime": request.runtime,
+                "recipe_id": request.recipe_id,
+                "recipe_version": request.recipe_version,
+                "recipe_status": request.recipe_status,
             },
         )
         return result
@@ -1226,17 +1389,134 @@ class LocalOnboardingService:
             self._store.save_preflight_cache(cache_key, result)
             return result, False, cache_key
 
-    def _build_request(self, submission: BuildSubmission, *, job_id: str) -> BuildRequest:
+    def _build_request(
+        self,
+        submission: BuildSubmission,
+        *,
+        job_id: str,
+        recipe_match: RecipeResolution | None = None,
+        enforce_recipe_buildable: bool = True,
+    ) -> BuildRequest:
         workspace = workspace_root_for_job(job_id=job_id, base_dir=self._workspace_base)
         ensure_dir(workspace)
         output_dir = ensure_dir(workspace / "output")
+        resolved = recipe_match or self._recipe_registry.resolve(
+            model_id=submission.model_id,
+            modality=submission.task,
+            task_profile=submission.task_profile,
+            allow_experimental=submission.allow_experimental,
+        )
+        if enforce_recipe_buildable and not resolved.buildable:
+            raise ServiceError(
+                code=_recipe_error_code(resolved),
+                message=resolved.reason,
+                status_code=400,
+                detail={"recipe_status": resolved.status},
+            )
+
+        recipe = resolved.recipe
+        if recipe is not None:
+            default_aliases = {
+                "",
+                "default",
+                f"{submission.task.value}-cpu-default",
+            }
+            task_profile = (
+                recipe.task_profile
+                if submission.task_profile.strip().lower() in default_aliases
+                else submission.task_profile
+            )
+            if task_profile.lower() != recipe.task_profile.lower():
+                raise ServiceError(
+                    code="UNSUPPORTED_TASK_PROFILE",
+                    message=(
+                        f"Task profile '{task_profile}' is not supported by recipe '{recipe.id}'. "
+                        f"Expected '{recipe.task_profile}'."
+                    ),
+                    status_code=400,
+                )
+            task_profile = recipe.task_profile
+            skip_olive = submission.skip_olive
+            selected = recipe.choice_for_profile(task_profile, skip_olive)
+            if (
+                selected is None
+                and submission.task_profile.strip().lower() in default_aliases
+                and not submission.skip_olive
+            ):
+                selected = recipe.default_optimization()
+                if selected is not None:
+                    task_profile = selected.task_profile
+                    skip_olive = selected.skip_olive
+            if selected is None and recipe.optimization_choices:
+                raise ServiceError(
+                    code="UNSUPPORTED_OPTIMIZATION",
+                    message=(
+                        f"Recipe '{recipe.id}' does not support task_profile={task_profile} "
+                        f"with skip_olive={skip_olive}."
+                    ),
+                    status_code=400,
+                )
+            if submission.optimization_strategy and selected is not None:
+                if submission.optimization_strategy.lower() != selected.strategy.lower():
+                    raise ServiceError(
+                        code="UNSUPPORTED_OPTIMIZATION",
+                        message=(
+                            f"Optimization strategy '{submission.optimization_strategy}' is not supported "
+                            f"for recipe '{recipe.id}'."
+                        ),
+                        status_code=400,
+                    )
+            if submission.optimization_precision and selected is not None:
+                if submission.optimization_precision.lower() != selected.precision.lower():
+                    raise ServiceError(
+                        code="UNSUPPORTED_OPTIMIZATION",
+                        message=(
+                            f"Optimization precision '{submission.optimization_precision}' is not supported "
+                            f"for recipe '{recipe.id}'."
+                        ),
+                        status_code=400,
+                    )
+
+            hf_revision = submission.hf_revision
+            if recipe.verified_revision:
+                if hf_revision and hf_revision != recipe.verified_revision:
+                    raise ServiceError(
+                        code="RECIPE_REVISION_MISMATCH",
+                        message=(
+                            f"Recipe '{recipe.id}' requires revision '{recipe.verified_revision}', "
+                            f"received '{hf_revision}'."
+                        ),
+                        status_code=400,
+                    )
+                hf_revision = recipe.verified_revision
+            elif not hf_revision and recipe.preferred_revision:
+                hf_revision = recipe.preferred_revision
+            candidate = recipe.to_candidate(task_profile=task_profile, skip_olive=skip_olive)
+            return BuildRequest(
+                candidate=candidate,
+                workspace_root=workspace,
+                model_cache_dir=self._model_cache_dir,
+                output_dir=output_dir,
+                task_profile=task_profile,
+                hf_revision=hf_revision,
+                skip_olive=skip_olive,
+                dry_run=False,
+                recipe_id=recipe.id,
+                recipe_version=recipe.version,
+                recipe_status=recipe.status.value,
+                recipe_reason=resolved.reason,
+                allow_experimental=submission.allow_experimental,
+                optimization_strategy=selected.strategy if selected else submission.optimization_strategy,
+                optimization_precision=selected.precision if selected else submission.optimization_precision,
+            )
+
         candidate = ModelCandidate(
             key=_normalize_model_key(submission.model_id, submission.task),
             huggingface_model_id=submission.model_id,
             modality=submission.task,
-            recommended_mobius_dtype="f16" if submission.task == CandidateModality.LLM else None,
-            recommended_olive_precision="int4" if submission.task == CandidateModality.LLM else "fp16",
-            notes="Derived from local service request.",
+            recommended_mobius_dtype=None,
+            recommended_olive_precision=None,
+            notes=f"No matched recipe ({resolved.status}).",
         )
         return BuildRequest(
             candidate=candidate,
@@ -1247,6 +1527,13 @@ class LocalOnboardingService:
             hf_revision=submission.hf_revision,
             skip_olive=submission.skip_olive,
             dry_run=False,
+            recipe_id=None,
+            recipe_version=None,
+            recipe_status=resolved.status,
+            recipe_reason=resolved.reason,
+            allow_experimental=submission.allow_experimental,
+            optimization_strategy=submission.optimization_strategy,
+            optimization_precision=submission.optimization_precision,
         )
 
 
@@ -1265,6 +1552,22 @@ def _derive_task_hints(model_id: str, config: dict[str, object] | None) -> list[
     if "whisper" in joined or "asr" in joined:
         return [CandidateModality.ASR.value]
     return [CandidateModality.LLM.value]
+
+
+def _recipe_blocker_code(match: RecipeResolution) -> str:
+    if match.requires_experimental_opt_in:
+        return "recipe_experimental_opt_in_required"
+    if match.status == RecipeStatus.BLOCKED.value:
+        return "recipe_blocked"
+    return "recipe_unregistered"
+
+
+def _recipe_error_code(match: RecipeResolution) -> str:
+    if match.requires_experimental_opt_in:
+        return "EXPERIMENTAL_RECIPE_OPT_IN_REQUIRED"
+    if match.status == RecipeStatus.BLOCKED.value:
+        return "MODEL_RECIPE_BLOCKED"
+    return "MODEL_RECIPE_NOT_FOUND"
 
 
 def _serialize_build_request(value: BuildRequest) -> dict[str, object]:
@@ -1288,6 +1591,13 @@ def _serialize_build_request(value: BuildRequest) -> dict[str, object]:
         "enforce_cpu_target": value.enforce_cpu_target,
         "skip_olive": value.skip_olive,
         "dry_run": value.dry_run,
+        "recipe_id": value.recipe_id,
+        "recipe_version": value.recipe_version,
+        "recipe_status": value.recipe_status,
+        "recipe_reason": value.recipe_reason,
+        "allow_experimental": value.allow_experimental,
+        "optimization_strategy": value.optimization_strategy,
+        "optimization_precision": value.optimization_precision,
     }
 
 
@@ -1316,6 +1626,13 @@ def _deserialize_build_request(value: dict[str, object]) -> BuildRequest:
         enforce_cpu_target=bool(value.get("enforce_cpu_target", True)),
         skip_olive=bool(value.get("skip_olive", False)),
         dry_run=bool(value.get("dry_run", False)),
+        recipe_id=_optional_str(value.get("recipe_id")),
+        recipe_version=_optional_str(value.get("recipe_version")),
+        recipe_status=_optional_str(value.get("recipe_status")),
+        recipe_reason=_optional_str(value.get("recipe_reason")),
+        allow_experimental=bool(value.get("allow_experimental", False)),
+        optimization_strategy=_optional_str(value.get("optimization_strategy")),
+        optimization_precision=_optional_str(value.get("optimization_precision")),
     )
 
 

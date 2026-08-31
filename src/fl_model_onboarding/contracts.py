@@ -39,6 +39,7 @@ class FailureClassification(StrEnum):
     NETWORK = "network"
     PROCESS_FAILED = "process_failed"
     COMPATIBILITY = "compatibility"
+    SOURCE_RUNTIME_CONTRACT_INCOMPATIBLE = "source_runtime_contract_incompatible"
     OGA_RUNTIME_CONTRACT_INCOMPATIBLE = "oga_runtime_contract_incompatible"
     CANCELLED = "cancelled"
     UNKNOWN = "unknown"
@@ -98,6 +99,13 @@ class BuildRequest:
     enforce_cpu_target: bool = True
     skip_olive: bool = False
     dry_run: bool = False
+    recipe_id: str | None = None
+    recipe_version: str | None = None
+    recipe_status: str | None = None
+    recipe_reason: str | None = None
+    allow_experimental: bool = False
+    optimization_strategy: str | None = None
+    optimization_precision: str | None = None
 
 
 @dataclass(frozen=True)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import sqlite3
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,6 +29,12 @@ from fl_model_onboarding.local_service import (
     is_loopback_host,
 )
 from fl_model_onboarding.production_runner import production_package_paths
+from fl_model_onboarding.recipes import (
+    DEFAULT_MODEL_RECIPES,
+    GRANITE_MODEL_ID,
+    RecipeRegistry,
+    RecipeStatus,
+)
 from fl_model_onboarding.state_machine import transition
 
 _TOOLS = (
@@ -151,6 +158,7 @@ def _service(
     *,
     preflight_inspector=None,
     build_stage_runner=None,
+    recipe_registry: RecipeRegistry | None = None,
 ) -> LocalOnboardingService:
     return LocalOnboardingService(
         db_path=tmp_path / "state.sqlite3",
@@ -158,6 +166,22 @@ def _service(
         model_cache_dir=tmp_path / "cache",
         preflight_inspector=preflight_inspector or PassingPreflightInspector(),  # type: ignore[arg-type]
         build_stage_runner=build_stage_runner,  # type: ignore[arg-type]
+        recipe_registry=recipe_registry,
+    )
+
+
+def _experimental_granite_registry() -> RecipeRegistry:
+    granite = next(recipe for recipe in DEFAULT_MODEL_RECIPES if recipe.id == "granite-3.3-2b-cpu-int4")
+    experimental = replace(
+        granite,
+        status=RecipeStatus.EXPERIMENTAL,
+        status_reason="Recipe requires explicit experimental opt-in.",
+    )
+    return RecipeRegistry(
+        tuple(
+            experimental if recipe.id == experimental.id else recipe
+            for recipe in DEFAULT_MODEL_RECIPES
+        )
     )
 
 
@@ -191,6 +215,89 @@ def test_preflight_cache_reports_cached_flag(tmp_path: Path) -> None:
         assert first["cached"] is False
         assert second["cached"] is True
         assert first["cache_key"] == second["cache_key"]
+    finally:
+        service.close()
+
+
+def test_unknown_model_preflight_and_build_are_blocked_without_recipe(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    try:
+        blocked = service.preflight(
+            BuildSubmission(
+                model_id="owner/unregistered-model",
+                task=CandidateModality.LLM,
+                task_profile="llm-cpu-int4",
+            )
+        )
+        assert blocked["ok"] is False
+        assert blocked["recipe_status"] == "unregistered"
+        assert blocked["result"]["blockers"][0]["message"].startswith("No recipe is registered")
+
+        with pytest.raises(ServiceError) as exc:
+            service.create_build(
+                BuildSubmission(
+                    model_id="owner/unregistered-model",
+                    task=CandidateModality.LLM,
+                    task_profile="llm-cpu-int4",
+                ),
+                idempotency_key="unknown-model",
+            )
+        assert exc.value.code == "MODEL_RECIPE_NOT_FOUND"
+    finally:
+        service.close()
+
+
+def test_experimental_recipe_requires_explicit_opt_in(tmp_path: Path) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        recipe_registry=_experimental_granite_registry(),
+    )
+    try:
+        blocked = service.preflight(
+            BuildSubmission(
+                model_id=GRANITE_MODEL_ID,
+                task=CandidateModality.LLM,
+                task_profile="llm-cpu-int4",
+            )
+        )
+        assert blocked["ok"] is False
+        assert blocked["recipe_status"] == "experimental"
+        assert blocked["requires_experimental_opt_in"] is True
+
+        allowed = service.preflight(
+            BuildSubmission(
+                model_id=GRANITE_MODEL_ID,
+                task=CandidateModality.LLM,
+                task_profile="llm-cpu-int4",
+                allow_experimental=True,
+            )
+        )
+        assert allowed["recipe_status"] == "experimental"
+        assert allowed["requires_experimental_opt_in"] is False
+        assert allowed["ok"] is True
+
+        with pytest.raises(ServiceError) as exc:
+            service.create_build(
+                BuildSubmission(
+                    model_id=GRANITE_MODEL_ID,
+                    task=CandidateModality.LLM,
+                    task_profile="llm-cpu-int4",
+                ),
+                idempotency_key="granite-without-opt-in",
+            )
+        assert exc.value.code == "EXPERIMENTAL_RECIPE_OPT_IN_REQUIRED"
+
+        _, replay = service.create_build(
+            BuildSubmission(
+                model_id=GRANITE_MODEL_ID,
+                task=CandidateModality.LLM,
+                task_profile="llm-cpu-int4",
+                allow_experimental=True,
+            ),
+            idempotency_key="granite-with-opt-in",
+        )
+        assert replay is False
     finally:
         service.close()
 
@@ -359,7 +466,10 @@ def test_restart_marks_interrupted_job_failed_instead_of_requeueing_invalid_stat
     service = _service(tmp_path, build_stage_runner=SlowCancellableRunner())
     job, _ = service.create_build(_submission(), idempotency_key="interrupted")
     deadline = time.time() + 5
-    while time.time() < deadline and service.get_build(job.job_id).state == JobState.QUEUED:
+    while time.time() < deadline and service.get_build(job.job_id).state in {
+        JobState.QUEUED,
+        JobState.PREFLIGHT,
+    }:
         time.sleep(0.02)
     interrupted = service.get_build(job.job_id)
     staging, package = production_package_paths(interrupted)

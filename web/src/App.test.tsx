@@ -5,8 +5,16 @@ import { OnboardingShell } from "./App";
 import type { ApiClient, AsrInferenceResult, BuildStatus, CandidateOutcome, HealthSnapshot, JobEvent, ModelDetail, ModelPreflight, ModelSummary, TextInferenceResult } from "./api/types";
 
 const llmModel: ModelSummary = {
-  id: "microsoft/Phi-3-mini-4k-instruct",
-  displayName: "Phi-3 Mini",
+  id: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+  displayName: "SmolLM2 1.7B Instruct",
+  task: "llm",
+  testedStatus: "tested",
+  gated: false
+};
+
+const graniteModel: ModelSummary = {
+  id: "ibm-granite/granite-3.3-2b-instruct",
+  displayName: "Granite 3.3 2B Instruct",
   task: "llm",
   testedStatus: "tested",
   gated: false
@@ -28,31 +36,53 @@ const gatedModel: ModelSummary = {
   gated: true
 };
 
+const experimentalModel: ModelSummary = {
+  id: "contoso/experimental-llm-2b-instruct",
+  displayName: "Experimental LLM 2B",
+  task: "llm",
+  testedStatus: "not_verified",
+  gated: false
+};
+
 const asrBlockedOutcome: CandidateOutcome = {
   modelId: "distil-whisper/distil-medium.en",
   revision: "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7",
-  profile: "cpu/ort-genai; mobius=f32; olive=existing-onnx-decoder/fp32",
+  profile: "cpu/ort-genai; mobius=f32; deterministic-adapter=parser+model-load",
   status: "blocked",
   testedStatus: "not_verified",
-  failedStage: "fl_loading",
-  classification: "oga_runtime_contract_incompatible",
-  errorSummary: "Generated Whisper genai_config rejected while parsing decoder_input_ids.",
+  failedStage: "inferencing",
+  classification: "source_runtime_contract_incompatible",
+  errorSummary:
+    "Decoder ONNX requires position_ids, but OGA WhisperDecoderState does not bind/update it; OGA and Foundry Local transcription fail with Missing Input: position_ids.",
   versions: {
     mobius: "0.1.0",
     olive: "0.13.0",
+    onnx: "1.22.0",
+    onnxruntime: "1.29.0",
     onnxruntime_genai: "0.15.2",
-    foundry_local_sdk: "1.2.4"
+    foundry_local_sdk: "1.2.4",
+    foundry_cli: "0.11.0"
   },
   gateOutcomes: [
-    { stage: "mobius_building", status: "passed", summary: "Mobius build succeeded." },
-    { stage: "fl_loading", status: "failed", summary: "OGA and Foundry Local SDK rejected the config." }
+    { stage: "mobius_building", status: "passed", summary: "Mobius CPU ort-genai f32 build succeeded." },
+    { stage: "runtime_validating", status: "passed", summary: "ONNX checker and ORT CPU load succeeded." },
+    { stage: "fl_loading", status: "passed", summary: "Deterministic config adaptation advanced OGA parser/model-load gates." },
+    {
+      stage: "inferencing",
+      status: "failed",
+      summary: "OGA and Foundry Local transcription fail with Missing Input: position_ids (WhisperDecoderState does not bind/update position_ids)."
+    }
   ],
-  evidenceReference: "docs/contract-probe-results.md (run 20260830-225442-66553c73)",
-  capabilityOwner: "Mobius-generated Whisper config <-> OGA/Foundry Local runtime contract integration",
-  nextAction: "Compare against the pinned OGA Whisper schema and rerun the same profile."
+  evidenceReference: "docs/asr-contract-repair.md#irreducible-failure-boundary (run 20260831-124030-fc016713)",
+  capabilityOwner: "Primary owner: microsoft/onnxruntime-genai Whisper runtime; coordinate Mobius Whisper regression coverage.",
+  nextAction:
+    "Implement optional position_ids binding/updates from prompt + past sequence length, regression-test a Mobius-exported Whisper package, then rerun OGA + Foundry Local SDK transcription."
 };
 
 function detailFor(model: ModelSummary): ModelDetail {
+  const isExperimental = model.id === experimentalModel.id;
+  const isGranite = model.id === graniteModel.id;
+  const isAsr = model.task === "asr";
   return {
     id: model.id,
     displayName: model.displayName,
@@ -64,13 +94,35 @@ function detailFor(model: ModelSummary): ModelDetail {
     requiresRemoteCode: false,
     estimatedSizeMb: 1200,
     likelyCatalogMatch: model.id,
-    mobiusSupport: "supported",
+    mobiusSupport: isExperimental ? "experimental (opt-in required)" : isAsr ? "blocked" : "verified",
     mobiusRisk: "low",
-    testedStatus: model.testedStatus
+    testedStatus: model.testedStatus,
+    recipeStatus: isExperimental ? "experimental" : isAsr ? "blocked" : "verified",
+    recipeReason: isExperimental
+      ? "Recipe requires explicit experimental opt-in."
+      : isAsr
+        ? asrBlockedOutcome.errorSummary
+        : isGranite
+          ? "Verified direct Mobius->Olive->runtime->Foundry Local SDK chat inference path for granite-3.3-2b pinned revision 707f574c62054322f6b5b04b6d075f0a8f05e0f0."
+          : "Verified Mobius->Olive->runtime->Foundry Local SDK chat path for the pinned SmolLM2 revision.",
+    recipeId: isExperimental
+      ? "experimental-llm-2b-cpu-int4"
+      : isAsr
+        ? "distil-whisper-cpu-fp16"
+        : isGranite
+          ? "granite-3.3-2b-cpu-int4"
+          : "smollm2-1.7b-cpu-int4",
+    recipeVersion: "1.0.0",
+    requiresExperimentalOptIn: isExperimental,
+    buildableWithExperimentalOptIn: isExperimental,
+    supportedOptimizations: isAsr
+      ? []
+      : [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
   };
 }
 
 function preflightFor(model: ModelSummary): ModelPreflight {
+  const isExperimental = model.id === experimentalModel.id;
   if (model.task === "asr") {
     return {
       modelId: model.id,
@@ -83,20 +135,36 @@ function preflightFor(model: ModelSummary): ModelPreflight {
       verifiedAudioFormats: ["audio/wav", "audio/flac"],
       defaultStrategy: "Auto",
       defaultPrecision: "FP32",
-      defaultAudioFormat: "audio/wav"
+      defaultAudioFormat: "audio/wav",
+      recipeStatus: "blocked",
+      recipeReason: "Blocked for this ASR profile.",
+      recipeId: "distil-whisper-cpu-fp16",
+      recipeVersion: "1.0.0",
+      requiresExperimentalOptIn: false,
+      supportedOptimizations: [
+        { strategy: "Auto", precision: "FP32", taskProfile: "asr-cpu-fp16", skipOlive: false, default: true }
+      ]
     };
   }
   return {
     modelId: model.id,
     task: "llm",
     target: "cpu",
-    buildable: !model.gated,
+    buildable: !model.gated && !isExperimental,
     blockedReason: model.gated ? "Gated model access is rejected in this POC." : undefined,
-    strategies: ["Auto", "Olive"],
-    precisions: ["INT4", "FP16"],
+    strategies: ["mobius-olive"],
+    precisions: ["int4"],
     verifiedAudioFormats: [],
-    defaultStrategy: "Auto",
-    defaultPrecision: "INT4"
+    defaultStrategy: "mobius-olive",
+    defaultPrecision: "int4",
+    recipeStatus: isExperimental ? "experimental" : "verified",
+    recipeReason: isExperimental ? "Recipe requires explicit experimental opt-in." : "Verified recipe.",
+    recipeId: isExperimental ? "experimental-llm-2b-cpu-int4" : model.id === graniteModel.id ? "granite-3.3-2b-cpu-int4" : "smollm2-1.7b-cpu-int4",
+    recipeVersion: "1.0.0",
+    requiresExperimentalOptIn: isExperimental,
+    supportedOptimizations: isExperimental
+      ? [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
+      : [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
   };
 }
 
@@ -119,7 +187,7 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
   const health: HealthSnapshot = {
     status: "ok",
     service: "local",
-    testedModels: [llmModel]
+    testedModels: [llmModel, graniteModel]
   };
 
   const getModelDetail = vi.fn(async (modelId: string) => {
@@ -129,23 +197,44 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
     if (modelId === gatedModel.id) {
       return detailFor(gatedModel);
     }
+    if (modelId === graniteModel.id) {
+      return detailFor(graniteModel);
+    }
+    if (modelId === experimentalModel.id) {
+      return detailFor(experimentalModel);
+    }
     return detailFor(llmModel);
   });
 
-  const preflightModel = vi.fn(async ({ modelId }: { modelId: string }) => {
-    if (modelId === asrModel.id) {
-      return preflightFor(asrModel);
+  const preflightModel = vi.fn(
+    async ({ modelId, allowExperimental }: { modelId: string; allowExperimental?: boolean }) => {
+      if (modelId === asrModel.id) {
+        return preflightFor(asrModel);
+      }
+      if (modelId === gatedModel.id) {
+        return preflightFor(gatedModel);
+      }
+      if (modelId === graniteModel.id) {
+        return preflightFor(graniteModel);
+      }
+      if (modelId === experimentalModel.id) {
+        return {
+          ...preflightFor(experimentalModel),
+          buildable: Boolean(allowExperimental),
+          requiresExperimentalOptIn: !allowExperimental,
+          recipeReason: allowExperimental
+            ? "Experimental recipe opt-in enabled."
+            : "Recipe requires explicit experimental opt-in."
+        };
+      }
+      return preflightFor(llmModel);
     }
-    if (modelId === gatedModel.id) {
-      return preflightFor(gatedModel);
-    }
-    return preflightFor(llmModel);
-  });
+  );
 
   const base: ApiClient = {
     config: { baseUrl: "http://127.0.0.1:8080", fixtureMode: false },
     getHealth: vi.fn(async () => health),
-    searchModels: vi.fn(async () => [asrModel, gatedModel]),
+    searchModels: vi.fn(async () => [asrModel, gatedModel, experimentalModel]),
     getModelDetail,
     preflightModel,
     startBuild: vi.fn(async () => statusFor(llmModel, "queued")),
@@ -166,6 +255,8 @@ describe("OnboardingShell", () => {
     render(<OnboardingShell client={client} />);
 
     await screen.findByText(/Connected/);
+    expect(screen.getByRole("option", { name: /SmolLM2 1.7B Instruct/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Granite 3.3 2B Instruct/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Search" }));
     await screen.findByRole("option", { name: /Whisper Small/ });
@@ -213,6 +304,28 @@ describe("OnboardingShell", () => {
     expect(screen.getByRole("button", { name: "Build for CPU" })).toBeDisabled();
   });
 
+  it("requires explicit opt-in before experimental recipes are buildable", async () => {
+    const client = createClient();
+    const user = userEvent.setup();
+    render(<OnboardingShell client={client} />);
+
+    await screen.findByText(/Connected/);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.selectOptions(screen.getByLabelText("Model"), experimentalModel.id);
+
+    const optInWarnings = await screen.findAllByText(/Recipe requires explicit experimental opt-in/);
+    expect(optInWarnings.length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Build for CPU" })).toBeDisabled();
+
+    await user.click(screen.getByLabelText("Enable experimental recipe opt-in for this model"));
+    await waitFor(() =>
+      expect(client.preflightModel).toHaveBeenCalledWith(
+        expect.objectContaining({ modelId: experimentalModel.id, allowExperimental: true })
+      )
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Build for CPU" })).not.toBeDisabled());
+  });
+
   it("keeps the verified ASR blocker visible and out of tested success", async () => {
     const blockedAsr = { ...asrModel, id: asrBlockedOutcome.modelId };
     const client = createClient({
@@ -241,9 +354,9 @@ describe("OnboardingShell", () => {
 
     expect(await screen.findByText("Candidate evidence history")).toBeInTheDocument();
     expect(screen.getByText(/Blocked \/ Not tested successfully/)).toBeInTheDocument();
-    expect(screen.getByText(/oga_runtime_contract_incompatible/)).toBeInTheDocument();
-    expect(screen.getAllByText(/decoder_input_ids/)).toHaveLength(2);
-    expect(screen.getByText(/Mobius build succeeded/)).toBeInTheDocument();
+    expect(screen.getByText(/source_runtime_contract_incompatible/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Missing Input: position_ids/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Mobius CPU ort-genai f32 build succeeded/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build for CPU" })).toBeDisabled();
   });
 

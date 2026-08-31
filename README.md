@@ -65,9 +65,21 @@ fl-onboarding build status --job-id <JOB_ID>
 fl-onboarding build cancel --job-id <JOB_ID>
 ```
 
+## Recipe registry status (phase 2)
+
+Buildability now comes from the typed recipe registry (not model ID hardcoding and not Mobius model-type support alone).
+
+| Recipe | Status | HF model | Pinned revision | Notes |
+| --- | --- | --- | --- | --- |
+| `smollm2-1.7b-cpu-int4` | verified | `HuggingFaceTB/SmolLM2-1.7B-Instruct` | `31b70e2e869a7173562077fd711b654946d38674` | Preserved production happy path (Mobius f32 -> Olive int4 -> runtime -> FL SDK inference). |
+| `granite-3.3-2b-cpu-int4` | verified | `ibm-granite/granite-3.3-2b-instruct` | `707f574c62054322f6b5b04b6d075f0a8f05e0f0` | Promoted from candidate to verified after direct Mobius/Olive/runtime/FL SDK evidence. |
+| `distil-whisper-cpu-fp16` | blocked | `distil-whisper/distil-medium.en` | `6e61418885eaf4d5cc9f64e508e80ac5b4c052b7` | Runtime contract blocker remains explicit and non-happy-path: decoder ONNX requires `position_ids`, but OGA Whisper decoder state does not bind/update it (`Missing Input: position_ids`). |
+
 Notes:
 
 - `/api/builds` requires `Idempotency-Key`.
+- Unknown/unregistered models remain not buildable until a recipe exists.
+- Experimental recipes (when present) require explicit opt-in (`--allow-experimental` / UI checkbox) and cannot be treated as tested-successful until artifact-scoped Foundry inference succeeds.
 - Job state and event replay are persisted in SQLite.
 - Inference is artifact-scoped and only available for succeeded builds with matching task modality.
 - A model appears in the tested-model index only after an artifact-scoped Foundry Local inference succeeds.
@@ -76,7 +88,10 @@ Notes:
   BYOM cache package, and records tested status only after Foundry Local SDK chat succeeds.
 - Missing build or inference adapters report structured `not_verified`/`INFERENCE_NOT_IMPLEMENTED`
   results; the service never substitutes fixture success.
-- ASR remains visible for discovery, but preflight reports the verified Whisper `genai_config`
-  incompatibility as a structured blocker and exposes no working precision.
+- ASR remains visible for discovery, but preflight reports the final verified runtime blocker as a
+  structured non-success candidate outcome: deterministic adaptation clears parser/model-load gates,
+  then OGA/Foundry transcription fails with `Missing Input: position_ids` because Whisper decoder
+  state does not bind/update `position_ids`.
+- Upstream source-triage evidence is documented in `docs/asr-upstream-triage.md`.
 - The original repository-root `index.html` remains the standalone concept mock. The service serves
   the separately built React UI from the Python package.

@@ -21,6 +21,7 @@ class ModelPreflightRequest(BaseModel):
     task_profile: str = Field(default="default", min_length=1)
     hf_revision: str | None = None
     skip_olive: bool = False
+    allow_experimental: bool = False
 
 
 class BuildCreateRequest(BaseModel):
@@ -29,6 +30,9 @@ class BuildCreateRequest(BaseModel):
     task_profile: str = Field(default="default", min_length=1)
     hf_revision: str | None = None
     skip_olive: bool = False
+    allow_experimental: bool = False
+    optimization_strategy: str | None = None
+    optimization_precision: str | None = None
 
 
 class TextInferenceRequest(BaseModel):
@@ -98,6 +102,7 @@ def create_app(
             task_profile=body.task_profile,
             hf_revision=body.hf_revision,
             skip_olive=body.skip_olive,
+            allow_experimental=body.allow_experimental,
         )
         return live_service.preflight(submission)
 
@@ -112,6 +117,9 @@ def create_app(
             task_profile=body.task_profile,
             hf_revision=body.hf_revision,
             skip_olive=body.skip_olive,
+            allow_experimental=body.allow_experimental,
+            optimization_strategy=body.optimization_strategy,
+            optimization_precision=body.optimization_precision,
         )
         job, replay = live_service.create_build(submission, idempotency_key=idempotency_key)
         return {"idempotent_replay": replay, "job": to_jsonable(job)}

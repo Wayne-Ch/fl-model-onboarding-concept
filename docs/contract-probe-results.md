@@ -125,3 +125,43 @@ C:\flprobe-venv\Scripts\python.exe experiments\contract-probes\run_contract_prob
 
 1. Keep LLM candidate as the reliable POC path.
 2. For ASR, run a source-adaptation investigation that compares Mobius-generated Whisper `genai_config.json` (`model.decoder.inputs`) against a known OGA 0.15.2 Whisper package schema, identify required key/name mapping (including `decoder_input_ids`), and then re-run only package-load gates (OGA/Foundry) before any new full rebuild.
+
+## Phase 2 recipe-registry evidence (2026-08-31)
+
+### Granite candidate discovery and eligibility
+
+1. **Foundry catalog search (live):**
+   - `foundry model list -o json --search granite` => `{"models":[]}`
+   - `foundry model list --variants -o json --search granite` => `{"variants":[]}`
+   - Outcome: Granite is still absent from live catalog listings, so BYOM flow remains required.
+2. **Hugging Face metadata (`ibm-granite/granite-3.3-2b-instruct`):**
+   - `sha`: `707f574c62054322f6b5b04b6d075f0a8f05e0f0`
+   - `gated`: `false`; `private`: `false`
+   - `license` tag: `license:apache-2.0`
+   - `config.model_type`: `granite`
+   - `config.auto_map`: absent; `config.trust_remote_code`: false
+3. **Mobius model support probe (`C:\flprobe-venv`):**
+   - `mobius info ibm-granite/granite-3.3-2b-instruct`
+   - `Supported: ✓`, `Model type: granite`, `Default task: text-generation`
+
+### Granite direct build/runtime evidence
+
+Scratch workspace: `C:\fmo-poc\granite-probe-20260831`
+
+1. `mobius build --model ibm-granite/granite-3.3-2b-instruct --ep cpu --runtime ort-genai --dtype f32 C:\fmo-poc\granite-probe-20260831\mobius\llm` ✅
+2. `olive optimize --model_name_or_path C:\fmo-poc\granite-probe-20260831\mobius\llm --task text-generation-with-past --device cpu --provider CPUExecutionProvider --precision int4 --output_path C:\fmo-poc\granite-probe-20260831\olive\llm` ✅
+3. `python -m fl_model_onboarding.runtime_worker validate-runtime --model-dir C:\fmo-poc\granite-probe-20260831\olive\llm` ✅ (`{"ok": true, ...}`)
+4. `python -m fl_model_onboarding.runtime_worker foundry-infer --model-dir C:\fmo-poc\granite-probe-20260831\olive\llm --model-name granite-3.3-2b-probe:1 --request-file ...` ✅ (`{"ok": true, "output": ...}`)
+
+Evidence files:
+- `C:\fmo-poc\granite-probe-20260831\evidence\granite-mobius-info.txt`
+- `C:\fmo-poc\granite-probe-20260831\evidence\granite-mobius-build.txt`
+- `C:\fmo-poc\granite-probe-20260831\evidence\granite-olive-optimize.txt`
+- `C:\fmo-poc\granite-probe-20260831\evidence\granite-runtime-validate.txt`
+- `C:\fmo-poc\granite-probe-20260831\evidence\granite-foundry-infer.txt`
+
+### Outcome applied to recipe registry
+
+- `granite-3.3-2b-cpu-int4` is promoted to **verified** with pinned revision `707f574c62054322f6b5b04b6d075f0a8f05e0f0`.
+- SmolLM2 verified path remains pinned and unchanged as the baseline production flow.
+- Unknown models remain blocked until an explicit recipe exists; Mobius support by itself is not treated as Foundry Local compatibility evidence.

@@ -32,6 +32,8 @@ def test_openapi_contains_required_paths() -> None:
     failure_classification = spec["components"]["schemas"]["FailureClassification"]["enum"]
     assert "not_verified" in failure_classification
     assert "tool_unavailable" in failure_classification
+    assert "source_runtime_contract_incompatible" in failure_classification
+    assert "oga_runtime_contract_incompatible" in failure_classification
 
 
 def test_state_machine_contract_contains_cancellable_flags() -> None:
