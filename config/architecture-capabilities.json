@@ -1,0 +1,565 @@
+{
+  "schema_version": "1.0.0",
+  "capabilities": [
+    {
+      "capability_id": "llama-text-generation-cpu-int4-v1",
+      "version": "1.0.0",
+      "status": "verified",
+      "status_reason": "Verified by SmolLM2 evidence for Mobius->Olive->OGA runtime validation and Foundry Local SDK chat inference.",
+      "allowed_status_transitions": [
+        "verified",
+        "source-change-required"
+      ],
+      "family": "llama",
+      "model_type_aliases": [
+        "llama",
+        "mllama"
+      ],
+      "architecture_aliases": [
+        "LlamaForCausalLM",
+        "MllamaForCausalLM"
+      ],
+      "task": "text-generation",
+      "modality": "llm",
+      "device": "cpu",
+      "precision": "int4",
+      "mobius_rules": {
+        "task": "text-generation",
+        "ep": "cpu",
+        "runtime": "ort-genai",
+        "dtype": "f32",
+        "dtype_rule": "Pinned by verified SmolLM2 and Granite probes."
+      },
+      "olive_rules": {
+        "task": "text-generation-with-past",
+        "device": "cpu",
+        "provider": "CPUExecutionProvider",
+        "precision": "int4",
+        "precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+      },
+      "required_artifacts": [
+        {
+          "relative_path": "model.onnx",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "genai_config.json",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "tokenizer.json",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "model.onnx.data",
+          "required": false,
+          "source": "olive-output-dir"
+        }
+      ],
+      "oga_runtime_contract": {
+        "runtime": "onnxruntime-genai",
+        "validator_profile": "llm-cpu-oga-load-v1",
+        "required_files": [
+          "model.onnx",
+          "genai_config.json",
+          "tokenizer.json"
+        ],
+        "loader": "onnxruntime_genai.Model(model_dir)",
+        "notes": "Verifier profile requires deterministic model load success on CPU."
+      },
+      "optimization_choices": [
+        {
+          "strategy": "mobius-olive",
+          "precision": "int4",
+          "task_profile": "llm-cpu-int4",
+          "skip_olive": false,
+          "default": true
+        }
+      ],
+      "static_eligibility_constraints": {
+        "allow_gated": false,
+        "allow_remote_code": false,
+        "allow_private": true,
+        "supported_tasks": [
+          "llm"
+        ],
+        "supported_devices": [
+          "cpu"
+        ],
+        "supported_request_precisions": [
+          "auto",
+          "int4"
+        ]
+      },
+      "known_blockers": [],
+      "evidence": [
+        {
+          "evidence_id": "smollm2-llama-model-type",
+          "source_type": "repo-doc",
+          "location": "docs/contract-probe-results.md#verified",
+          "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+        },
+        {
+          "evidence_id": "smollm2-llama-runtime-happy-path",
+          "source_type": "repo-doc",
+          "location": "docs/contract-probe-results.md#verified",
+          "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+        }
+      ]
+    },
+    {
+      "capability_id": "granite-text-generation-cpu-int4-v1",
+      "version": "1.0.0",
+      "status": "verified",
+      "status_reason": "Verified by Granite direct probe evidence for Mobius->Olive->OGA runtime validation and Foundry Local SDK chat inference.",
+      "allowed_status_transitions": [
+        "verified",
+        "source-change-required"
+      ],
+      "family": "granite",
+      "model_type_aliases": [
+        "granite"
+      ],
+      "architecture_aliases": [
+        "GraniteForCausalLM"
+      ],
+      "task": "text-generation",
+      "modality": "llm",
+      "device": "cpu",
+      "precision": "int4",
+      "mobius_rules": {
+        "task": "text-generation",
+        "ep": "cpu",
+        "runtime": "ort-genai",
+        "dtype": "f32",
+        "dtype_rule": "Pinned by verified SmolLM2 and Granite probes."
+      },
+      "olive_rules": {
+        "task": "text-generation-with-past",
+        "device": "cpu",
+        "provider": "CPUExecutionProvider",
+        "precision": "int4",
+        "precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+      },
+      "required_artifacts": [
+        {
+          "relative_path": "model.onnx",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "genai_config.json",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "tokenizer.json",
+          "required": true,
+          "source": "olive-output-dir"
+        }
+      ],
+      "oga_runtime_contract": {
+        "runtime": "onnxruntime-genai",
+        "validator_profile": "llm-cpu-oga-load-v1",
+        "required_files": [
+          "model.onnx",
+          "genai_config.json",
+          "tokenizer.json"
+        ],
+        "loader": "onnxruntime_genai.Model(model_dir)",
+        "notes": "Verifier profile requires deterministic model load success on CPU."
+      },
+      "optimization_choices": [
+        {
+          "strategy": "mobius-olive",
+          "precision": "int4",
+          "task_profile": "llm-cpu-int4",
+          "skip_olive": false,
+          "default": true
+        }
+      ],
+      "static_eligibility_constraints": {
+        "allow_gated": false,
+        "allow_remote_code": false,
+        "allow_private": true,
+        "supported_tasks": [
+          "llm"
+        ],
+        "supported_devices": [
+          "cpu"
+        ],
+        "supported_request_precisions": [
+          "auto",
+          "int4"
+        ]
+      },
+      "known_blockers": [],
+      "evidence": [
+        {
+          "evidence_id": "granite-model-type",
+          "source_type": "repo-doc",
+          "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+          "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+        },
+        {
+          "evidence_id": "granite-runtime-happy-path",
+          "source_type": "repo-doc",
+          "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+          "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+        }
+      ]
+    },
+    {
+      "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+      "version": "1.0.0",
+      "status": "tool-supported-unverified",
+      "status_reason": "Architecture family is recognized by current Mobius and OGA docs, but FL end-to-end verification evidence has not been captured.",
+      "allowed_status_transitions": [
+        "tool-supported-unverified",
+        "verified",
+        "source-change-required"
+      ],
+      "family": "qwen",
+      "model_type_aliases": [
+        "qwen2",
+        "qwen3"
+      ],
+      "architecture_aliases": [
+        "Qwen2ForCausalLM",
+        "Qwen3ForCausalLM"
+      ],
+      "task": "text-generation",
+      "modality": "llm",
+      "device": "cpu",
+      "precision": "int4",
+      "mobius_rules": {
+        "task": "text-generation",
+        "ep": "cpu",
+        "runtime": "ort-genai",
+        "dtype": null,
+        "dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value."
+      },
+      "olive_rules": {
+        "task": "text-generation-with-past",
+        "device": "cpu",
+        "provider": "CPUExecutionProvider",
+        "precision": "int4",
+        "precision_rule": "Candidate path only; not yet FL verified."
+      },
+      "required_artifacts": [
+        {
+          "relative_path": "model.onnx",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "genai_config.json",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "tokenizer.json",
+          "required": true,
+          "source": "olive-output-dir"
+        }
+      ],
+      "oga_runtime_contract": {
+        "runtime": "onnxruntime-genai",
+        "validator_profile": "llm-cpu-oga-load-v1",
+        "required_files": [
+          "model.onnx",
+          "genai_config.json",
+          "tokenizer.json"
+        ],
+        "loader": "onnxruntime_genai.Model(model_dir)",
+        "notes": "Capability is tool-supported only; no FL runtime pass claim."
+      },
+      "optimization_choices": [
+        {
+          "strategy": "mobius-olive",
+          "precision": "int4",
+          "task_profile": "llm-cpu-int4",
+          "skip_olive": false,
+          "default": true
+        }
+      ],
+      "static_eligibility_constraints": {
+        "allow_gated": false,
+        "allow_remote_code": false,
+        "allow_private": true,
+        "supported_tasks": [
+          "llm"
+        ],
+        "supported_devices": [
+          "cpu"
+        ],
+        "supported_request_precisions": [
+          "auto",
+          "int4"
+        ]
+      },
+      "known_blockers": [
+        {
+          "blocker_id": "qwen-fl-verification-missing",
+          "owner": "fl-onboarding",
+          "classification": "missing-fl-verification",
+          "message": "No deterministic FL runtime validation artifact has been recorded yet."
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_id": "mobius-doc-qwen-support",
+          "source_type": "upstream-doc",
+          "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+          "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+        },
+        {
+          "evidence_id": "oga-config-qwen-type",
+          "source_type": "upstream-doc",
+          "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+          "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+        }
+      ]
+    },
+    {
+      "capability_id": "phi-text-generation-cpu-int4-unverified-v1",
+      "version": "1.0.0",
+      "status": "tool-supported-unverified",
+      "status_reason": "Architecture family is recognized by current Mobius and OGA docs, but FL end-to-end verification evidence has not been captured.",
+      "allowed_status_transitions": [
+        "tool-supported-unverified",
+        "verified",
+        "source-change-required"
+      ],
+      "family": "phi",
+      "model_type_aliases": [
+        "phi",
+        "phi3",
+        "phi3small",
+        "phimoe"
+      ],
+      "architecture_aliases": [
+        "PhiForCausalLM",
+        "Phi3ForCausalLM",
+        "Phi3SmallForCausalLM",
+        "PhiMoEForCausalLM"
+      ],
+      "task": "text-generation",
+      "modality": "llm",
+      "device": "cpu",
+      "precision": "int4",
+      "mobius_rules": {
+        "task": "text-generation",
+        "ep": "cpu",
+        "runtime": "ort-genai",
+        "dtype": null,
+        "dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value."
+      },
+      "olive_rules": {
+        "task": "text-generation-with-past",
+        "device": "cpu",
+        "provider": "CPUExecutionProvider",
+        "precision": "int4",
+        "precision_rule": "Candidate path only; not yet FL verified."
+      },
+      "required_artifacts": [
+        {
+          "relative_path": "model.onnx",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "genai_config.json",
+          "required": true,
+          "source": "olive-output-dir"
+        },
+        {
+          "relative_path": "tokenizer.json",
+          "required": true,
+          "source": "olive-output-dir"
+        }
+      ],
+      "oga_runtime_contract": {
+        "runtime": "onnxruntime-genai",
+        "validator_profile": "llm-cpu-oga-load-v1",
+        "required_files": [
+          "model.onnx",
+          "genai_config.json",
+          "tokenizer.json"
+        ],
+        "loader": "onnxruntime_genai.Model(model_dir)",
+        "notes": "Capability is tool-supported only; no FL runtime pass claim."
+      },
+      "optimization_choices": [
+        {
+          "strategy": "mobius-olive",
+          "precision": "int4",
+          "task_profile": "llm-cpu-int4",
+          "skip_olive": false,
+          "default": true
+        }
+      ],
+      "static_eligibility_constraints": {
+        "allow_gated": false,
+        "allow_remote_code": false,
+        "allow_private": true,
+        "supported_tasks": [
+          "llm"
+        ],
+        "supported_devices": [
+          "cpu"
+        ],
+        "supported_request_precisions": [
+          "auto",
+          "int4"
+        ]
+      },
+      "known_blockers": [
+        {
+          "blocker_id": "phi-fl-verification-missing",
+          "owner": "fl-onboarding",
+          "classification": "missing-fl-verification",
+          "message": "No deterministic FL runtime validation artifact has been recorded yet."
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_id": "mobius-doc-phi-support",
+          "source_type": "upstream-doc",
+          "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+          "summary": "Mobius highlighted Text Generation models include Phi-3/3.5 and PhiMoE."
+        },
+        {
+          "evidence_id": "oga-config-phi-type",
+          "source_type": "upstream-doc",
+          "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+          "summary": "OGA Config::Model type list includes phi, phimoe, phi3, and phi3small."
+        }
+      ]
+    },
+    {
+      "capability_id": "whisper-speech-to-text-cpu-fp32-blocked-v1",
+      "version": "1.0.0",
+      "status": "source-change-required",
+      "status_reason": "Current Mobius Whisper package contract and OGA Whisper runtime contract mismatch requires upstream source change.",
+      "allowed_status_transitions": [
+        "source-change-required",
+        "tool-supported-unverified"
+      ],
+      "family": "whisper",
+      "model_type_aliases": [
+        "whisper"
+      ],
+      "architecture_aliases": [
+        "WhisperForConditionalGeneration"
+      ],
+      "task": "speech-to-text",
+      "modality": "asr",
+      "device": "cpu",
+      "precision": "fp32",
+      "mobius_rules": {
+        "task": "speech-to-text",
+        "ep": "cpu",
+        "runtime": "ort-genai",
+        "dtype": "f32",
+        "dtype_rule": "Pinned by existing blocked ASR investigation evidence."
+      },
+      "olive_rules": {
+        "task": "automatic-speech-recognition",
+        "device": "cpu",
+        "provider": "CPUExecutionProvider",
+        "precision": "fp32",
+        "precision_rule": "Current safe fallback for blocked ASR path; still source-change-required."
+      },
+      "required_artifacts": [
+        {
+          "relative_path": "encoder/model.onnx",
+          "required": true,
+          "source": "mobius-output-dir"
+        },
+        {
+          "relative_path": "decoder/model.onnx",
+          "required": true,
+          "source": "mobius-output-dir"
+        },
+        {
+          "relative_path": "genai_config.json",
+          "required": true,
+          "source": "mobius-output-dir"
+        },
+        {
+          "relative_path": "tokenizer.json",
+          "required": true,
+          "source": "mobius-output-dir"
+        }
+      ],
+      "oga_runtime_contract": {
+        "runtime": "onnxruntime-genai",
+        "validator_profile": "asr-whisper-oga-transcription-v1",
+        "required_files": [
+          "encoder/model.onnx",
+          "decoder/model.onnx",
+          "genai_config.json",
+          "tokenizer.json"
+        ],
+        "loader": "onnxruntime_genai.AudioClient(model_dir)",
+        "notes": "Known parser and runtime mismatch for decoder inputs and position_ids."
+      },
+      "optimization_choices": [
+        {
+          "strategy": "mobius-olive",
+          "precision": "fp32",
+          "task_profile": "asr-cpu-fp32",
+          "skip_olive": false,
+          "default": true
+        }
+      ],
+      "static_eligibility_constraints": {
+        "allow_gated": false,
+        "allow_remote_code": false,
+        "allow_private": true,
+        "supported_tasks": [
+          "asr"
+        ],
+        "supported_devices": [
+          "cpu"
+        ],
+        "supported_request_precisions": [
+          "auto",
+          "fp32"
+        ]
+      },
+      "known_blockers": [
+        {
+          "blocker_id": "asr-whisper-decoder-input-ids-mismatch",
+          "owner": "mobius-producer",
+          "classification": "source-runtime-contract-incompatible",
+          "message": "Mobius-generated decoder input contract uses decoder_input_ids key shape not accepted by current OGA parser contract."
+        },
+        {
+          "blocker_id": "asr-whisper-position-ids-gap",
+          "owner": "onnxruntime-genai",
+          "classification": "source-runtime-contract-incompatible",
+          "message": "Whisper runtime decode state does not bind/update required position_ids path for exported decoder graph."
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_id": "asr-contract-probe-whisper-blocked",
+          "source_type": "repo-doc",
+          "location": "docs/contract-probe-results.md#blocked",
+          "summary": "ASR package fails OGA parser/runtime with decoder_input_ids and position_ids mismatch signature."
+        },
+        {
+          "evidence_id": "asr-upstream-triage-position-ids",
+          "source_type": "repo-doc",
+          "location": "docs/asr-upstream-triage.md",
+          "summary": "Upstream source triage confirms Whisper runtime position_ids handling gap versus current Mobius export contract."
+        }
+      ]
+    }
+  ]
+}
