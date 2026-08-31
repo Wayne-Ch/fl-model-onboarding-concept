@@ -12,6 +12,7 @@ from pathlib import Path
 _ALIAS_NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
 _WORD_RE = re.compile(r"[a-z0-9]+")
 _DETERMINISM_FIELDS = frozenset({"temperature", "seed", "max_tokens"})
+_ALLOWED_ANSWER_EDGE_PUNCTUATION = frozenset(string.punctuation + "“”‘’")
 
 
 class QualityValidationTask(StrEnum):
@@ -433,8 +434,9 @@ def _evaluate_output(expected: PromptExpectedConstraints, output_text: str) -> t
         failures.append("exact_match_failed")
 
     if expected.allowed_answers:
-        allowed = {_normalize_text(item) for item in expected.allowed_answers}
-        if normalized_output not in allowed:
+        canonical_output = _canonicalize_allowed_answer(stripped)
+        allowed = {_canonicalize_allowed_answer(item) for item in expected.allowed_answers}
+        if not canonical_output or canonical_output not in allowed:
             failures.append("allowed_answers_failed")
 
     if expected.required_tokens:
@@ -561,6 +563,19 @@ def _normalize_alias(value: str) -> str:
 
 def _normalize_text(value: str) -> str:
     return " ".join(value.strip().lower().split())
+
+
+def _canonicalize_allowed_answer(value: str) -> str:
+    normalized = _normalize_text(value)
+    if not normalized:
+        return ""
+    start = 0
+    end = len(normalized)
+    while start < end and normalized[start] in _ALLOWED_ANSWER_EDGE_PUNCTUATION:
+        start += 1
+    while end > start and normalized[end - 1] in _ALLOWED_ANSWER_EDGE_PUNCTUATION:
+        end -= 1
+    return normalized[start:end].strip()
 
 
 def _normalize_task(value: str) -> QualityValidationTask | None:
