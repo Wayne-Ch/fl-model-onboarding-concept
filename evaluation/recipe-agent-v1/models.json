@@ -1,14 +1,15 @@
 {
   "schema_version": "1.0.0",
   "purpose": "Recipe Agent v1 evaluation set - frozen unseen models",
-  "selection_timestamp": "2026-08-31T23:02:16.338440+00:00",
+  "selection_timestamp": "2026-08-31T23:35:18.813955+00:00",
   "foundry_catalog_snapshot": {
     "model_count": 50,
-    "timestamp": "2026-08-31T23:02:16.338440+00:00"
+    "entry_count": 150,
+    "timestamp": "2026-08-31T23:35:18.813955+00:00"
   },
   "selection_rules": {
     "max_params_billion": 4.0,
-    "min_downloads": 500,
+    "min_downloads": 1000,
     "excluded_recipe_ids": [
       "HuggingFaceTB/SmolLM2-1.7B-Instruct",
       "distil-whisper/distil-medium.en",
@@ -38,27 +39,48 @@
       "stablelm",
       "starcoder2",
       "tinyllama"
+    ],
+    "clear_licenses": [
+      "apache-2.0",
+      "bsd-2-clause",
+      "bsd-3-clause",
+      "cc-by-4.0",
+      "cc-by-sa-4.0",
+      "mit",
+      "openrail"
     ]
   },
   "models": [
     {
       "index": 1,
-      "model_id": "Qwen/Qwen2.5-3B-Instruct",
-      "sha": "aa8e72537993ba99e69dfaafa59ed015b17504d1",
-      "model_type": "qwen2",
+      "model_id": "openai-community/gpt2",
+      "sha": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+      "model_type": "gpt2",
       "architectures": [
-        "Qwen2ForCausalLM"
+        "GPT2LMHeadModel"
       ],
-      "params_billion": 3.09,
-      "downloads": 7540588,
-      "likes": 557,
-      "license": "other",
-      "last_modified": "2024-09-25T12:33:00+00:00",
-      "catalog_match": false,
+      "params_billion": 0.14,
+      "downloads": 14317307,
+      "likes": 3479,
+      "license": {
+        "spdx_id": "mit",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": true,
+        "review_required": false,
+        "confidence": "high"
+      },
+      "last_modified": "2024-02-19T10:57:45+00:00",
+      "catalog_match": {
+        "matched": false,
+        "confidence": "none",
+        "reason": "No catalog entry matches normalized HF name 'gpt2'",
+        "matched_entry": null
+      },
       "recipe_exists": false,
       "cpu_practical": true,
-      "cpu_rationale": "Size within CPU range based on file analysis",
-      "mobius_recognition": "model_type 'qwen2' in recognized set",
+      "cpu_rationale": "~0.1B params; int4 quantized fits CPU RAM",
+      "mobius_recognition": "model_type 'gpt2' in recognized set",
       "evaluation_prompts": [
         {
           "name": "basic_instruction",
@@ -84,22 +106,34 @@
     },
     {
       "index": 2,
-      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-      "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
-      "model_type": "llama",
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "model_type": "qwen2",
       "architectures": [
-        "LlamaForCausalLM"
+        "Qwen2ForCausalLM"
       ],
-      "params_billion": 1.1,
-      "downloads": 1918507,
-      "likes": 1755,
-      "license": "apache-2.0",
-      "last_modified": "2024-03-17T05:07:08+00:00",
-      "catalog_match": false,
+      "params_billion": 1.54,
+      "downloads": 968749,
+      "likes": 164,
+      "license": {
+        "spdx_id": "apache-2.0",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": true,
+        "review_required": false,
+        "confidence": "high"
+      },
+      "last_modified": "2024-06-06T14:36:57+00:00",
+      "catalog_match": {
+        "matched": false,
+        "confidence": "none",
+        "reason": "No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'",
+        "matched_entry": null
+      },
       "recipe_exists": false,
       "cpu_practical": true,
-      "cpu_rationale": "Size within CPU range based on file analysis",
-      "mobius_recognition": "model_type 'llama' in recognized set",
+      "cpu_rationale": "~1.5B params; int4 quantized fits CPU RAM",
+      "mobius_recognition": "model_type 'qwen2' in recognized set",
       "evaluation_prompts": [
         {
           "name": "basic_instruction",
@@ -125,22 +159,34 @@
     },
     {
       "index": 3,
-      "model_id": "allenai/OLMo-2-0425-1B-Instruct",
-      "sha": "48d788eca847d4d7548f375ad03d3c9312f6139e",
-      "model_type": "olmo2",
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "model_type": "llama",
       "architectures": [
-        "Olmo2ForCausalLM"
+        "LlamaForCausalLM"
       ],
-      "params_billion": 1.48,
-      "downloads": 74486,
-      "likes": 58,
-      "license": "apache-2.0",
-      "last_modified": "2025-04-30T22:32:46+00:00",
-      "catalog_match": false,
+      "params_billion": 1.1,
+      "downloads": 1918507,
+      "likes": 1755,
+      "license": {
+        "spdx_id": "apache-2.0",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": true,
+        "review_required": false,
+        "confidence": "high"
+      },
+      "last_modified": "2024-03-17T05:07:08+00:00",
+      "catalog_match": {
+        "matched": false,
+        "confidence": "none",
+        "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'",
+        "matched_entry": null
+      },
       "recipe_exists": false,
       "cpu_practical": true,
-      "cpu_rationale": "Size within CPU range based on file analysis",
-      "mobius_recognition": "model_type 'olmo2' in recognized set",
+      "cpu_rationale": "~1.1B params; int4 quantized fits CPU RAM",
+      "mobius_recognition": "model_type 'llama' in recognized set",
       "evaluation_prompts": [
         {
           "name": "basic_instruction",
@@ -166,22 +212,34 @@
     },
     {
       "index": 4,
-      "model_id": "ministral/Ministral-3b-instruct",
-      "sha": "2c95908929198d6e69af8638f0dbbd9bc6b93f9e",
-      "model_type": "mistral",
+      "model_id": "allenai/OLMo-2-0425-1B-Instruct",
+      "sha": "48d788eca847d4d7548f375ad03d3c9312f6139e",
+      "model_type": "olmo2",
       "architectures": [
-        "MistralForCausalLM"
+        "Olmo2ForCausalLM"
       ],
-      "params_billion": 3.32,
-      "downloads": 17902,
-      "likes": 87,
-      "license": "apache-2.0",
-      "last_modified": "2024-03-21T14:39:28+00:00",
-      "catalog_match": false,
+      "params_billion": 1.48,
+      "downloads": 74486,
+      "likes": 58,
+      "license": {
+        "spdx_id": "apache-2.0",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": true,
+        "review_required": false,
+        "confidence": "high"
+      },
+      "last_modified": "2025-04-30T22:32:46+00:00",
+      "catalog_match": {
+        "matched": false,
+        "confidence": "none",
+        "reason": "No catalog entry matches normalized HF name 'olmo-2-0425-1b-instruct'",
+        "matched_entry": null
+      },
       "recipe_exists": false,
       "cpu_practical": true,
-      "cpu_rationale": "Size within CPU range based on file analysis",
-      "mobius_recognition": "model_type 'mistral' in recognized set",
+      "cpu_rationale": "~1.5B params; int4 quantized fits CPU RAM",
+      "mobius_recognition": "model_type 'olmo2' in recognized set",
       "evaluation_prompts": [
         {
           "name": "basic_instruction",
@@ -207,22 +265,34 @@
     },
     {
       "index": 5,
-      "model_id": "kakaocorp/kanana-2-3b-instruct",
-      "sha": "6a5d7889964c4c590299d16e309eabab1f73f8a9",
-      "model_type": "qwen3",
+      "model_id": "stabilityai/stablelm-3b-4e1t",
+      "sha": "fa4a6a92fca83c3b4223a3c9bf792887090ebfba",
+      "model_type": "stablelm",
       "architectures": [
-        "Qwen3ForCausalLM"
+        "StableLmForCausalLM"
       ],
-      "params_billion": 3.51,
-      "downloads": 8179,
-      "likes": 11,
-      "license": "other",
-      "last_modified": "2026-07-29T08:58:26+00:00",
-      "catalog_match": false,
+      "params_billion": 2.8,
+      "downloads": 47217,
+      "likes": 315,
+      "license": {
+        "spdx_id": "cc-by-sa-4.0",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": true,
+        "review_required": false,
+        "confidence": "high"
+      },
+      "last_modified": "2024-03-07T18:18:43+00:00",
+      "catalog_match": {
+        "matched": false,
+        "confidence": "none",
+        "reason": "No catalog entry matches normalized HF name 'stablelm-3b-4e1t'",
+        "matched_entry": null
+      },
       "recipe_exists": false,
       "cpu_practical": true,
-      "cpu_rationale": "Size within CPU range based on file analysis",
-      "mobius_recognition": "model_type 'qwen3' in recognized set",
+      "cpu_rationale": "~2.8B params; int4 quantized fits CPU RAM",
+      "mobius_recognition": "model_type 'stablelm' in recognized set",
       "evaluation_prompts": [
         {
           "name": "basic_instruction",
@@ -249,39 +319,79 @@
   ],
   "alternates": [
     {
+      "model_id": "Qwen/Qwen2.5-3B-Instruct",
+      "model_type": "qwen2",
+      "params_billion": null,
+      "downloads": 7540588,
+      "license": {
+        "spdx_id": "other",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": false,
+        "review_required": true,
+        "confidence": "medium"
+      },
+      "rejection_reason": "Not selected; alternate for replacement if primary becomes unavailable"
+    },
+    {
       "model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
       "model_type": "llama",
       "params_billion": null,
       "downloads": 1400792,
-      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+      "license": {
+        "spdx_id": "apache-2.0",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": true,
+        "review_required": false,
+        "confidence": "high"
+      },
+      "rejection_reason": "Not selected; alternate for replacement if primary becomes unavailable"
     },
     {
-      "model_id": "Qwen/Qwen2.5-3B-Instruct-AWQ",
-      "model_type": "qwen2",
+      "model_id": "sshleifer/tiny-gpt2",
+      "model_type": "gpt2",
       "params_billion": null,
-      "downloads": 546798,
-      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+      "downloads": 1199839,
+      "license": {
+        "spdx_id": "",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": false,
+        "review_required": false,
+        "confidence": "low"
+      },
+      "rejection_reason": "Not selected; alternate for replacement if primary becomes unavailable"
     },
     {
-      "model_id": "unsloth/Llama-3.2-1B-Instruct",
-      "model_type": "llama",
+      "model_id": "openai-community/gpt2-large",
+      "model_type": "gpt2",
       "params_billion": null,
-      "downloads": 506972,
-      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+      "downloads": 1019873,
+      "license": {
+        "spdx_id": "mit",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": true,
+        "review_required": false,
+        "confidence": "high"
+      },
+      "rejection_reason": "Not selected; alternate for replacement if primary becomes unavailable"
     },
     {
-      "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8-dynamic",
-      "model_type": "llama",
+      "model_id": "allenai/OLMo-2-0425-1B",
+      "model_type": "olmo2",
       "params_billion": null,
-      "downloads": 439432,
-      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
-    },
-    {
-      "model_id": "Qwen/Qwen2.5-Coder-3B-Instruct",
-      "model_type": "qwen2",
-      "params_billion": null,
-      "downloads": 330913,
-      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+      "downloads": 937281,
+      "license": {
+        "spdx_id": "apache-2.0",
+        "license_name": null,
+        "license_url": null,
+        "is_clear_oss": true,
+        "review_required": false,
+        "confidence": "high"
+      },
+      "rejection_reason": "Not selected; alternate for replacement if primary becomes unavailable"
     }
   ]
 }

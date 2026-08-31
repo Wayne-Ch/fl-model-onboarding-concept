@@ -1,118 +1,133 @@
 # Recipe Agent v1 — Evaluation Model Selection Report
 
-**Generated:** 2026-08-31T23:02:16Z  
-**Foundry Local catalog snapshot:** 50 models  
+**Generated:** 2026-08-31T23:35:18Z (revision 2)  
+**Foundry Local catalog snapshot:** 50 models, 150 matchable entries  
 **Selection script:** `evaluation/recipe-agent-v1/select_models.py`
 
 ## Summary
 
-Five text-generation models were selected for the Recipe Agent v1 evaluation set.
-The models span **5 architecture families** (qwen2, llama, olmo2, mistral, qwen3),
-cover a meaningful range of parameter counts (1.1B–3.5B), downloads (8K–7.5M),
-and represent diverse organizations.
+Five text-generation models selected for the Recipe Agent v1 evaluation set.
+All from **official publishers** with **clear open-source licenses** (MIT,
+Apache-2.0, CC-BY-SA-4.0). The set spans **5 architecture families** across
+5 distinct family groups (gpt2, qwen-family, llama, olmo-family, stablelm).
 
 ## Selected Models
 
-| # | Model ID | Architecture | Params | Downloads | License |
-|---|----------|-------------|--------|-----------|---------|
-| 1 | `Qwen/Qwen2.5-3B-Instruct` | qwen2 (Qwen2ForCausalLM) | ~3.09B | 7,540,588 | apache-2.0 |
-| 2 | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | llama (LlamaForCausalLM) | ~1.10B | 1,918,507 | apache-2.0 |
-| 3 | `allenai/OLMo-2-0425-1B-Instruct` | olmo2 (Olmo2ForCausalLM) | ~1.48B | 74,486 | apache-2.0 |
-| 4 | `ministral/Ministral-3b-instruct` | mistral (MistralForCausalLM) | ~3.32B | 17,902 | apache-2.0 |
-| 5 | `kakaocorp/kanana-2-3b-instruct` | qwen3 (Qwen3ForCausalLM) | ~3.51B | 8,179 | apache-2.0 |
+| # | Model ID | Architecture | Family Group | Params | Downloads | License | Publisher |
+|---|----------|-------------|-------------|--------|-----------|---------|-----------|
+| 1 | `openai-community/gpt2` | gpt2 | gpt2 | ~0.14B | 14,317,307 | MIT | OpenAI |
+| 2 | `Qwen/Qwen2-1.5B-Instruct` | qwen2 | qwen-family | ~1.54B | 968,749 | Apache-2.0 | Alibaba Qwen |
+| 3 | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | llama | llama | ~1.10B | 1,918,507 | Apache-2.0 | TinyLlama |
+| 4 | `allenai/OLMo-2-0425-1B-Instruct` | olmo2 | olmo-family | ~1.48B | 74,486 | Apache-2.0 | Allen AI |
+| 5 | `stabilityai/stablelm-3b-4e1t` | stablelm | stablelm | ~2.80B | 47,217 | CC-BY-SA-4.0 | Stability AI |
+
+## License Verification
+
+All five models have well-known, clear open-source licenses:
+
+| Model | SPDX ID | License Name | Review Required | Confidence |
+|-------|---------|-------------|-----------------|------------|
+| gpt2 | `mit` | MIT License | No | High |
+| Qwen2-1.5B-Instruct | `apache-2.0` | Apache License 2.0 | No | High |
+| TinyLlama-1.1B-Chat | `apache-2.0` | Apache License 2.0 | No | High |
+| OLMo-2-0425-1B-Instruct | `apache-2.0` | Apache License 2.0 | No | High |
+| stablelm-3b-4e1t | `cc-by-sa-4.0` | CC BY-SA 4.0 | No | High |
+
+**No models with `license: other` or custom/unclear licenses are included.**
+This was a deliberate design choice to avoid legal review requirements.
 
 ## Selection Rationale
 
-### Architecture Diversity
-- **qwen2** — Qwen2.5-3B is a mid-size general-purpose instruct model from Alibaba's Qwen family.
-  Most popular text-generation model in the 3B range not already in the FL catalog.
-- **llama** — TinyLlama-1.1B is a well-known compact model based on the Llama architecture.
+### Architecture Diversity (5 family groups)
+- **gpt2** — GPT-2 is the foundational autoregressive transformer. Tests the
+  pipeline against the original architecture that influenced most modern LLMs.
+  Base model (not instruction-tuned) but produces coherent, assessable text completions.
+- **qwen-family (qwen2)** — Qwen2-1.5B-Instruct from Alibaba. Instruction-tuned,
+  Apache-2.0 licensed. Note: Qwen2 (not Qwen2.5) avoids the `license: other`
+  (qwen-research) that affects Qwen2.5 models.
+- **llama** — TinyLlama-1.1B-Chat is a well-known compact instruct model.
   Provides a lower bound on model size for stress-testing the onboarding pipeline.
-- **olmo2** — OLMo-2 is Allen AI's open-source research LLM with a unique architecture variant.
-  Tests the pipeline against a less common but Mobius-recognized architecture.
-- **mistral** — Ministral-3b-instruct provides Mistral architecture coverage at a CPU-feasible size.
-  Complements the catalog's larger Mistral variants (7B+).
-- **qwen3** — Kanana-2-3b-instruct uses Qwen3ForCausalLM architecture from Kakao Corp.
-  Exercises the newer qwen3 model_type distinct from qwen2.
+- **olmo-family (olmo2)** — OLMo-2 from Allen AI. Fully open research LLM with
+  instruction tuning. Tests a less common but Mobius-recognized architecture.
+- **stablelm** — StableLM-3b from Stability AI. The largest model in the set at
+  2.8B params. Base model with strong text generation capability. CC-BY-SA-4.0 licensed.
 
 ### Size Spread
-- 1.1B (TinyLlama) → 1.48B (OLMo-2) → 3.09B (Qwen2.5) → 3.32B (Ministral) → 3.51B (Kanana)
+- 0.14B (GPT-2) → 1.10B (TinyLlama) → 1.48B (OLMo-2) → 1.54B (Qwen2) → 2.80B (StableLM)
 - All within the 4B parameter ceiling for CPU int4 inference practicality.
+- Meaningful spread from 140M to 2.8B parameters.
 
 ### Popularity/Quality Spread
-- High: Qwen2.5-3B (7.5M downloads), TinyLlama (1.9M downloads)
-- Medium: OLMo-2 (74K downloads)
-- Lower: Ministral-3b (18K), Kanana-2 (8K)
-- This spread tests whether the pipeline works for both popular and niche models.
+- Very high: GPT-2 (14.3M downloads)
+- High: TinyLlama (1.9M), Qwen2-1.5B (969K)
+- Medium: OLMo-2 (74K), StableLM (47K)
 
-## Excluded Models (Recipes Already Exist)
+## Changes from Revision 1
 
-| Model ID | Reason |
+| Issue | Resolution |
+|-------|-----------|
+| Qwen2.5-3B-Instruct had `license: other` (qwen-research), reported as apache-2.0 | Replaced with Qwen2-1.5B-Instruct (apache-2.0) |
+| kakaocorp/kanana-2-3b-instruct had `license: other` (kanana-open-license) | Replaced with stabilityai/stablelm-3b-4e1t (cc-by-sa-4.0) |
+| ministral/Ministral-3b-instruct was community upload, not official publisher | Replaced with openai-community/gpt2 (official, MIT) |
+| Catalog matching had false positives (broad substring match) | Hardened with normalized prefix matching, dot↔hyphen, confidence/reason |
+| License data was incorrectly reported as apache-2.0 for all | Now uses authoritative HF Hub metadata with spdx_id, license_name, URL |
+
+## Excluded Models
+
+### Already in Recipe Registry
+| Model ID | Recipe |
 |----------|--------|
-| `HuggingFaceTB/SmolLM2-1.7B-Instruct` | Recipe `smollm2-1.7b-cpu-int4` exists (verified) |
-| `distil-whisper/distil-medium.en` | Recipe `distil-whisper-cpu-fp16` exists (blocked) |
-| `ibm-granite/granite-3.3-2b-instruct` | Recipe `granite-3.3-2b-cpu-int4` exists (verified) |
+| `HuggingFaceTB/SmolLM2-1.7B-Instruct` | smollm2-1.7b-cpu-int4 (verified) |
+| `distil-whisper/distil-medium.en` | distil-whisper-cpu-fp16 (blocked) |
+| `ibm-granite/granite-3.3-2b-instruct` | granite-3.3-2b-cpu-int4 (verified) |
 
-## Excluded Models (In Foundry Catalog)
+### Already in Foundry Catalog
+Qwen2.5-{0.5B,1.5B,7B,14B}-Instruct, Qwen3-{0.6B–14B}, Phi-3/3.5/4 variants,
+DeepSeek-R1, SmolLM3-3B, Mistral-7B/Nemo-12B, OLMo-3-7B, Whisper variants.
 
-Models filtered out because they already appear in the Foundry Local catalog:
-- Qwen2.5-{0.5B,1.5B,7B,14B}-Instruct variants
-- Qwen3 variants (0.6B–14B)
-- Phi-3/3.5/4 variants
-- DeepSeek-R1 variants
-- SmolLM3-3B
-- Mistral-Nemo-12B, OLMo-3-7B
-- All Whisper variants
+### Rejected for License
+| Model | License | Reason |
+|-------|---------|--------|
+| Qwen/Qwen2.5-3B-Instruct | `other` (qwen-research) | Custom license requires review |
+| kakaocorp/kanana-2-3b-instruct | `other` (kanana-open-license) | Custom license requires review |
+| stabilityai/stablelm-zephyr-3b | `other` | No license name/URL documented |
+| THUDM/glm-edge-{1.5b,4b}-chat | `other` (glm-4) | Custom license requires review |
 
-## Rejected Alternates
+### Rejected for Provenance
+| Model | Reason |
+|-------|--------|
+| ministral/Ministral-3b-instruct | Community upload, not official mistralai publisher |
+| Various community fine-tunes | Non-official orgs, questionable provenance |
 
-Top alternates that passed all rules but were not selected:
+## Catalog Matching
 
-1. Additional qwen2/llama variants — redundant with selected models
-2. Community fine-tunes — lower confidence in metadata completeness
-3. Models with borderline param counts — risk of exceeding CPU feasibility
-
-Full candidate list available in `candidates_raw.json` (top 50 viable candidates).
-
-## Catalog Verification
-
-All five selected models were verified absent from the Foundry Local catalog
-(50 models) at selection time. Matching uses normalized name comparison with
-dot/hyphen/underscore equivalence.
+Matching uses hardened normalization:
+- Organization prefixes stripped from both HF and catalog identifiers
+- Dots, underscores, and hyphens treated as equivalent
+- Multiple hyphens collapsed
+- Matches checked against alias, id, and displayName fields
+- Each match returns confidence level (exact/high/none) and reason string
+- Tests cover org-prefixed IDs, lossy punctuation, and false-positive cases
 
 ## Reproducibility
 
-The selection can be reproduced by running:
 ```bash
 python evaluation/recipe-agent-v1/select_models.py
 ```
 
-This will:
-1. Query the live Foundry Local catalog via `foundry model list -o json`
-2. Search Hugging Face Hub for text-generation instruct/chat models
-3. Apply all selection rules (architecture, size, gating, catalog exclusion, etc.)
-4. Select five models across at least three architecture families
-5. Freeze exact SHA revisions and write `models.json`
-
-**Note:** Results may differ if the HF Hub or Foundry catalog changes. The frozen
-manifest in `models.json` captures the exact selection at the timestamp above.
-
 ## Evaluation Prompts
 
-Each model has four objective functional prompts defined for later validation:
-1. **basic_instruction** — "Explain what a hash table is in two sentences."
-2. **reasoning** — "If a train travels 60 mph for 2.5 hours, how far does it go?"
-3. **code_generation** — "Write a Python function that checks if a string is a palindrome."
-4. **creative_writing** — "Write a haiku about programming."
-
-These prompts test coherence, arithmetic, code syntax, and creative output
-without requiring domain-specific knowledge.
+Four objective functional prompts per model:
+1. **basic_instruction** — hash table explanation
+2. **reasoning** — arithmetic word problem
+3. **code_generation** — palindrome function
+4. **creative_writing** — programming haiku
 
 ## Uncertainties
 
-1. **Ministral org legitimacy** — `ministral/Ministral-3b-instruct` appears to be a community
-   upload (not from `mistralai`). The model has proper config/weights but lower provenance confidence.
-2. **Kanana-2 Qwen3 architecture** — Uses Qwen3ForCausalLM architecture despite being from Kakao Corp.
-   May have custom training adaptations not reflected in model_type.
-3. **Catalog drift** — The Foundry catalog may add these models between selection and evaluation.
-   The frozen SHAs in `models.json` remain valid regardless.
+1. **GPT-2 and StableLM are base models** — not instruction-tuned but produce
+   assessable text completions. Selected for architecture diversity with clear licenses.
+2. **Catalog drift** — Foundry catalog may add these models between selection and
+   evaluation. Frozen SHAs remain valid regardless.
+3. **Qwen2 vs Qwen2.5** — Qwen2-1.5B-Instruct was chosen over Qwen2.5-3B-Instruct
+   specifically because Qwen2 has apache-2.0 while Qwen2.5 has a custom license.
