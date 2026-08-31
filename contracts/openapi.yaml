@@ -359,6 +359,7 @@ components:
         - network
         - process_failed
         - compatibility
+        - source_runtime_contract_incompatible
         - oga_runtime_contract_incompatible
         - cancelled
         - unknown

@@ -306,7 +306,9 @@ DEFAULT_MODEL_RECIPES: tuple[ModelRecipe, ...] = (
         version="1.0.0",
         status=RecipeStatus.BLOCKED,
         status_reason=(
-            "Blocked: generated Whisper package is rejected while parsing decoder_input_ids in OGA/Foundry runtime."
+            "Blocked: deterministic config adaptation reaches OGA parser/model-load, but OGA and Foundry "
+            "transcription still fail with Missing Input: position_ids because WhisperDecoderState does not "
+            "bind/update position_ids."
         ),
         huggingface_model_id=DISTIL_WHISPER_MODEL_ID,
         modality=CandidateModality.ASR,
@@ -323,7 +325,10 @@ DEFAULT_MODEL_RECIPES: tuple[ModelRecipe, ...] = (
             AncillaryFileRule(relative_path="decoder/model.onnx", required=True, source="mobius-output-dir"),
             AncillaryFileRule(relative_path="genai_config.json", required=True, source="mobius-output-dir"),
         ),
-        runtime_validation="onnx-checker + onnxruntime-cpu-load + oga-load (blocked)",
+        runtime_validation=(
+            "onnx-checker + onnxruntime-cpu-load + deterministic-parser/model-load-adaptation + "
+            "oga/fl-transcription (blocked: Missing Input: position_ids)"
+        ),
         inference_modality=CandidateModality.ASR,
         optimization_choices=(),
         artifact_cache_prefix="distil-whisper",

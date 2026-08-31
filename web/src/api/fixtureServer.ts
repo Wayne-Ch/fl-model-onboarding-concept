@@ -1,4 +1,4 @@
-import type { BuildRequest, BuildStage, ModelTask, TestedStatus } from "./types";
+import type { BuildRequest, BuildStage, ModelTask, RecipeStatus, SupportedOptimization, TestedStatus } from "./types";
 
 export interface Transport {
   request(path: string, init?: RequestInit): Promise<Response>;
@@ -23,6 +23,13 @@ interface FixtureModel {
   strategies: string[];
   precisions: string[];
   verifiedAudioFormats: string[];
+  recipeStatus: RecipeStatus;
+  recipeReason: string;
+  recipeId?: string;
+  recipeVersion?: string;
+  requiresExperimentalOptIn: boolean;
+  buildableWithExperimentalOptIn: boolean;
+  supportedOptimizations: SupportedOptimization[];
 }
 
 interface FixtureEvent {
@@ -66,23 +73,32 @@ const PIPELINE: BuildStage[] = [
 
 const MODELS: FixtureModel[] = [
   {
-    id: "microsoft/Phi-3-mini-4k-instruct",
-    displayName: "Phi-3 Mini 4K Instruct",
+    id: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+    displayName: "SmolLM2 1.7B Instruct",
     task: "llm",
-    revision: "8f4d2a5",
+    revision: "31b70e2e869a7173562077fd711b654946d38674",
     modality: "text",
-    license: "mit",
+    license: "apache-2.0",
     gated: false,
     requiresRemoteCode: false,
-    estimatedSizeMb: 2320,
-    likelyCatalogMatch: "phi-3-mini-4k-instruct",
-    mobiusSupport: "supported",
+    estimatedSizeMb: 1750,
+    likelyCatalogMatch: "smollm2-1.7b-instruct",
+    mobiusSupport: "verified",
     mobiusRisk: "low",
     testedStatus: "not_verified",
     buildable: true,
-    strategies: ["Auto", "Olive"],
-    precisions: ["INT4", "FP16"],
-    verifiedAudioFormats: []
+    strategies: ["mobius-olive"],
+    precisions: ["int4"],
+    verifiedAudioFormats: [],
+    recipeStatus: "verified",
+    recipeReason: "Verified Mobius->Olive->runtime->Foundry Local SDK chat path for the pinned SmolLM2 revision.",
+    recipeId: "smollm2-1.7b-cpu-int4",
+    recipeVersion: "1.0.0",
+    requiresExperimentalOptIn: false,
+    buildableWithExperimentalOptIn: false,
+    supportedOptimizations: [
+      { strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }
+    ]
   },
   {
     id: "distil-whisper/distil-medium.en",
@@ -99,10 +115,48 @@ const MODELS: FixtureModel[] = [
     mobiusRisk: "medium",
     testedStatus: "not_verified",
     buildable: false,
-    blockedReason: "Generated Whisper genai_config rejected while parsing decoder_input_ids.",
+    blockedReason:
+      "Decoder ONNX requires position_ids, but OGA WhisperDecoderState does not bind/update it; OGA and Foundry Local transcription fail with Missing Input: position_ids.",
     strategies: [],
     precisions: [],
-    verifiedAudioFormats: []
+    verifiedAudioFormats: [],
+    recipeStatus: "blocked",
+    recipeReason:
+      "Blocked: deterministic config adaptation reaches OGA parser/model-load, but OGA and Foundry transcription still fail with Missing Input: position_ids because WhisperDecoderState does not bind/update position_ids.",
+    recipeId: "distil-whisper-cpu-fp16",
+    recipeVersion: "1.0.0",
+    requiresExperimentalOptIn: false,
+    buildableWithExperimentalOptIn: false,
+    supportedOptimizations: []
+  },
+  {
+    id: "ibm-granite/granite-3.3-2b-instruct",
+    displayName: "Granite 3.3 2B Instruct",
+    task: "llm",
+    revision: "707f574c62054322f6b5b04b6d075f0a8f05e0f0",
+    modality: "text",
+    license: "apache-2.0",
+    gated: false,
+    requiresRemoteCode: false,
+    estimatedSizeMb: 2400,
+    likelyCatalogMatch: "granite-3.3-2b-instruct",
+    mobiusSupport: "verified",
+    mobiusRisk: "low",
+    testedStatus: "not_verified",
+    buildable: true,
+    strategies: ["mobius-olive"],
+    precisions: ["int4"],
+    verifiedAudioFormats: [],
+    recipeStatus: "verified",
+    recipeReason:
+      "Verified direct Mobius->Olive->runtime->Foundry Local SDK chat inference path for granite-3.3-2b pinned revision 707f574c62054322f6b5b04b6d075f0a8f05e0f0.",
+    recipeId: "granite-3.3-2b-cpu-int4",
+    recipeVersion: "1.0.0",
+    requiresExperimentalOptIn: false,
+    buildableWithExperimentalOptIn: false,
+    supportedOptimizations: [
+      { strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }
+    ]
   },
   {
     id: "meta-llama/Llama-3.1-8B-Instruct",
@@ -120,9 +174,16 @@ const MODELS: FixtureModel[] = [
     testedStatus: "not_verified",
     buildable: false,
     blockedReason: "Gated model access is rejected in this POC.",
-    strategies: ["Auto"],
-    precisions: ["INT4"],
-    verifiedAudioFormats: []
+    strategies: [],
+    precisions: [],
+    verifiedAudioFormats: [],
+    recipeStatus: "unregistered",
+    recipeReason: "No recipe is registered for model 'meta-llama/Llama-3.1-8B-Instruct' (llm). Build remains blocked until a recipe is added.",
+    recipeVersion: undefined,
+    recipeId: undefined,
+    requiresExperimentalOptIn: false,
+    buildableWithExperimentalOptIn: false,
+    supportedOptimizations: []
   }
 ];
 
@@ -143,6 +204,84 @@ function findModel(modelId: string): FixtureModel | undefined {
   return MODELS.find((model) => model.id === modelId);
 }
 
+function recipePayload(model: FixtureModel): Record<string, unknown> | null {
+  if (!model.recipeId || !model.recipeVersion) {
+    return null;
+  }
+  return {
+    id: model.recipeId,
+    version: model.recipeVersion,
+    status: model.recipeStatus,
+    reason: model.recipeReason,
+    model_id: model.id,
+    task_profile: model.task === "asr" ? "asr-cpu-fp16" : "llm-cpu-int4",
+    modality: model.task,
+    verified_revision: model.recipeStatus === "verified" ? model.revision : null,
+    preferred_revision: model.revision,
+    runtime_validation:
+      model.task === "asr"
+        ? "onnx-checker + onnxruntime-cpu-load + deterministic-parser/model-load-adaptation + oga/fl-transcription (blocked: Missing Input: position_ids)"
+        : "onnx-checker + onnxruntime-cpu-load + onnxruntime-genai-generation",
+    inference_modality: model.task,
+    mobius: {
+      task: model.task === "asr" ? "automatic-speech-recognition" : "text-generation",
+      ep: "cpu",
+      runtime: "ort-genai",
+      dtype: "f32"
+    },
+    olive: model.task === "asr"
+      ? {
+          input_source: "mobius-decoder-onnx",
+          task: "automatic-speech-recognition",
+          precision: "fp32",
+          device: "cpu",
+          provider: "CPUExecutionProvider",
+          log_level: "1"
+        }
+      : {
+          input_source: "mobius-output-dir",
+          task: "text-generation-with-past",
+          precision: "int4",
+          device: "cpu",
+          provider: "CPUExecutionProvider",
+          log_level: "1"
+        },
+    ancillary_files: [],
+    supported_optimizations: model.supportedOptimizations.map((item) => ({
+      strategy: item.strategy,
+      precision: item.precision,
+      task_profile: item.taskProfile,
+      skip_olive: item.skipOlive,
+      default: item.default
+    })),
+    requires_experimental_opt_in: model.requiresExperimentalOptIn
+  };
+}
+
+function preflightBlockers(model: FixtureModel): Array<Record<string, unknown>> {
+  if (!model.blockedReason) {
+    return [];
+  }
+  if (model.id === "distil-whisper/distil-medium.en") {
+    return [{
+      stage: "inferencing",
+      classification: "source_runtime_contract_incompatible",
+      message: model.blockedReason,
+      detail: {
+        required_input: "position_ids",
+        runtime_component: "WhisperDecoderState",
+        runtime_gap: "position_ids_not_bound_or_updated",
+        error_signature: "Missing Input: position_ids"
+      }
+    }];
+  }
+  return [{
+    stage: "preflight",
+    classification: model.gated ? "gated_model" : "invalid_request",
+    message: model.blockedReason
+  }];
+}
+
 function candidateOutcome(model: FixtureModel): Record<string, unknown> | null {
   if (model.id !== "distil-whisper/distil-medium.en") {
     return null;
@@ -150,11 +289,11 @@ function candidateOutcome(model: FixtureModel): Record<string, unknown> | null {
   return {
     model_id: model.id,
     revision: model.revision,
-    profile: "cpu/ort-genai; mobius=f32; olive=existing-onnx-decoder/fp32",
+    profile: "cpu/ort-genai; mobius=f32; deterministic-adapter=parser+model-load",
     status: "blocked",
     tested_status: "not_verified",
-    failed_stage: "fl_loading",
-    classification: "oga_runtime_contract_incompatible",
+    failed_stage: "inferencing",
+    classification: "source_runtime_contract_incompatible",
     error_summary: model.blockedReason,
     versions: {
       mobius: "0.1.0",
@@ -167,13 +306,17 @@ function candidateOutcome(model: FixtureModel): Record<string, unknown> | null {
     },
     gate_outcomes: [
       { stage: "mobius_building", status: "passed", summary: "Mobius CPU ort-genai f32 build succeeded." },
-      { stage: "olive_optimizing", status: "passed", summary: "Olive decoder FP32 optimization succeeded." },
       { stage: "runtime_validating", status: "passed", summary: "ONNX checker and ORT CPU load succeeded." },
-      { stage: "fl_loading", status: "failed", summary: "OGA and Foundry Local SDK rejected decoder_input_ids." }
+      { stage: "fl_loading", status: "passed", summary: "Deterministic config adaptation advanced OGA parser/model-load gates." },
+      {
+        stage: "inferencing",
+        status: "failed",
+        summary: "OGA and Foundry Local transcription fail with Missing Input: position_ids (WhisperDecoderState does not bind/update position_ids)."
+      }
     ],
-    evidence_reference: "docs/contract-probe-results.md#candidate-outcome-summary (run 20260830-225442-66553c73)",
-    capability_owner: "Mobius-generated Whisper config <-> OGA/Foundry Local runtime contract integration",
-    next_action: "Compare generated config to the pinned OGA Whisper schema/runtime and rerun the same profile."
+    evidence_reference: "docs/asr-contract-repair.md#irreducible-failure-boundary (run 20260831-124030-fc016713)",
+    capability_owner: "Primary owner: microsoft/onnxruntime-genai Whisper runtime; coordinate Mobius Whisper regression coverage.",
+    next_action: "Implement optional position_ids binding/updates from prompt + past sequence length, regression-test a Mobius-exported Whisper package, then rerun OGA + Foundry Local SDK transcription."
   };
 }
 
@@ -349,7 +492,19 @@ export function createFixtureTransport(): Transport {
             artifact_id: testedArtifacts.get(model.id) ?? null,
             verified_utc: testedArtifacts.has(model.id) ? nowIso() : null
           },
-          candidate_outcome: candidateOutcome(model)
+          candidate_outcome: candidateOutcome(model),
+          recipe: recipePayload(model),
+          recipe_status: model.recipeStatus,
+          recipe_reason: model.recipeReason,
+          requires_experimental_opt_in: model.requiresExperimentalOptIn,
+          buildable_with_experimental_opt_in: model.buildableWithExperimentalOptIn,
+          supported_optimizations: model.supportedOptimizations.map((item) => ({
+            strategy: item.strategy,
+            precision: item.precision,
+            task_profile: item.taskProfile,
+            skip_olive: item.skipOlive,
+            default: item.default
+          }))
         });
       }
 
@@ -374,9 +529,20 @@ export function createFixtureTransport(): Transport {
               recommended_mobius_dtype: model.precisions[0],
               recommended_olive_precision: model.precisions[0]
             },
-            blockers: model.blockedReason ? [{ message: model.blockedReason }] : []
+            blockers: preflightBlockers(model)
           },
-          candidate_outcome: candidateOutcome(model)
+          candidate_outcome: candidateOutcome(model),
+          recipe: recipePayload(model),
+          recipe_status: model.recipeStatus,
+          recipe_reason: model.recipeReason,
+          requires_experimental_opt_in: model.requiresExperimentalOptIn,
+          supported_optimizations: model.supportedOptimizations.map((item) => ({
+            strategy: item.strategy,
+            precision: item.precision,
+            task_profile: item.taskProfile,
+            skip_olive: item.skipOlive,
+            default: item.default
+          }))
         });
       }
 
@@ -395,9 +561,12 @@ export function createFixtureTransport(): Transport {
           return jsonResponse(404, { error: "Model not found." });
         }
         if (!model.buildable || model.gated) {
+          const blockedMessage = model.gated
+            ? "Gated model access is rejected in this POC."
+            : model.blockedReason ?? "Model is blocked by backend policy.";
           return jsonResponse(400, {
-            error: "Gated model access is rejected in this POC.",
-            classification: "gated_model"
+            error: blockedMessage,
+            classification: model.gated ? "gated_model" : model.recipeStatus
           });
         }
         const jobId = `job-${nextJobId}`;

@@ -25,6 +25,7 @@ from fl_model_onboarding.local_service import BuildSubmission, LocalOnboardingSe
 from fl_model_onboarding.recipes import (
     DEFAULT_MODEL_RECIPES,
     GRANITE_MODEL_ID,
+    SMOLLM2_MODEL_ID,
     RecipeRegistry,
     RecipeStatus,
 )
@@ -470,14 +471,24 @@ def test_asr_preflight_is_a_structured_unsupported_blocker(tmp_path: Path) -> No
         payload = response.json()
         assert payload["ok"] is False
         blocker = payload["result"]["blockers"][0]
-        assert blocker["classification"] == "oga_runtime_contract_incompatible"
-        assert blocker["detail"]["decoder_input_ids"] == "parse_error"
+        assert blocker["stage"] == "inferencing"
+        assert blocker["classification"] == "source_runtime_contract_incompatible"
+        assert blocker["detail"]["required_input"] == "position_ids"
+        assert blocker["detail"]["runtime_component"] == "WhisperDecoderState"
+        assert blocker["detail"]["error_signature"] == "Missing Input: position_ids"
         outcome = payload["candidate_outcome"]
         assert outcome["model_id"] == "distil-whisper/distil-medium.en"
         assert outcome["revision"] == "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7"
+        assert outcome["failed_stage"] == "inferencing"
+        assert outcome["classification"] == "source_runtime_contract_incompatible"
+        assert "Missing Input: position_ids" in outcome["error_summary"]
         assert outcome["versions"]["mobius"] == "0.1.0"
         assert outcome["versions"]["onnxruntime_genai"] == "0.15.2"
         assert outcome["versions"]["foundry_local_sdk"] == "1.2.4"
+        assert outcome["gate_outcomes"][1]["summary"] == "ONNX checker and ORT CPU load succeeded."
+        assert outcome["gate_outcomes"][2]["summary"].startswith(
+            "Deterministic config adaptation advanced OGA parser/model-load gates."
+        )
         assert outcome["gate_outcomes"][-1]["status"] == "failed"
         assert outcome["tested_status"] == "not_verified"
         assert client.get("/api/health").json()["compatibility_index"] == []
@@ -486,9 +497,7 @@ def test_asr_preflight_is_a_structured_unsupported_blocker(tmp_path: Path) -> No
             "/api/models/detail",
             params={"id": "distil-whisper/distil-medium.en"},
         ).json()
-        assert detail["candidate_outcome"]["classification"] == (
-            "oga_runtime_contract_incompatible"
-        )
+        assert detail["candidate_outcome"]["classification"] == "source_runtime_contract_incompatible"
 
 
 def test_cancel_endpoint_and_conflict(tmp_path: Path) -> None:
@@ -587,7 +596,7 @@ def test_artifact_scoped_inference_routes(tmp_path: Path) -> None:
         assert empty.json()["code"] == "INVALID_AUDIO_PAYLOAD"
 
 
-def test_tested_model_index_requires_successful_inference_and_persists(tmp_path: Path) -> None:
+def test_verified_recipes_index_only_after_successful_inference_and_persist(tmp_path: Path) -> None:
     db_path = tmp_path / "state.sqlite3"
     service = _service(
         tmp_path,
@@ -596,34 +605,39 @@ def test_tested_model_index_requires_successful_inference_and_persists(tmp_path:
     )
     app = create_app(service=service)
     with TestClient(app) as client:
-        model_id = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
-        unverified = client.get("/api/models/detail", params={"id": model_id}).json()
-        assert unverified["verification"] == {
-            "status": "not_verified",
-            "evidence": "none",
-            "artifact_id": None,
-            "verified_utc": None,
-        }
+        verified_models = (SMOLLM2_MODEL_ID, GRANITE_MODEL_ID)
+        for model_id in verified_models:
+            unverified = client.get("/api/models/detail", params={"id": model_id}).json()
+            assert unverified["verification"] == {
+                "status": "not_verified",
+                "evidence": "none",
+                "artifact_id": None,
+                "verified_utc": None,
+            }
 
-        created = client.post(
-            "/api/builds",
-            headers={"Idempotency-Key": "tested-index"},
-            json={"model_id": model_id, "task": "llm", "task_profile": "llm-cpu-int4"},
-        )
-        completed = _wait_for_terminal(client, created.json()["job"]["job_id"])
-        assert completed["state"] == "succeeded"
-        assert client.get("/api/health").json()["compatibility_index"] == []
+        for idx, model_id in enumerate(verified_models, start=1):
+            created = client.post(
+                "/api/builds",
+                headers={"Idempotency-Key": f"tested-index-{idx}"},
+                json={"model_id": model_id, "task": "llm", "task_profile": "llm-cpu-int4"},
+            )
+            assert created.status_code == 200
+            completed = _wait_for_terminal(client, created.json()["job"]["job_id"])
+            assert completed["state"] == "succeeded"
 
-        artifact_id = completed["result_artifact_id"]
-        inferred = client.post(
-            f"/api/artifacts/{artifact_id}/infer/text",
-            json={"prompt": "verify"},
-        )
-        assert inferred.status_code == 200
+            before_inference = client.get("/api/health").json()["compatibility_index"]
+            assert all(item["model_id"] != model_id for item in before_inference)
+
+            artifact_id = completed["result_artifact_id"]
+            inferred = client.post(
+                f"/api/artifacts/{artifact_id}/infer/text",
+                json={"prompt": "verify"},
+            )
+            assert inferred.status_code == 200
+
         tested = client.get("/api/health").json()["compatibility_index"]
-        assert len(tested) == 1
-        assert tested[0]["model_id"] == model_id
-        assert tested[0]["evidence"] == "successful_fl_inference"
+        assert {item["model_id"] for item in tested} == set(verified_models)
+        assert all(item["evidence"] == "successful_fl_inference" for item in tested)
 
     restarted = LocalOnboardingService(
         db_path=db_path,
@@ -634,7 +648,8 @@ def test_tested_model_index_requires_successful_inference_and_persists(tmp_path:
         preflight_inspector=PassingPreflightInspector(),  # type: ignore[arg-type]
     )
     try:
-        assert restarted.health()["compatibility_index"][0]["model_id"] == model_id  # type: ignore[index]
+        persisted = restarted.health()["compatibility_index"]
+        assert {row["model_id"] for row in persisted} == {SMOLLM2_MODEL_ID, GRANITE_MODEL_ID}  # type: ignore[index]
     finally:
         restarted.close()
 

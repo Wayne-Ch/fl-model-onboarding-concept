@@ -67,19 +67,26 @@ _API_KEY_RE = re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)")
 _DEFAULT_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 _ASR_MODEL_ID = DISTIL_WHISPER_MODEL_ID
 _ASR_REVISION = DISTIL_WHISPER_BLOCKED_REVISION
+_ASR_RUNTIME_BLOCKER_DETAIL: dict[str, str] = {
+    "required_input": "position_ids",
+    "runtime_component": "WhisperDecoderState",
+    "runtime_gap": "position_ids_not_bound_or_updated",
+    "error_signature": "Missing Input: position_ids",
+}
 
 
 def _asr_candidate_outcome() -> dict[str, object]:
     return {
         "model_id": _ASR_MODEL_ID,
         "revision": _ASR_REVISION,
-        "profile": "cpu/ort-genai; mobius=f32; olive=existing-onnx-decoder/fp32",
+        "profile": "cpu/ort-genai; mobius=f32; deterministic-adapter=parser+model-load",
         "status": "blocked",
         "tested_status": "not_verified",
-        "failed_stage": JobState.FL_LOADING.value,
-        "classification": FailureClassification.OGA_RUNTIME_CONTRACT_INCOMPATIBLE.value,
+        "failed_stage": JobState.INFERENCING.value,
+        "classification": FailureClassification.SOURCE_RUNTIME_CONTRACT_INCOMPATIBLE.value,
         "error_summary": (
-            "Generated Whisper genai_config rejected while parsing decoder_input_ids."
+            "Decoder ONNX requires position_ids, but OGA WhisperDecoderState does not bind/update it; "
+            "OGA and Foundry Local transcription fail with Missing Input: position_ids."
         ),
         "versions": {
             "mobius": "0.1.0",
@@ -97,32 +104,36 @@ def _asr_candidate_outcome() -> dict[str, object]:
                 "summary": "Mobius CPU ort-genai f32 build succeeded.",
             },
             {
-                "stage": JobState.OLIVE_OPTIMIZING.value,
-                "status": "passed",
-                "summary": "Olive existing-ONNX decoder FP32 optimization succeeded.",
-            },
-            {
                 "stage": JobState.RUNTIME_VALIDATING.value,
                 "status": "passed",
                 "summary": "ONNX checker and ORT CPU load succeeded.",
             },
             {
                 "stage": JobState.FL_LOADING.value,
+                "status": "passed",
+                "summary": "Deterministic config adaptation advanced OGA parser/model-load gates.",
+            },
+            {
+                "stage": JobState.INFERENCING.value,
                 "status": "failed",
-                "summary": "OGA and Foundry Local SDK rejected decoder_input_ids.",
+                "summary": (
+                    "OGA and Foundry Local transcription fail with Missing Input: position_ids "
+                    "(WhisperDecoderState does not bind/update position_ids)."
+                ),
             },
         ],
         "evidence_reference": (
-            "docs/contract-probe-results.md#candidate-outcome-summary "
-            "(run 20260830-225442-66553c73)"
+            "docs/asr-contract-repair.md#irreducible-failure-boundary "
+            "(run 20260831-124030-fc016713)"
         ),
         "capability_owner": (
-            "Mobius-generated Whisper config <-> OGA/Foundry Local runtime contract integration"
+            "Primary owner: microsoft/onnxruntime-genai Whisper runtime; "
+            "coordinate Mobius Whisper regression coverage."
         ),
         "next_action": (
-            "Compare the generated config to the pinned OGA Whisper schema/runtime, update the "
-            "responsible component in a later source-adaptation phase, then rerun the same "
-            "candidate profile."
+            "Implement optional position_ids binding/updates from prompt + past sequence length, "
+            "regression-test a Mobius-exported Whisper package, then rerun OGA + Foundry Local SDK "
+            "transcription."
         ),
     }
 
@@ -911,7 +922,7 @@ class LocalOnboardingService:
                         stage=JobState(str(candidate_outcome["failed_stage"])),
                         classification=FailureClassification(str(candidate_outcome["classification"])),
                         message=str(candidate_outcome["error_summary"]),
-                        detail={"decoder_input_ids": "parse_error"},
+                        detail=dict(_ASR_RUNTIME_BLOCKER_DETAIL),
                     ),
                 )
             blocked = PreflightResult(
@@ -967,7 +978,7 @@ class LocalOnboardingService:
                     "stage": candidate_outcome["failed_stage"],
                     "classification": candidate_outcome["classification"],
                     "message": candidate_outcome["error_summary"],
-                    "detail": {"decoder_input_ids": "parse_error"},
+                    "detail": dict(_ASR_RUNTIME_BLOCKER_DETAIL),
                 },
                 *payload.get("blockers", []),
             ]

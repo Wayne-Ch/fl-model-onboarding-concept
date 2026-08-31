@@ -5,8 +5,16 @@ import { OnboardingShell } from "./App";
 import type { ApiClient, AsrInferenceResult, BuildStatus, CandidateOutcome, HealthSnapshot, JobEvent, ModelDetail, ModelPreflight, ModelSummary, TextInferenceResult } from "./api/types";
 
 const llmModel: ModelSummary = {
-  id: "microsoft/Phi-3-mini-4k-instruct",
-  displayName: "Phi-3 Mini",
+  id: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+  displayName: "SmolLM2 1.7B Instruct",
+  task: "llm",
+  testedStatus: "tested",
+  gated: false
+};
+
+const graniteModel: ModelSummary = {
+  id: "ibm-granite/granite-3.3-2b-instruct",
+  displayName: "Granite 3.3 2B Instruct",
   task: "llm",
   testedStatus: "tested",
   gated: false
@@ -29,8 +37,8 @@ const gatedModel: ModelSummary = {
 };
 
 const experimentalModel: ModelSummary = {
-  id: "ibm-granite/granite-3.3-2b-instruct",
-  displayName: "Granite 3.3 2B",
+  id: "contoso/experimental-llm-2b-instruct",
+  displayName: "Experimental LLM 2B",
   task: "llm",
   testedStatus: "not_verified",
   gated: false
@@ -39,29 +47,42 @@ const experimentalModel: ModelSummary = {
 const asrBlockedOutcome: CandidateOutcome = {
   modelId: "distil-whisper/distil-medium.en",
   revision: "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7",
-  profile: "cpu/ort-genai; mobius=f32; olive=existing-onnx-decoder/fp32",
+  profile: "cpu/ort-genai; mobius=f32; deterministic-adapter=parser+model-load",
   status: "blocked",
   testedStatus: "not_verified",
-  failedStage: "fl_loading",
-  classification: "oga_runtime_contract_incompatible",
-  errorSummary: "Generated Whisper genai_config rejected while parsing decoder_input_ids.",
+  failedStage: "inferencing",
+  classification: "source_runtime_contract_incompatible",
+  errorSummary:
+    "Decoder ONNX requires position_ids, but OGA WhisperDecoderState does not bind/update it; OGA and Foundry Local transcription fail with Missing Input: position_ids.",
   versions: {
     mobius: "0.1.0",
     olive: "0.13.0",
+    onnx: "1.22.0",
+    onnxruntime: "1.29.0",
     onnxruntime_genai: "0.15.2",
-    foundry_local_sdk: "1.2.4"
+    foundry_local_sdk: "1.2.4",
+    foundry_cli: "0.11.0"
   },
   gateOutcomes: [
-    { stage: "mobius_building", status: "passed", summary: "Mobius build succeeded." },
-    { stage: "fl_loading", status: "failed", summary: "OGA and Foundry Local SDK rejected the config." }
+    { stage: "mobius_building", status: "passed", summary: "Mobius CPU ort-genai f32 build succeeded." },
+    { stage: "runtime_validating", status: "passed", summary: "ONNX checker and ORT CPU load succeeded." },
+    { stage: "fl_loading", status: "passed", summary: "Deterministic config adaptation advanced OGA parser/model-load gates." },
+    {
+      stage: "inferencing",
+      status: "failed",
+      summary: "OGA and Foundry Local transcription fail with Missing Input: position_ids (WhisperDecoderState does not bind/update position_ids)."
+    }
   ],
-  evidenceReference: "docs/contract-probe-results.md (run 20260830-225442-66553c73)",
-  capabilityOwner: "Mobius-generated Whisper config <-> OGA/Foundry Local runtime contract integration",
-  nextAction: "Compare against the pinned OGA Whisper schema and rerun the same profile."
+  evidenceReference: "docs/asr-contract-repair.md#irreducible-failure-boundary (run 20260831-124030-fc016713)",
+  capabilityOwner: "Primary owner: microsoft/onnxruntime-genai Whisper runtime; coordinate Mobius Whisper regression coverage.",
+  nextAction:
+    "Implement optional position_ids binding/updates from prompt + past sequence length, regression-test a Mobius-exported Whisper package, then rerun OGA + Foundry Local SDK transcription."
 };
 
 function detailFor(model: ModelSummary): ModelDetail {
   const isExperimental = model.id === experimentalModel.id;
+  const isGranite = model.id === graniteModel.id;
+  const isAsr = model.task === "asr";
   return {
     id: model.id,
     displayName: model.displayName,
@@ -73,22 +94,30 @@ function detailFor(model: ModelSummary): ModelDetail {
     requiresRemoteCode: false,
     estimatedSizeMb: 1200,
     likelyCatalogMatch: model.id,
-    mobiusSupport: "supported",
+    mobiusSupport: isExperimental ? "experimental (opt-in required)" : isAsr ? "blocked" : "verified",
     mobiusRisk: "low",
     testedStatus: model.testedStatus,
-    recipeStatus: isExperimental ? "experimental" : model.task === "asr" ? "blocked" : "verified",
+    recipeStatus: isExperimental ? "experimental" : isAsr ? "blocked" : "verified",
     recipeReason: isExperimental
       ? "Recipe requires explicit experimental opt-in."
-      : model.task === "asr"
-        ? "Blocked for this ASR profile."
-        : "Verified recipe.",
-    recipeId: isExperimental ? "granite-3.3-2b-cpu-int4" : "smollm2-1.7b-cpu-int4",
+      : isAsr
+        ? asrBlockedOutcome.errorSummary
+        : isGranite
+          ? "Verified direct Mobius->Olive->runtime->Foundry Local SDK chat inference path for granite-3.3-2b pinned revision 707f574c62054322f6b5b04b6d075f0a8f05e0f0."
+          : "Verified Mobius->Olive->runtime->Foundry Local SDK chat path for the pinned SmolLM2 revision.",
+    recipeId: isExperimental
+      ? "experimental-llm-2b-cpu-int4"
+      : isAsr
+        ? "distil-whisper-cpu-fp16"
+        : isGranite
+          ? "granite-3.3-2b-cpu-int4"
+          : "smollm2-1.7b-cpu-int4",
     recipeVersion: "1.0.0",
     requiresExperimentalOptIn: isExperimental,
     buildableWithExperimentalOptIn: isExperimental,
-    supportedOptimizations: isExperimental
-      ? [{ strategy: "mobius-olive", precision: "INT4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
-      : [{ strategy: "Auto", precision: "INT4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
+    supportedOptimizations: isAsr
+      ? []
+      : [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
   };
 }
 
@@ -123,19 +152,19 @@ function preflightFor(model: ModelSummary): ModelPreflight {
     target: "cpu",
     buildable: !model.gated && !isExperimental,
     blockedReason: model.gated ? "Gated model access is rejected in this POC." : undefined,
-    strategies: isExperimental ? ["mobius-olive"] : ["Auto", "Olive"],
-    precisions: ["INT4", "FP16"],
+    strategies: ["mobius-olive"],
+    precisions: ["int4"],
     verifiedAudioFormats: [],
-    defaultStrategy: isExperimental ? "mobius-olive" : "Auto",
-    defaultPrecision: "INT4",
+    defaultStrategy: "mobius-olive",
+    defaultPrecision: "int4",
     recipeStatus: isExperimental ? "experimental" : "verified",
     recipeReason: isExperimental ? "Recipe requires explicit experimental opt-in." : "Verified recipe.",
-    recipeId: isExperimental ? "granite-3.3-2b-cpu-int4" : "smollm2-1.7b-cpu-int4",
+    recipeId: isExperimental ? "experimental-llm-2b-cpu-int4" : model.id === graniteModel.id ? "granite-3.3-2b-cpu-int4" : "smollm2-1.7b-cpu-int4",
     recipeVersion: "1.0.0",
     requiresExperimentalOptIn: isExperimental,
     supportedOptimizations: isExperimental
-      ? [{ strategy: "mobius-olive", precision: "INT4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
-      : [{ strategy: "Auto", precision: "INT4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
+      ? [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
+      : [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
   };
 }
 
@@ -158,7 +187,7 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
   const health: HealthSnapshot = {
     status: "ok",
     service: "local",
-    testedModels: [llmModel]
+    testedModels: [llmModel, graniteModel]
   };
 
   const getModelDetail = vi.fn(async (modelId: string) => {
@@ -167,6 +196,9 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
     }
     if (modelId === gatedModel.id) {
       return detailFor(gatedModel);
+    }
+    if (modelId === graniteModel.id) {
+      return detailFor(graniteModel);
     }
     if (modelId === experimentalModel.id) {
       return detailFor(experimentalModel);
@@ -181,6 +213,9 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
       }
       if (modelId === gatedModel.id) {
         return preflightFor(gatedModel);
+      }
+      if (modelId === graniteModel.id) {
+        return preflightFor(graniteModel);
       }
       if (modelId === experimentalModel.id) {
         return {
@@ -220,6 +255,8 @@ describe("OnboardingShell", () => {
     render(<OnboardingShell client={client} />);
 
     await screen.findByText(/Connected/);
+    expect(screen.getByRole("option", { name: /SmolLM2 1.7B Instruct/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Granite 3.3 2B Instruct/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Search" }));
     await screen.findByRole("option", { name: /Whisper Small/ });
@@ -317,9 +354,9 @@ describe("OnboardingShell", () => {
 
     expect(await screen.findByText("Candidate evidence history")).toBeInTheDocument();
     expect(screen.getByText(/Blocked \/ Not tested successfully/)).toBeInTheDocument();
-    expect(screen.getByText(/oga_runtime_contract_incompatible/)).toBeInTheDocument();
-    expect(screen.getAllByText(/decoder_input_ids/)).toHaveLength(2);
-    expect(screen.getByText(/Mobius build succeeded/)).toBeInTheDocument();
+    expect(screen.getByText(/source_runtime_contract_incompatible/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Missing Input: position_ids/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Mobius CPU ort-genai f32 build succeeded/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build for CPU" })).toBeDisabled();
   });
 

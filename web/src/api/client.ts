@@ -91,6 +91,14 @@ function normalizeRecipeStatus(value: string | undefined): RecipeStatus {
   return "unregistered";
 }
 
+function normalizeCandidateClassification(value: string): string {
+  const normalized = value.toLowerCase();
+  if (normalized === "oga_runtime_contract_incompatible") {
+    return "source_runtime_contract_incompatible";
+  }
+  return normalized;
+}
+
 function parseSupportedOptimizations(input: unknown): SupportedOptimization[] {
   if (!Array.isArray(input)) {
     return [];
@@ -252,7 +260,7 @@ function parseCandidateOutcome(input: unknown): CandidateOutcome | undefined {
     status: "blocked",
     testedStatus: "not_verified",
     failedStage: readString(record, ["failed_stage"]),
-    classification: readString(record, ["classification"]),
+    classification: normalizeCandidateClassification(readString(record, ["classification"])),
     errorSummary: readString(record, ["error_summary"]),
     versions,
     gateOutcomes,
