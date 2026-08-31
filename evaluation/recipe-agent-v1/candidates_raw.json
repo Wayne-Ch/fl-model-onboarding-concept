@@ -780,6 +780,36 @@
     }
   },
   {
+    "model_id": "RedHatAI/granite-3.1-2b-instruct-quantized.w4a16",
+    "model_type": "granite",
+    "architectures": [
+      "GraniteForCausalLM"
+    ],
+    "sha": "02b46dc719d7a55f3dc01defd7c73c46f3636517",
+    "params_billion": null,
+    "downloads": 79569,
+    "likes": 1,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2026-08-05T19:49:09+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'granite-3-1-2b-instruct-quantized-w4a16'",
+      "matched_entry": null
+    }
+  },
+  {
     "model_id": "allenai/OLMo-2-0425-1B-Instruct",
     "model_type": "olmo2",
     "architectures": [
@@ -1466,36 +1496,6 @@
       "matched": false,
       "confidence": "none",
       "reason": "No catalog entry matches normalized HF name 'gpt2-spanish'",
-      "matched_entry": null
-    }
-  },
-  {
-    "model_id": "datificate/gpt2-small-spanish",
-    "model_type": "gpt2",
-    "architectures": [
-      "GPT2LMHeadModel"
-    ],
-    "sha": "02e3092372e8a8b20c64e29350a024a998a7c00d",
-    "params_billion": null,
-    "downloads": 7960,
-    "likes": 34,
-    "license": {
-      "spdx_id": "apache-2.0",
-      "license_name": null,
-      "license_url": null,
-      "is_clear_oss": true,
-      "review_required": false,
-      "confidence": "high"
-    },
-    "last_modified": "2021-05-21T15:24:00+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "catalog_match": {
-      "matched": false,
-      "confidence": "none",
-      "reason": "No catalog entry matches normalized HF name 'gpt2-small-spanish'",
       "matched_entry": null
     }
   }
