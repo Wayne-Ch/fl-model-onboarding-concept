@@ -60,6 +60,7 @@ MOBIUS_RECOGNIZED_ARCHITECTURES: set[str] = {
     "bloom", "falcon", "mpt", "opt",
     "starcoder2", "stablelm", "tinyllama",
     "cohere", "olmo", "olmo2", "glm",
+    "granite", "granitemoe",
 }
 
 # Well-known open-source licenses considered "clear" (no legal review needed)
@@ -366,7 +367,27 @@ FAMILY_GROUP: dict[str, str] = {
     "phi": "phi-family",
     "phi3": "phi-family",
     "phimoe": "phi-family",
+    "granite": "granite-family",
+    "granitemoe": "granite-family",
 }
+
+# Curated target models aligned with capability registry:
+# - llama: verified-template family (2 models for within-family generalization)
+# - qwen2: tool-supported-unverified candidate family (2 models)
+# - granite: verified-template family (1 model, distinct revision from recipe)
+CURATED_TARGETS: list[str] = [
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0",      # llama, apache-2.0
+    "HuggingFaceTB/SmolLM2-360M-Instruct",      # llama, apache-2.0 (distinct from 1.7B recipe)
+    "Qwen/Qwen2-1.5B-Instruct",                 # qwen2, apache-2.0
+    "Qwen/Qwen2-0.5B-Instruct",                 # qwen2, apache-2.0
+    "ibm-granite/granite-3.2-2b-instruct",       # granite, apache-2.0 (distinct from 3.3-2b recipe)
+]
+
+# Fallback if a curated target fails verification
+CURATED_FALLBACKS: list[str] = [
+    "ibm-granite/granite-3.1-2b-instruct",       # granite fallback
+    "ibm-granite/granite-3.0-2b-instruct",       # granite fallback
+]
 
 
 def _family_group(model_type: str) -> str:
@@ -389,113 +410,118 @@ def _is_instruction_model(model_id: str) -> bool:
     return any(kw in name for kw in ("instruct", "chat", "zephyr", "rlhf"))
 
 
+def verify_curated_model(
+    model_id: str,
+    api: HfApi,
+    catalog_entries: list[dict[str, str]],
+) -> dict[str, Any] | None:
+    """Verify a curated target model against all selection rules.
+
+    Returns a model entry dict if the model passes, or None with printed reason.
+    """
+    try:
+        info = api.model_info(model_id)
+    except Exception as e:
+        print(f"  FAIL {model_id}: HF Hub lookup failed: {e}")
+        return None
+
+    # Gated check
+    gated = getattr(info, "gated", None)
+    if gated and gated is not False and str(gated).lower() not in ("false", "none", ""):
+        print(f"  FAIL {model_id}: gated={gated}")
+        return None
+
+    # Remote code
+    if has_remote_code(info):
+        print(f"  FAIL {model_id}: requires remote code (auto_map)")
+        return None
+
+    # Required files
+    if not has_required_files(info):
+        print(f"  FAIL {model_id}: missing config/tokenizer/weight files")
+        return None
+
+    # Architecture
+    model_type = get_model_type(info)
+    if not model_type or model_type.lower() not in MOBIUS_RECOGNIZED_ARCHITECTURES:
+        print(f"  FAIL {model_id}: model_type '{model_type}' not recognized")
+        return None
+
+    # Catalog check
+    cat_result = catalog_match_check(model_id, catalog_entries)
+    if cat_result["matched"]:
+        print(f"  FAIL {model_id}: in FL catalog ({cat_result['reason']})")
+        return None
+
+    # Recipe check
+    if model_id in EXCLUDED_MODEL_IDS:
+        print(f"  FAIL {model_id}: has existing recipe")
+        return None
+
+    # License
+    lic_info = get_license_info(info)
+
+    # Params
+    params_b = None
+    st = getattr(info, "safetensors", None)
+    if st and isinstance(st, dict):
+        total = st.get("total")
+        if total and isinstance(total, (int, float)):
+            params_b = round(total / 1e9, 2)
+
+    if params_b is not None and params_b > MAX_PARAMS_BILLION:
+        print(f"  FAIL {model_id}: {params_b}B exceeds {MAX_PARAMS_BILLION}B limit")
+        return None
+
+    sha = getattr(info, "sha", None) or ""
+    downloads = getattr(info, "downloads", 0) or 0
+    likes = getattr(info, "likes", 0) or 0
+    last_modified = getattr(info, "last_modified", None)
+
+    print(f"  PASS {model_id} ({model_type}, ~{params_b}B, {lic_info['spdx_id']})")
+
+    return {
+        "model_id": model_id,
+        "model_type": model_type,
+        "architectures": get_architectures(info),
+        "sha": sha,
+        "params_billion": params_b,
+        "downloads": downloads,
+        "likes": likes,
+        "license": lic_info,
+        "last_modified": last_modified.isoformat() if hasattr(last_modified or "", "isoformat") else None,
+        "pipeline_tag": getattr(info, "pipeline_tag", None),
+        "gated": False,
+        "private": False,
+        "remote_code": False,
+        "catalog_match": cat_result,
+    }
+
+
 def select_final_five(
     viable: list[dict[str, Any]],
     api: HfApi,
+    catalog_entries: list[dict[str, str]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Select five models, preferring clear licenses, instruction tuning,
-    and architecture diversity (using family groups).
+    """Verify curated target models and select exactly five.
 
-    Strategy:
-      1. Group by family group (not raw model_type).
-      2. Pick best per group: prefer instruction > clear license > downloads.
-      3. Fill remaining slots from unrepresented groups or best remaining.
-      4. Enrich with full model_info and validate params.
+    Uses CURATED_TARGETS as primary candidates, falling back to
+    CURATED_FALLBACKS if any fail verification. The viable list
+    provides additional alternates for documentation.
     """
-    by_group: dict[str, list[dict[str, Any]]] = {}
-    for v in viable:
-        grp = _family_group(v.get("model_type") or "unknown")
-        by_group.setdefault(grp, []).append(v)
-
-    # Within each group, sort: official org first, then clear license, then instruction, then downloads
-    def _rank(c: dict[str, Any]) -> tuple[int, int, int, int]:
-        org = c["model_id"].split("/")[0] if "/" in c["model_id"] else ""
-        is_official = 0 if org in OFFICIAL_ORGS else 1
-        is_clear = 0 if c["license"]["is_clear_oss"] else 1
-        is_inst = 0 if _is_instruction_model(c["model_id"]) else 1
-        return (is_official, is_clear, is_inst, -c["downloads"])
-
-    for grp in by_group:
-        by_group[grp].sort(key=_rank)
-
-    # Rank groups by best-candidate downloads
-    groups_sorted = sorted(
-        by_group.keys(),
-        key=lambda g: max(c["downloads"] for c in by_group[g]),
-        reverse=True,
-    )
-
     selected: list[dict[str, Any]] = []
-    selected_ids: set[str] = set()
-    selected_groups: set[str] = set()
 
-    # Phase 1: one per family group
-    for grp in groups_sorted:
+    # Verify each curated target
+    all_targets = CURATED_TARGETS + CURATED_FALLBACKS
+    for mid in all_targets:
         if len(selected) >= 5:
             break
-        candidates = [c for c in by_group[grp] if c["model_id"] not in selected_ids]
-        if candidates:
-            pick = candidates[0]
-            selected.append(pick)
-            selected_ids.add(pick["model_id"])
-            selected_groups.add(grp)
+        entry = verify_curated_model(mid, api, catalog_entries)
+        if entry is not None:
+            selected.append(entry)
 
-    # Phase 2: fill from remaining groups or best remaining
-    if len(selected) < 5:
-        remaining = [v for v in viable if v["model_id"] not in selected_ids]
-        remaining.sort(key=_rank)
-        for r in remaining:
-            if len(selected) >= 5:
-                break
-            if r["model_id"] not in selected_ids:
-                selected.append(r)
-                selected_ids.add(r["model_id"])
-
-    # Enrich with full model_info
-    print("  Enriching with full metadata...")
-    final: list[dict[str, Any]] = []
-    for m in selected:
-        try:
-            full_info = api.model_info(m["model_id"])
-            st = getattr(full_info, "safetensors", None)
-            if st and isinstance(st, dict):
-                total = st.get("total")
-                if total and isinstance(total, (int, float)):
-                    m["params_billion"] = round(total / 1e9, 2)
-            m["sha"] = getattr(full_info, "sha", m["sha"]) or m["sha"]
-            m["license"] = get_license_info(full_info)
-        except Exception:
-            pass
-
-        # Validate params
-        if m["params_billion"] is not None and m["params_billion"] > MAX_PARAMS_BILLION:
-            print(f"  Skipped {m['model_id']} ({m['params_billion']}B > {MAX_PARAMS_BILLION}B)")
-            continue
-        final.append(m)
-
-    # If we lost models, fill from remaining
-    if len(final) < 5:
-        extra = [v for v in viable if v["model_id"] not in {m["model_id"] for m in final}]
-        for e in extra:
-            if len(final) >= 5:
-                break
-            try:
-                full_info = api.model_info(e["model_id"])
-                st = getattr(full_info, "safetensors", None)
-                if st and isinstance(st, dict):
-                    total = st.get("total")
-                    if total and isinstance(total, (int, float)):
-                        e["params_billion"] = round(total / 1e9, 2)
-                        if e["params_billion"] > MAX_PARAMS_BILLION:
-                            continue
-                e["sha"] = getattr(full_info, "sha", e["sha"]) or e["sha"]
-                e["license"] = get_license_info(full_info)
-            except Exception:
-                pass
-            final.append(e)
-
-    alternates = [v for v in viable if v["model_id"] not in {m["model_id"] for m in final}][:10]
-    return final, alternates
+    alternates = [v for v in viable if v["model_id"] not in {m["model_id"] for m in selected}][:10]
+    return selected, alternates
 
 
 # ---------------------------------------------------------------------------
@@ -566,7 +592,7 @@ def main() -> None:
     # Step 4: Select
     print()
     print("Step 4: Selecting final five models...")
-    selected, alternates = select_final_five(viable, api)
+    selected, alternates = select_final_five(viable, api, catalog_entries)
 
     families = {(m.get("model_type") or "unknown").lower() for m in selected}
     groups = {_family_group(m.get("model_type") or "unknown") for m in selected}
