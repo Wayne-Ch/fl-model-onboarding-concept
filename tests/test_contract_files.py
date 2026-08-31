@@ -42,3 +42,14 @@ def test_state_machine_contract_contains_cancellable_flags() -> None:
     states = {row["name"]: row for row in contract["states"]}
     assert states["mobius_building"]["cancellable"] is True
     assert states["succeeded"]["cancellable"] is False
+
+
+def test_generated_recipe_schema_contains_required_top_level_keys() -> None:
+    path = Path("contracts") / "generated-recipe.schema.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    assert schema["properties"]["schema_version"]["const"] == "1.0.0"
+    required = set(schema["required"])
+    assert "recipe" in required
+    assert "pinned_revision" in required
+    assert "provenance" in required
+    assert "fingerprint" in required
