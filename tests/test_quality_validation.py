@@ -160,6 +160,56 @@ def test_quality_validation_rejects_empty_repetitive_or_garbled_outputs(output_t
     assert result.promotion_evidence.functional_gate == GateState.FAILED
 
 
+@pytest.mark.parametrize(
+    "output_text",
+    [
+        "Mars.",
+        "Mars!",
+        '"Mars"',
+        "   Mars.   ",
+    ],
+)
+def test_allowed_answers_accepts_short_punctuation_variants(output_text: str) -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text=output_text,
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is True
+
+
+def test_allowed_answers_rejects_extra_explanatory_text() -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text="The answer is Mars.",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is False
+    row = next(
+        item
+        for item in result.optimized_functional.prompt_results
+        if item.prompt_id == "factual-red-planet"
+    )
+    assert "allowed_answers_failed" in row.failures
+    assert "max_words_exceeded" in row.failures
+
+
 def test_format_constraint_requires_valid_json_and_keys() -> None:
     profile = _profile()
     optimized = _replace_output(
