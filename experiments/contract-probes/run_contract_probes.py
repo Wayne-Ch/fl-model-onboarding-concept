@@ -134,6 +134,8 @@ class CommandRunner:
                 cwd=str(cwd) if cwd else None,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout_seconds,
                 check=False,
                 env=process_env,
@@ -387,6 +389,41 @@ def try_oga_text_generation(model_dir: Path) -> dict[str, Any]:
         return {"success": False, "error": str(exc)}
 
 
+def try_oga_speech_transcription(model_dir: Path, scratch_dir: Path) -> dict[str, Any]:
+    try:
+        import onnxruntime_genai as og
+
+        sample_path = scratch_dir / "samples" / "oga-silence.wav"
+        write_silence_wav(sample_path)
+
+        config = og.Config(str(model_dir))
+        config.clear_providers()
+        config.append_provider("cpu")
+        model = og.Model(config)
+        processor = model.create_multimodal_processor()
+        audios = og.Audios.open(str(sample_path))
+        prompts = ["<|startoftranscript|><|en|><|transcribe|><|notimestamps|>"]
+        inputs = processor(prompts, audios=audios)
+
+        params = og.GeneratorParams(model)
+        params.set_search_options(
+            do_sample=False,
+            num_beams=1,
+            num_return_sequences=1,
+            max_length=128,
+            batch_size=1,
+        )
+        generator = og.Generator(model, params)
+        generator.set_inputs(inputs)
+        while not generator.is_done():
+            generator.generate_next_token()
+        tokens = generator.get_sequence(0)
+        text = processor.decode(tokens)
+        return {"success": True, "transcription_preview": truncate(str(text), 250)}
+    except Exception as exc:  # noqa: BLE001 - explicit probe capture
+        return {"success": False, "error": str(exc)}
+
+
 def write_silence_wav(path: Path, seconds: int = 1, sample_rate: int = 16000) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     frames = b"\x00\x00" * sample_rate * seconds
@@ -397,14 +434,108 @@ def write_silence_wav(path: Path, seconds: int = 1, sample_rate: int = 16000) ->
         wav.writeframes(frames)
 
 
-def extract_chat_text(response: Any) -> str:
-    if hasattr(response, "choices"):
-        choices = getattr(response, "choices")
-        if choices:
-            message = getattr(choices[0], "message", None)
-            if message is not None and hasattr(message, "content"):
-                return str(message.content)
-    return str(response)
+def _run_foundry_sdk_probe_subprocess(
+    candidate: Candidate,
+    model_dir: Path,
+    scratch_dir: Path,
+) -> dict[str, Any]:
+    payload = {
+        "task": candidate.task,
+        "byom_name": candidate.byom_name,
+        "model_cache_dir": str(model_dir.parent),
+        "audio_path": str(scratch_dir / "samples" / f"{candidate.key}-silence.wav"),
+    }
+    script = r"""
+import json
+import wave
+import sys
+from pathlib import Path
+
+from foundry_local_sdk import Configuration, FoundryLocalManager
+
+cfg = json.loads(sys.argv[1])
+result = {"success": False}
+try:
+    config = Configuration(app_name="contract-probe-sdk-subprocess", model_cache_dir=cfg["model_cache_dir"])
+    FoundryLocalManager.initialize(config)
+    manager = FoundryLocalManager.instance
+    cached_models = manager.catalog.get_cached_models()
+    result["cached_model_ids"] = [m.id for m in cached_models]
+    model = next((m for m in cached_models if cfg["byom_name"] in m.id), None)
+    if model is None:
+        result["stage"] = "fl_sdk_discovery"
+        result["error"] = f"Model '{cfg['byom_name']}' not discovered in model_cache_dir"
+        print(json.dumps(result))
+        raise SystemExit(0)
+
+    result["selected_model_id"] = model.id
+    model.load()
+    try:
+        if cfg["task"] == "chat":
+            client = model.get_chat_client()
+            response = client.complete_chat([{"role": "user", "content": "Reply with: OK"}])
+            preview = str(response)
+            if hasattr(response, "choices") and response.choices:
+                msg = getattr(response.choices[0], "message", None)
+                if msg is not None and hasattr(msg, "content"):
+                    preview = str(msg.content)
+            result["success"] = True
+            result["stage"] = "fl_sdk_inference"
+            result["inference"] = {"response_preview": preview[:250]}
+        else:
+            wav_path = Path(cfg["audio_path"])
+            wav_path.parent.mkdir(parents=True, exist_ok=True)
+            with wave.open(str(wav_path), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(16000)
+                w.writeframes(b"\x00\x00" * 16000)
+            client = model.get_audio_client()
+            response = client.transcribe(str(wav_path))
+            result["success"] = True
+            result["stage"] = "fl_sdk_inference"
+            result["inference"] = {"response_preview": str(response)[:250]}
+    finally:
+        model.unload()
+except Exception as exc:  # noqa: BLE001
+    if "stage" not in result:
+        result["stage"] = "fl_sdk_load"
+    result["success"] = False
+    result["error"] = str(exc)
+
+print(json.dumps(result))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script, json.dumps(payload)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+    stdout = redact(completed.stdout or "")
+    stderr = redact(completed.stderr or "")
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    for line in reversed(lines):
+        try:
+            payload_result = json.loads(line)
+            if isinstance(payload_result, dict):
+                payload_result["subprocess_returncode"] = completed.returncode
+                if stderr:
+                    payload_result["subprocess_stderr_preview"] = truncate(stderr, 800)
+                return payload_result
+        except json.JSONDecodeError:
+            continue
+
+    return {
+        "success": False,
+        "stage": "fl_sdk_probe_subprocess",
+        "error": "Failed to parse SDK probe subprocess JSON output",
+        "subprocess_returncode": completed.returncode,
+        "subprocess_stdout_preview": truncate(stdout, 1200),
+        "subprocess_stderr_preview": truncate(stderr, 1200),
+    }
 
 
 def try_foundry_sdk(model_dir: Path, candidate: Candidate, scratch_dir: Path) -> dict[str, Any]:
@@ -414,66 +545,9 @@ def try_foundry_sdk(model_dir: Path, candidate: Candidate, scratch_dir: Path) ->
         contract_path.write_text(json.dumps({"Name": candidate.byom_name}, indent=2), encoding="utf-8")
         created_contract = True
 
-    try:
-        from foundry_local_sdk import Configuration, FoundryLocalManager
-    except Exception as exc:  # noqa: BLE001 - explicit probe capture
-        return {"success": False, "error": f"sdk import failed: {exc}", "inference_model_created": created_contract}
-
-    try:
-        config = Configuration(app_name="contract-probe", model_cache_dir=str(model_dir.parent))
-        FoundryLocalManager.initialize(config)
-        manager = FoundryLocalManager.instance
-        cached_models = manager.catalog.get_cached_models()
-        cached_ids = [item.id for item in cached_models]
-        model = next((item for item in cached_models if candidate.byom_name in item.id), None)
-        if model is None:
-            return {
-                "success": False,
-                "stage": "fl_sdk_discovery",
-                "inference_model_created": created_contract,
-                "cached_model_ids": cached_ids,
-                "error": f"Model '{candidate.byom_name}' not discovered in model_cache_dir",
-            }
-
-        model.load()
-        inference_result: dict[str, Any] = {"success": False, "stage": "fl_sdk_inference"}
-        try:
-            if candidate.task == "chat":
-                client = model.get_chat_client()
-                response = client.complete_chat([{"role": "user", "content": "Reply with: OK"}])
-                inference_result = {
-                    "success": True,
-                    "stage": "fl_sdk_inference",
-                    "response_preview": truncate(extract_chat_text(response), 250),
-                }
-            else:
-                client = model.get_audio_client()
-                audio_path = scratch_dir / "samples" / "silence.wav"
-                write_silence_wav(audio_path)
-                response = client.transcribe(str(audio_path))
-                inference_result = {
-                    "success": True,
-                    "stage": "fl_sdk_inference",
-                    "response_preview": truncate(str(response), 250),
-                }
-        finally:
-            model.unload()
-
-        return {
-            "success": inference_result["success"],
-            "stage": inference_result["stage"],
-            "inference_model_created": created_contract,
-            "cached_model_ids": cached_ids,
-            "selected_model_id": model.id,
-            "inference": inference_result,
-        }
-    except Exception as exc:  # noqa: BLE001 - explicit probe capture
-        return {
-            "success": False,
-            "stage": "fl_sdk_load",
-            "inference_model_created": created_contract,
-            "error": str(exc),
-        }
+    result = _run_foundry_sdk_probe_subprocess(candidate, model_dir, scratch_dir)
+    result["inference_model_created"] = created_contract
+    return result
 
 
 def run_candidate_pipeline(
@@ -673,10 +747,12 @@ def run_candidate_pipeline(
             break
     if oga_dir and candidate.task == "chat":
         oga = try_oga_text_generation(oga_dir)
+    elif oga_dir and candidate.task == "speech":
+        oga = try_oga_speech_transcription(oga_dir, scratch_dir)
     else:
         oga = {
             "success": False,
-            "error": "genai_config.json not found for chat task" if candidate.task == "chat" else "speech OGA execution not implemented",
+            "error": f"genai_config.json not found for {candidate.task} task",
         }
     events.append({"stage": f"{candidate.key}.oga", "success": bool(oga.get("success")), "detail": oga})
 
