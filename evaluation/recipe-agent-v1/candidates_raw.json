@@ -1,5 +1,35 @@
 [
   {
+    "model_id": "openai-community/gpt2",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+    "params_billion": null,
+    "downloads": 14317307,
+    "likes": 3479,
+    "license": {
+      "spdx_id": "mit",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-02-19T10:57:45+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2'",
+      "matched_entry": null
+    }
+  },
+  {
     "model_id": "Qwen/Qwen2.5-3B-Instruct",
     "model_type": "qwen2",
     "architectures": [
@@ -9,18 +39,25 @@
     "params_billion": null,
     "downloads": 7540588,
     "likes": 557,
-    "license": "other",
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2024-09-25T12:33:00+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen2-5-3b-instruct'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
@@ -32,18 +69,25 @@
     "params_billion": null,
     "downloads": 1918507,
     "likes": 1755,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2024-03-17T05:07:08+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
@@ -55,18 +99,145 @@
     "params_billion": null,
     "downloads": 1400792,
     "likes": 408,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2025-09-22T20:43:15+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'smollm2-135m-instruct'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "sshleifer/tiny-gpt2",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "5f91d94bd9cd7190a9f3216ff93cd1dd95f2c7be",
+    "params_billion": null,
+    "downloads": 1199839,
+    "likes": 36,
+    "license": {
+      "spdx_id": "",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": false,
+      "confidence": "low"
+    },
+    "last_modified": "2021-05-23T12:55:11+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'tiny-gpt2'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "openai-community/gpt2-large",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "32b71b12589c2f8d625668d2335a01cac3249519",
+    "params_billion": null,
+    "downloads": 1019873,
+    "likes": 357,
+    "license": {
+      "spdx_id": "mit",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-02-19T11:11:02+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-large'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "Qwen/Qwen2-1.5B-Instruct",
+    "model_type": "qwen2",
+    "architectures": [
+      "Qwen2ForCausalLM"
+    ],
+    "sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+    "params_billion": null,
+    "downloads": 968749,
+    "likes": 164,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-06-06T14:36:57+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "allenai/OLMo-2-0425-1B",
+    "model_type": "olmo2",
+    "architectures": [
+      "Olmo2ForCausalLM"
+    ],
+    "sha": "a1847dff35000b4271fa70afc5db10fd29fedbdf",
+    "params_billion": null,
+    "downloads": 937281,
+    "likes": 81,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2025-05-28T20:35:45+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'olmo-2-0425-1b'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "Qwen/Qwen2.5-3B-Instruct-AWQ",
@@ -78,18 +249,25 @@
     "params_billion": null,
     "downloads": 546798,
     "likes": 16,
-    "license": "other",
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2024-10-09T12:27:00+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen2-5-3b-instruct-awq'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "unsloth/Llama-3.2-1B-Instruct",
@@ -101,18 +279,25 @@
     "params_billion": null,
     "downloads": 506972,
     "likes": 101,
-    "license": "llama3.2",
+    "license": {
+      "spdx_id": "llama3.2",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2025-05-09T20:24:41+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'llama-3-2-1b-instruct'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8-dynamic",
@@ -124,18 +309,55 @@
     "params_billion": null,
     "downloads": 439432,
     "likes": 4,
-    "license": "llama3.2",
+    "license": {
+      "spdx_id": "llama3.2",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2024-10-09T18:57:13+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'llama-3-2-1b-instruct-fp8-dynamic'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "openai-community/gpt2-medium",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "6dcaa7a952f72f9298047fd5137cd6e4f05f41da",
+    "params_billion": null,
+    "downloads": 435888,
+    "likes": 205,
+    "license": {
+      "spdx_id": "mit",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-02-19T12:39:04+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-medium'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "Qwen/Qwen2.5-Coder-3B-Instruct",
@@ -147,18 +369,25 @@
     "params_billion": null,
     "downloads": 330913,
     "likes": 123,
-    "license": "other",
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2025-01-12T02:04:23+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen2-5-coder-3b-instruct'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
@@ -170,18 +399,85 @@
     "params_billion": null,
     "downloads": 306534,
     "likes": 215,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2025-09-22T20:44:35+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'smollm2-360m-instruct'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "model_type": "qwen2",
+    "architectures": [
+      "Qwen2ForCausalLM"
+    ],
+    "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+    "params_billion": null,
+    "downloads": 259479,
+    "likes": 203,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-08-21T10:23:36+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "Qwen/Qwen2.5-Math-1.5B-Instruct",
+    "model_type": "qwen2",
+    "architectures": [
+      "Qwen2ForCausalLM"
+    ],
+    "sha": "aafeb0fc6f22cbf0eaeed126eff8be45b0360a35",
+    "params_billion": null,
+    "downloads": 237496,
+    "likes": 58,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-09-23T06:07:25+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen2-5-math-1-5b-instruct'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8",
@@ -193,18 +489,25 @@
     "params_billion": null,
     "downloads": 185376,
     "likes": 4,
-    "license": "llama3.2",
+    "license": {
+      "spdx_id": "llama3.2",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2026-08-14T20:59:38+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'llama-3-2-1b-instruct-fp8'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "TheBloke/TinyLlama-1.1B-Chat-v0.3-GPTQ",
@@ -216,18 +519,25 @@
     "params_billion": null,
     "downloads": 177860,
     "likes": 10,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2023-10-03T11:07:41+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v0-3-gptq'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "unsloth/Llama-3.2-3B-Instruct",
@@ -239,18 +549,115 @@
     "params_billion": null,
     "downloads": 161260,
     "likes": 99,
-    "license": "llama3.2",
+    "license": {
+      "spdx_id": "llama3.2",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2025-06-02T21:40:12+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'llama-3-2-3b-instruct'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "openai-community/gpt2-xl",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "15ea56dee5df4983c59b2538573817e1667135e2",
+    "params_billion": null,
+    "downloads": 131106,
+    "likes": 384,
+    "license": {
+      "spdx_id": "mit",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-02-19T12:39:12+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-xl'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "erwanf/gpt2-mini",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "f12cc7ee54aa4d3e6366597f72ff7acb39b0ab3a",
+    "params_billion": null,
+    "downloads": 101562,
+    "likes": 6,
+    "license": {
+      "spdx_id": "mit",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-06-23T15:00:51+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-mini'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "Qwen/Qwen1.5-0.5B-Chat",
+    "model_type": "qwen2",
+    "architectures": [
+      "Qwen2ForCausalLM"
+    ],
+    "sha": "4d14e384a4b037942bb3f3016665157c8bcb70ea",
+    "params_billion": null,
+    "downloads": 98914,
+    "likes": 99,
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
+    "last_modified": "2024-04-30T07:19:52+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen1-5-0-5b-chat'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "unsloth/Llama-3.2-3B-Instruct-unsloth-bnb-4bit",
@@ -262,18 +669,25 @@
     "params_billion": null,
     "downloads": 96608,
     "likes": 10,
-    "license": "llama3.2",
+    "license": {
+      "spdx_id": "llama3.2",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2025-06-02T21:41:30+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'llama-3-2-3b-instruct-unsloth-bnb-4bit'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "unsloth/Qwen2.5-3B-Instruct-unsloth-bnb-4bit",
@@ -285,18 +699,85 @@
     "params_billion": null,
     "downloads": 89400,
     "likes": 7,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2025-02-06T03:39:37+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen2-5-3b-instruct-unsloth-bnb-4bit'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "mtgv/MobileLLaMA-1.4B-Chat",
+    "model_type": "llama",
+    "architectures": [
+      "LlamaForCausalLM"
+    ],
+    "sha": "7073081bd6b02d97ac4f9c7e8167fd3c28483c1c",
+    "params_billion": null,
+    "downloads": 87597,
+    "likes": 21,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2023-12-30T03:33:30+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'mobilellama-1-4b-chat'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "sbintuitions/sarashina2.2-0.5b-instruct-v0.1",
+    "model_type": "llama",
+    "architectures": [
+      "LlamaForCausalLM"
+    ],
+    "sha": "e4b9aacc3f644893d0179847946ef6c58d868f29",
+    "params_billion": null,
+    "downloads": 81163,
+    "likes": 16,
+    "license": {
+      "spdx_id": "mit",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2025-03-05T07:02:01+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'sarashina2-2-0-5b-instruct-v0-1'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "allenai/OLMo-2-0425-1B-Instruct",
@@ -308,18 +789,25 @@
     "params_billion": null,
     "downloads": 74486,
     "likes": 58,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2025-04-30T22:32:46+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'olmo-2-0425-1b-instruct'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "h2oai/h2o-danube3-500m-chat",
@@ -331,87 +819,55 @@
     "params_billion": null,
     "downloads": 74054,
     "likes": 43,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2024-07-18T14:03:24+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'h2o-danube3-500m-chat'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "unsloth/Qwen2.5-3B-Instruct",
-    "model_type": "qwen2",
+    "model_id": "allenai/OLMo-1B-hf",
+    "model_type": "olmo",
     "architectures": [
-      "Qwen2ForCausalLM"
+      "OlmoForCausalLM"
     ],
-    "sha": "7548fff1f997f57b2e9e8ab1ec7be96949b00ed0",
+    "sha": "aee7752d9c08ee4775e9b0091426d8410e8f6a89",
     "params_billion": null,
-    "downloads": 60247,
-    "likes": 17,
-    "license": "other",
-    "last_modified": "2025-03-06T00:08:34+00:00",
+    "downloads": 50938,
+    "likes": 29,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-08-14T17:49:51+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "deepseek-ai/deepseek-coder-1.3b-instruct",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "e063262dac8366fc1f28a4da0ff3c50ea66259ca",
-    "params_billion": null,
-    "downloads": 55468,
-    "likes": 177,
-    "license": "other",
-    "last_modified": "2024-03-07T13:23:21+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "uzlm/alloma-3B-Instruct",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "f8261c1c6ff62242269bd9e86521e9bc43695122",
-    "params_billion": null,
-    "downloads": 54819,
-    "likes": 6,
-    "license": "llama3.2",
-    "last_modified": "2025-09-30T08:49:18+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'olmo-1b-hf'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "TheBloke/TinyLlama-1.1B-Chat-v0.3-AWQ",
@@ -423,18 +879,85 @@
     "params_billion": null,
     "downloads": 49587,
     "likes": 5,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2023-11-09T18:17:42+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v0-3-awq'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "stabilityai/stablelm-3b-4e1t",
+    "model_type": "stablelm",
+    "architectures": [
+      "StableLmForCausalLM"
+    ],
+    "sha": "fa4a6a92fca83c3b4223a3c9bf792887090ebfba",
+    "params_billion": null,
+    "downloads": 47217,
+    "likes": 315,
+    "license": {
+      "spdx_id": "cc-by-sa-4.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2024-03-07T18:18:43+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'stablelm-3b-4e1t'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "ai-forever/rugpt3small_based_on_gpt2",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "a9307e696cd3c5b7f953ff4cb19d76a4d81821d5",
+    "params_billion": null,
+    "downloads": 45716,
+    "likes": 56,
+    "license": {
+      "spdx_id": "",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": false,
+      "confidence": "low"
+    },
+    "last_modified": "2023-12-05T09:19:39+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'rugpt3small-based-on-gpt2'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GPTQ",
@@ -446,317 +969,235 @@
     "params_billion": null,
     "downloads": 42793,
     "likes": 14,
-    "license": "apache-2.0",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
     "last_modified": "2023-12-31T21:33:52+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0-gptq'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "unsloth/Llama-3.2-3B-Instruct-bnb-4bit",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "bb1d317a108579fb40e646af8924a5e7ec5604b1",
-    "params_billion": null,
-    "downloads": 42741,
-    "likes": 37,
-    "license": "llama3.2",
-    "last_modified": "2025-06-02T21:42:45+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "unsloth/Qwen2.5-3B-Instruct-bnb-4bit",
+    "model_id": "Qwen/Qwen1.5-1.8B-Chat",
     "model_type": "qwen2",
     "architectures": [
       "Qwen2ForCausalLM"
     ],
-    "sha": "2672b588848527e456d320c11926c794539f47d5",
+    "sha": "e482ee3f73c375a627a16fdf66fd0c8279743ca6",
     "params_billion": null,
-    "downloads": 41267,
-    "likes": 13,
-    "license": "apache-2.0",
-    "last_modified": "2025-02-06T03:34:00+00:00",
+    "downloads": 40039,
+    "likes": 74,
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
+    "last_modified": "2024-04-30T07:20:48+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen1-5-1-8b-chat'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "mlx-community/Llama-3.2-1B-Instruct-4bit",
-    "model_type": "llama",
+    "model_id": "stanford-crfm/alias-gpt2-small-x21",
+    "model_type": "gpt2",
     "architectures": [
-      "LlamaForCausalLM"
+      "GPT2LMHeadModel"
     ],
-    "sha": "08231374eeacb049a0eade7922910865b8fce912",
+    "sha": "ef2e2aa6e81351c5d01ea11ec5a6a0f631c72180",
     "params_billion": null,
-    "downloads": 40038,
-    "likes": 21,
-    "license": "llama3.2",
-    "last_modified": "2025-03-05T03:15:11+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "HuggingFaceTB/SmolLM-135M-Instruct",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "fcc320f490e08fdb4b99d935b2c58d40bf35b0d0",
-    "params_billion": null,
-    "downloads": 31930,
-    "likes": 144,
-    "license": "apache-2.0",
-    "last_modified": "2024-09-04T15:37:45+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "unsloth/Llama-3.2-1B-Instruct-unsloth-bnb-4bit",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "8eb7999dc1d92775e7b5f75754a29c3fbdb32723",
-    "params_billion": null,
-    "downloads": 29303,
+    "downloads": 37237,
     "likes": 4,
-    "license": "llama3.2",
-    "last_modified": "2025-04-26T23:41:11+00:00",
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2022-12-03T00:33:39+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'alias-gpt2-small-x21'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "baseten/Llama-3.2-3B-Instruct-pythonic",
-    "model_type": "llama",
+    "model_id": "robowaifudev/megatron-gpt2-345m",
+    "model_type": "gpt2",
     "architectures": [
-      "LlamaForCausalLM"
+      "GPT2LMHeadModel"
     ],
-    "sha": "dda084d3f46e6aaff3118bacb763a8028f07fc41",
+    "sha": "b39f8d00fb9f33da4271be2035da848da896a23b",
     "params_billion": null,
-    "downloads": 27384,
-    "likes": 0,
-    "license": "llama3.2",
-    "last_modified": "2025-10-07T21:01:53+00:00",
+    "downloads": 32833,
+    "likes": 9,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2023-04-08T22:07:20+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'megatron-gpt2-345m'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "mlx-community/Llama-3.2-3B-Instruct-4bit",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "7f0dc925e0d0afb0322d96f9255cfddf2ba5636e",
-    "params_billion": null,
-    "downloads": 23448,
-    "likes": 48,
-    "license": "llama3.2",
-    "last_modified": "2025-03-05T02:59:08+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "K-intelligence/Midm-2.0-Mini-Instruct",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "383eb221c52a32278f1985257b264ade8d982e60",
-    "params_billion": null,
-    "downloads": 20071,
-    "likes": 62,
-    "license": "mit",
-    "last_modified": "2025-10-29T05:31:42+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "unsloth/Llama-3.2-1B-Instruct-bnb-4bit",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "fcecd050a91025151bbf518e41a5577c356efdce",
-    "params_billion": null,
-    "downloads": 18607,
-    "likes": 23,
-    "license": "llama3.2",
-    "last_modified": "2025-01-23T05:03:00+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "ministral/Ministral-3b-instruct",
+    "model_id": "m8than/Mistral-Nemo-Instruct-2407-lenient-chatfix",
     "model_type": "mistral",
     "architectures": [
       "MistralForCausalLM"
     ],
-    "sha": "2c95908929198d6e69af8638f0dbbd9bc6b93f9e",
+    "sha": "2d923174a9b2a16395c4ab0c9f71611f1a99da25",
     "params_billion": null,
-    "downloads": 17902,
-    "likes": 87,
-    "license": "apache-2.0",
-    "last_modified": "2024-03-21T14:39:28+00:00",
+    "downloads": 18729,
+    "likes": 0,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2025-05-07T10:44:18+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'mistral-nemo-instruct-2407-lenient-chatfix'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "unsloth/Qwen2.5-Coder-3B-Instruct-bnb-4bit",
-    "model_type": "qwen2",
+    "model_id": "GroNLP/gpt2-small-dutch",
+    "model_type": "gpt2",
     "architectures": [
-      "Qwen2ForCausalLM"
+      "GPT2LMHeadModel"
     ],
-    "sha": "84f4805873850233fe5b2b156d3e3435425b4098",
+    "sha": "d0e3f07a6e7cad045c45569bdaa08d318a275456",
     "params_billion": null,
-    "downloads": 17609,
-    "likes": 7,
-    "license": "apache-2.0",
-    "last_modified": "2024-11-12T10:08:56+00:00",
+    "downloads": 16833,
+    "likes": 6,
+    "license": {
+      "spdx_id": "",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": false,
+      "confidence": "low"
+    },
+    "last_modified": "2023-09-11T08:57:58+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-small-dutch'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "mlx-community/Qwen2.5-3B-Instruct-4bit",
-    "model_type": "qwen2",
+    "model_id": "uer/gpt2-chinese-cluecorpussmall",
+    "model_type": "gpt2",
     "architectures": [
-      "Qwen2ForCausalLM"
+      "GPT2LMHeadModel"
     ],
-    "sha": "4f83f8f146fdf28b512a06562b671d7af4fab457",
+    "sha": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
     "params_billion": null,
-    "downloads": 16433,
-    "likes": 2,
-    "license": "other",
-    "last_modified": "2024-09-18T19:07:05+00:00",
+    "downloads": 16603,
+    "likes": 258,
+    "license": {
+      "spdx_id": "",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": false,
+      "confidence": "low"
+    },
+    "last_modified": "2023-10-17T15:21:48+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-chinese-cluecorpussmall'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "Qwen/Qwen2.5-Coder-3B-Instruct-AWQ",
-    "model_type": "qwen2",
+    "model_id": "DeepPavlov/rudialogpt3_medium_based_on_gpt2_v2",
+    "model_type": "gpt2",
     "architectures": [
-      "Qwen2ForCausalLM"
+      "GPT2LMHeadModel"
     ],
-    "sha": "5d2659311fbbae1ec6ccc83e0fae9778bb469494",
+    "sha": "9dfc56016728f5b7982279ab6fdd3518b923662c",
     "params_billion": null,
-    "downloads": 16356,
-    "likes": 8,
-    "license": "other",
-    "last_modified": "2024-11-18T12:53:55+00:00",
+    "downloads": 16119,
+    "likes": 5,
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
+    "last_modified": "2022-11-07T14:59:03+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'rudialogpt3-medium-based-on-gpt2-v2'",
+      "matched_entry": null
+    }
   },
   {
     "model_id": "Qwen/Qwen1.5-4B-Chat",
@@ -768,385 +1209,294 @@
     "params_billion": null,
     "downloads": 15472,
     "likes": 46,
-    "license": "other",
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
     "last_modified": "2024-04-30T07:41:43+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen1-5-4b-chat'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "lilmeaty/SmolLM2-135M-Instruct-GPTQ",
+    "model_id": "nmthien/vietnamese-gpt2",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "ecf5822d75727f196187758a70be4e80c041848a",
+    "params_billion": null,
+    "downloads": 15110,
+    "likes": 1,
+    "license": {
+      "spdx_id": "",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": false,
+      "confidence": "low"
+    },
+    "last_modified": "2026-08-29T12:36:43+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'vietnamese-gpt2'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "stabilityai/stablelm-zephyr-3b",
+    "model_type": "stablelm",
+    "architectures": [
+      "StableLmForCausalLM"
+    ],
+    "sha": "fe1fd5e36ccb8cb2cb1dc225ab6d2962692b9837",
+    "params_billion": null,
+    "downloads": 14779,
+    "likes": 261,
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
+    "last_modified": "2024-07-10T12:01:23+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'stablelm-zephyr-3b'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "LnL-AI/TinyLlama-1.1B-Chat-v1.0-GPTQ-4bit",
     "model_type": "llama",
     "architectures": [
       "LlamaForCausalLM"
     ],
-    "sha": "ea3fa0894bdd70a7e530e43aafc16630fe67319a",
+    "sha": "ded624dfe07a12f49ebb3b1a183f43d86f178b62",
     "params_billion": null,
-    "downloads": 15062,
+    "downloads": 12264,
     "likes": 0,
-    "license": "apache-2.0",
-    "last_modified": "2025-01-15T18:40:00+00:00",
+    "license": {
+      "spdx_id": "unknown",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
+    "last_modified": "2024-06-26T05:37:37+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0-gptq-4bit'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "modularai/SmolLM-135M-Instruct-FP32",
-    "model_type": "llama",
+    "model_id": "neulab/gpt2-finetuned-wikitext103",
+    "model_type": "gpt2",
     "architectures": [
-      "LlamaForCausalLM"
+      "GPT2LMHeadModel"
     ],
-    "sha": "1ade67aacf72511c94c55529056f7222c1c0b586",
+    "sha": "f042c5d9d998c564e49cddb98ddec90148e5aa43",
     "params_billion": null,
-    "downloads": 14357,
-    "likes": 0,
-    "license": "",
-    "last_modified": "2025-07-31T03:48:34+00:00",
+    "downloads": 12213,
+    "likes": 3,
+    "license": {
+      "spdx_id": "",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": false,
+      "confidence": "low"
+    },
+    "last_modified": "2022-07-14T15:38:21+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-finetuned-wikitext103'",
+      "matched_entry": null
+    }
   },
   {
-    "model_id": "HuggingFaceTB/SmolLM-360M-Instruct",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "73b7144f76331266f5f45d5642fd8da653583b13",
-    "params_billion": null,
-    "downloads": 13991,
-    "likes": 89,
-    "license": "apache-2.0",
-    "last_modified": "2024-08-18T16:33:51+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "tiiuae/Falcon3-1B-Instruct",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "28ba2251970a01dd1edc7ba7dad2eb71216ccfdf",
-    "params_billion": null,
-    "downloads": 13083,
-    "likes": 46,
-    "license": "other",
-    "last_modified": "2025-01-10T06:58:42+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "9c406c48910469db92b4d14df533b242717c7061",
-    "params_billion": null,
-    "downloads": 12849,
-    "likes": 8,
-    "license": "llama3.2",
-    "last_modified": "2026-08-19T21:37:41+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "ibm-granite/granite-3b-code-instruct-2k",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "7bba6a5cc837e53ded2c92209e256d48f4c25f00",
-    "params_billion": null,
-    "downloads": 8738,
-    "likes": 40,
-    "license": "apache-2.0",
-    "last_modified": "2026-04-25T12:32:10+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "kakaocorp/kanana-2-3b-instruct",
-    "model_type": "qwen3",
-    "architectures": [
-      "Qwen3ForCausalLM"
-    ],
-    "sha": "6a5d7889964c4c590299d16e309eabab1f73f8a9",
-    "params_billion": null,
-    "downloads": 8179,
-    "likes": 11,
-    "license": "other",
-    "last_modified": "2026-07-29T08:58:26+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v0.6",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "bf9ae1c8bf026667e6f810768de259bb4a7f4777",
-    "params_billion": null,
-    "downloads": 7208,
-    "likes": 116,
-    "license": "apache-2.0",
-    "last_modified": "2023-11-20T11:22:36+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "tiiuae/Falcon3-3B-Instruct",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "411bb94318f94f7a5735b77109f456b1e74b42a1",
-    "params_billion": null,
-    "downloads": 7101,
-    "likes": 28,
-    "license": "other",
-    "last_modified": "2025-01-10T06:58:36+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "RedHatAI/TinyLlama-1.1B-Chat-v1.0-marlin",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "29715d88e87589af7a9c6992ad5a94a2b8f1792a",
-    "params_billion": null,
-    "downloads": 6998,
-    "likes": 2,
-    "license": "",
-    "last_modified": "2024-03-06T01:00:38+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "AMead10/Llama-3.2-3B-Instruct-AWQ",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "df494d4903f031dadaeb40434529f1c01efcd130",
-    "params_billion": null,
-    "downloads": 6834,
-    "likes": 4,
-    "license": "llama3.2",
-    "last_modified": "2024-09-25T20:17:19+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "LIF1014/ptdbench-Llama-3.2-1B-Instruct",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "828e5f37c833a02415416260d5a93780fd41d10e",
-    "params_billion": null,
-    "downloads": 6758,
-    "likes": 0,
-    "license": "llama3.2",
-    "last_modified": "2026-08-16T16:23:20+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "sbintuitions/sarashina2.2-3b-instruct-v0.1",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "4f3626fb1b64b3e97c908e67f27b2d627ba2a999",
-    "params_billion": null,
-    "downloads": 6310,
-    "likes": 39,
-    "license": "mit",
-    "last_modified": "2026-08-25T05:00:52+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "SupraLabs/Supra2-100M-Instruct",
-    "model_type": "qwen3",
-    "architectures": [
-      "Qwen3ForCausalLM"
-    ],
-    "sha": "2c90ade6ab47b910f48d0157a3e4c421d6311ed5",
-    "params_billion": null,
-    "downloads": 5935,
-    "likes": 47,
-    "license": "apache-2.0",
-    "last_modified": "2026-08-05T10:34:14+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "AlignmentResearch/Llama-3.3-Tiny-Instruct-boolq",
-    "model_type": "llama",
-    "architectures": [
-      "LlamaForCausalLM"
-    ],
-    "sha": "8c3e1a5ddfd92377f7d748cdf3b58aa4766e666e",
-    "params_billion": null,
-    "downloads": 5812,
-    "likes": 0,
-    "license": "",
-    "last_modified": "2025-08-21T19:13:22+00:00",
-    "pipeline_tag": "text-generation",
-    "gated": false,
-    "private": false,
-    "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
-  },
-  {
-    "model_id": "Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4",
+    "model_id": "mlx-community/Qwen1.5-0.5B-Chat-4bit",
     "model_type": "qwen2",
     "architectures": [
       "Qwen2ForCausalLM"
     ],
-    "sha": "68c4276063d1496cdf13d0b8e8221f899bfa77f7",
+    "sha": "659d8dafc39202a6688bb46242d60440702489b1",
     "params_billion": null,
-    "downloads": 4815,
-    "likes": 2,
-    "license": "other",
-    "last_modified": "2024-10-09T12:27:30+00:00",
+    "downloads": 11602,
+    "likes": 4,
+    "license": {
+      "spdx_id": "other",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": true,
+      "confidence": "medium"
+    },
+    "last_modified": "2024-04-18T20:54:59+00:00",
     "pipeline_tag": "text-generation",
     "gated": false,
     "private": false,
     "remote_code": false,
-    "has_config": true,
-    "has_tokenizer": true,
-    "has_weights": true,
-    "catalog_match": false,
-    "cpu_practical": true,
-    "cpu_rationale": "Size within CPU range based on file analysis"
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'qwen1-5-0-5b-chat-4bit'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "allenai/OLMo-2-0425-1B-DPO",
+    "model_type": "olmo2",
+    "architectures": [
+      "Olmo2ForCausalLM"
+    ],
+    "sha": "c4b0485961ab24c2433b090f3b922f0913a9290f",
+    "params_billion": null,
+    "downloads": 11031,
+    "likes": 4,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2025-04-30T22:33:13+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'olmo-2-0425-1b-dpo'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "lvwerra/gpt2-imdb",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "f1bfd819c6bee6c18fa5f95bfe88d9198839a435",
+    "params_billion": null,
+    "downloads": 10132,
+    "likes": 18,
+    "license": {
+      "spdx_id": "",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": false,
+      "review_required": false,
+      "confidence": "low"
+    },
+    "last_modified": "2021-05-23T08:38:34+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-imdb'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "DeepESP/gpt2-spanish",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "1b935e39cf9893108bd2f4fb5317f48ae1c3ab5e",
+    "params_billion": null,
+    "downloads": 8023,
+    "likes": 39,
+    "license": {
+      "spdx_id": "mit",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2021-10-19T08:52:48+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-spanish'",
+      "matched_entry": null
+    }
+  },
+  {
+    "model_id": "datificate/gpt2-small-spanish",
+    "model_type": "gpt2",
+    "architectures": [
+      "GPT2LMHeadModel"
+    ],
+    "sha": "02e3092372e8a8b20c64e29350a024a998a7c00d",
+    "params_billion": null,
+    "downloads": 7960,
+    "likes": 34,
+    "license": {
+      "spdx_id": "apache-2.0",
+      "license_name": null,
+      "license_url": null,
+      "is_clear_oss": true,
+      "review_required": false,
+      "confidence": "high"
+    },
+    "last_modified": "2021-05-21T15:24:00+00:00",
+    "pipeline_tag": "text-generation",
+    "gated": false,
+    "private": false,
+    "remote_code": false,
+    "catalog_match": {
+      "matched": false,
+      "confidence": "none",
+      "reason": "No catalog entry matches normalized HF name 'gpt2-small-spanish'",
+      "matched_entry": null
+    }
   }
 ]
