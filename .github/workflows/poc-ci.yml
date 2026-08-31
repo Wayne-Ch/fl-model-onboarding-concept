@@ -33,6 +33,10 @@ jobs:
           "has_python=$((Test-Path 'pyproject.toml').ToString().ToLower())" >> $env:GITHUB_OUTPUT
           "has_web=$((Test-Path 'web/package.json').ToString().ToLower())" >> $env:GITHUB_OUTPUT
           "has_web_lock=$((Test-Path 'web/package-lock.json').ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          if ((Test-Path "web/package.json") -and -not (Test-Path "web/package-lock.json")) {
+            Write-Error "web/package.json exists but web/package-lock.json is missing. Commit the lock file for CI."
+            exit 1
+          }
 
   python-tests:
     name: Python tests (Windows)
@@ -66,15 +70,15 @@ jobs:
             exit 1
           }
 
-      - name: Run pytest (exclude heavyweight/model/network e2e)
+      - name: Run pytest
         shell: pwsh
         run: |
-          python -m pytest -m "not e2e and not heavyweight and not model and not network"
+          python -m pytest -q
 
   web-tests:
     name: Web tests and build
     needs: detect
-    if: ${{ needs.detect.outputs.has_web == 'true' }}
+    if: ${{ needs.detect.outputs.has_web == 'true' && needs.detect.outputs.has_web_lock == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -98,8 +102,8 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
-      - name: Run web tests (non-watch)
-        run: npm run test -- --run
+      - name: Run web tests
+        run: npm run test
 
       - name: Build web app
         run: npm run build
