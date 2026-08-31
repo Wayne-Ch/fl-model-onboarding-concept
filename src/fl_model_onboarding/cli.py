@@ -45,6 +45,7 @@ def _service_from_args(args: argparse.Namespace) -> LocalOnboardingService:
         model_cache_dir=Path(args.model_cache_dir).resolve()
         if getattr(args, "model_cache_dir", None)
         else None,
+        enable_production_runner=bool(getattr(args, "enable_production_runner", False)),
     )
 
 
@@ -234,6 +235,11 @@ def _create_parser() -> argparse.ArgumentParser:
     serve.add_argument("--allow-non-loopback", action="store_true")
     serve.add_argument("--open-browser", action="store_true")
     serve.add_argument("--log-level", default="info")
+    serve.add_argument(
+        "--enable-production-runner",
+        action="store_true",
+        help="Enable the verified SmolLM2 Mobius/Olive/Foundry Local execution pipeline.",
+    )
 
     return parser
 
@@ -270,4 +276,3 @@ if __name__ == "__main__":
     except Exception as exc:  # pragma: no cover - top-level fatal guard
         print(f"fl-onboarding fatal error: {exc}", file=sys.stderr)
         raise SystemExit(1)
-

@@ -536,3 +536,13 @@ def test_built_ui_is_served_without_replacing_repository_concept(tmp_path: Path)
         assert "console.log" in asset.text
 
     assert Path("index.html").read_bytes() == concept_before
+
+
+def test_text_inference_prompt_is_bounded(tmp_path: Path) -> None:
+    app = create_app(service=_service(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/artifacts/missing/infer/text",
+            json={"prompt": "x" * 8193},
+        )
+        assert response.status_code == 422

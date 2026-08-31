@@ -5,11 +5,12 @@ import html
 import json
 import os
 import re
+import shutil
 import sqlite3
 import threading
 import uuid
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from queue import Queue
@@ -41,6 +42,12 @@ from .failures import failure
 from .hf_policy import config_requires_remote_code
 from .paths import ensure_dir
 from .preflight import PreflightInspector
+from .production_runner import (
+    FoundrySdkTextInferenceBackend,
+    ProductionBuildStageRunner,
+    SMOLLM2_MODEL_ID,
+    production_package_paths,
+)
 from .serialization import to_jsonable
 from .state_machine import CANCELLABLE_STATES, fail_job, transition
 from .subprocess_runner import SafeSubprocessRunner
@@ -330,8 +337,41 @@ class SQLiteStateStore:
                     task TEXT NOT NULL,
                     artifact_id TEXT NOT NULL,
                     verified_utc TEXT NOT NULL,
-                    evidence TEXT NOT NULL
+                    evidence TEXT NOT NULL,
+                    revision TEXT NOT NULL DEFAULT '',
+                    task_profile TEXT NOT NULL DEFAULT ''
                 );
+                CREATE TABLE IF NOT EXISTS tested_model_profiles (
+                    model_id TEXT NOT NULL,
+                    revision TEXT NOT NULL,
+                    task_profile TEXT NOT NULL,
+                    task TEXT NOT NULL,
+                    artifact_id TEXT NOT NULL,
+                    verified_utc TEXT NOT NULL,
+                    evidence TEXT NOT NULL,
+                    PRIMARY KEY (model_id, revision, task_profile)
+                );
+                """
+            )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(tested_models)").fetchall()
+            }
+            if "revision" not in columns:
+                connection.execute(
+                    "ALTER TABLE tested_models ADD COLUMN revision TEXT NOT NULL DEFAULT ''"
+                )
+            if "task_profile" not in columns:
+                connection.execute(
+                    "ALTER TABLE tested_models ADD COLUMN task_profile TEXT NOT NULL DEFAULT ''"
+                )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO tested_model_profiles (
+                    model_id, revision, task_profile, task, artifact_id, verified_utc, evidence
+                )
+                SELECT model_id, revision, task_profile, task, artifact_id, verified_utc, evidence
+                FROM tested_models
                 """
             )
 
@@ -533,8 +573,8 @@ class SQLiteStateStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT model_id, task, artifact_id, verified_utc, evidence
-                FROM tested_models
+                SELECT model_id, task, artifact_id, verified_utc, evidence, revision, task_profile
+                FROM tested_model_profiles
                 ORDER BY verified_utc DESC, model_id ASC
                 """
             ).fetchall()
@@ -546,17 +586,23 @@ class SQLiteStateStore:
         model_id: str,
         task: CandidateModality,
         artifact_id: str,
+        revision: str | None,
+        task_profile: str,
     ) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO tested_models (model_id, task, artifact_id, verified_utc, evidence)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(model_id) DO UPDATE SET
+                INSERT INTO tested_model_profiles (
+                    model_id, task, artifact_id, verified_utc, evidence, revision, task_profile
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(model_id, revision, task_profile) DO UPDATE SET
                     task = excluded.task,
                     artifact_id = excluded.artifact_id,
                     verified_utc = excluded.verified_utc,
-                    evidence = excluded.evidence
+                    evidence = excluded.evidence,
+                    revision = excluded.revision,
+                    task_profile = excluded.task_profile
                 """,
                 (
                     model_id,
@@ -564,6 +610,8 @@ class SQLiteStateStore:
                     artifact_id,
                     datetime.now(timezone.utc).isoformat(),
                     "successful_fl_inference",
+                    revision or "",
+                    task_profile,
                 ),
             )
 
@@ -583,6 +631,7 @@ class LocalOnboardingService:
         build_stage_runner: BuildStageRunner | None = None,
         text_inference_backend: TextInferenceBackend | None = None,
         asr_inference_backend: AsrInferenceBackend | None = None,
+        enable_production_runner: bool = False,
     ) -> None:
         data_root = default_data_root() if (db_path is None or model_cache_dir is None) else None
         self._workspace_base = (workspace_base or default_workspace_base()).resolve()
@@ -617,16 +666,38 @@ class LocalOnboardingService:
             hf_metadata=self._hf_metadata,
         )
         self._process_registry = process_registry or ProcessOwnershipRegistry()
-        self._build_stage_runner = build_stage_runner or UnverifiedBuildStageRunner()
-        self._text_inference_backend = text_inference_backend
+        self._build_stage_runner = build_stage_runner or (
+            ProductionBuildStageRunner(self._process_runner)
+            if enable_production_runner
+            else UnverifiedBuildStageRunner()
+        )
+        self._text_inference_backend = text_inference_backend or (
+            FoundrySdkTextInferenceBackend(self._process_runner)
+            if enable_production_runner
+            else None
+        )
         self._asr_inference_backend = asr_inference_backend
 
         for job in self._jobs.values():
             for artifact in job.artifacts:
                 self._artifact_to_job[artifact.artifact_id] = job.job_id
             if job.state in CANCELLABLE_STATES:
-                self._cancel_events[job.job_id] = Event()
-                self._queue.put(job.job_id)
+                if job.request.candidate.huggingface_model_id == SMOLLM2_MODEL_ID:
+                    for package_path in production_package_paths(job):
+                        if package_path.exists():
+                            shutil.rmtree(package_path)
+                job.state = JobState.FAILED
+                job.failure = FailureInfo(
+                    stage=JobState.PREFLIGHT,
+                    classification=FailureClassification.NOT_VERIFIED,
+                    message=(
+                        "Interrupted active job was not resumed after service restart; "
+                        "submit a new idempotency key to retry."
+                    ),
+                )
+                job.finished_utc = datetime.now(timezone.utc)
+                job.add_event("Interrupted job marked failed during service recovery.")
+                self._store.save_job(job)
 
         self._worker = Thread(target=self._worker_loop, name="fl-onboard-worker", daemon=True)
         self._worker.start()
@@ -643,10 +714,15 @@ class LocalOnboardingService:
         with self._lock:
             if self._closed:
                 return
-            self._closed = True
             self._shutdown.set()
+            for cancellation_event in self._cancel_events.values():
+                cancellation_event.set()
             self._queue.put(None)
-        self._worker.join(timeout=5)
+        self._worker.join(timeout=30)
+        if self._worker.is_alive():
+            raise RuntimeError("Local onboarding worker did not stop after cancellation.")
+        with self._lock:
+            self._closed = True
 
     def health(self) -> dict[str, object]:
         with self._lock:
@@ -757,7 +833,10 @@ class LocalOnboardingService:
         payload["cache_key"] = cache_key
         supported = output.ok
         candidate_outcome = None
-        if normalized.task == CandidateModality.ASR:
+        if (
+            normalized.task == CandidateModality.ASR
+            and normalized.model_id == _ASR_MODEL_ID
+        ):
             candidate_outcome = _asr_candidate_outcome()
             payload["blockers"] = [
                 {
@@ -933,6 +1012,8 @@ class LocalOnboardingService:
             model_id=job.request.candidate.huggingface_model_id,
             task=job.request.candidate.modality,
             artifact_id=artifact_id,
+            revision=job.request.hf_revision,
+            task_profile=job.request.task_profile,
         )
 
     def _verification_for_model(self, model_id: str) -> dict[str, object]:
@@ -1002,7 +1083,26 @@ class LocalOnboardingService:
             try:
                 if job_id is None:
                     return
-                self._run_job(job_id)
+                try:
+                    self._run_job(job_id)
+                except Exception as exc:
+                    with self._lock:
+                        job = self._jobs.get(job_id)
+                        if job is not None and job.state not in {
+                            JobState.SUCCEEDED,
+                            JobState.FAILED,
+                            JobState.CANCELLED,
+                        }:
+                            failed_stage = job.state
+                            job.state = JobState.FAILED
+                            job.failure = FailureInfo(
+                                stage=failed_stage,
+                                classification=FailureClassification.UNKNOWN,
+                                message=_sanitize_text(str(exc) or "Unexpected worker failure."),
+                            )
+                            job.finished_utc = datetime.now(timezone.utc)
+                            job.add_event("Unexpected worker failure.")
+                            self._store.save_job(job)
             finally:
                 self._queue.task_done()
 
@@ -1055,20 +1155,40 @@ class LocalOnboardingService:
                 live.finished_utc = datetime.now(timezone.utc)
                 self._store.save_job(live)
                 return
+            pinned_revision = preflight.huggingface_sha or preflight.huggingface_revision
+            if pinned_revision:
+                live.request = replace(live.request, hf_revision=pinned_revision)
+                self._store.save_job(live)
             cancellation_event = self._cancel_events.setdefault(job_id, Event())
             if cancellation_event.is_set() or live.state == JobState.CANCELLED:
                 return
 
             def persist() -> None:
-                for artifact in live.artifacts:
-                    self._artifact_to_job[artifact.artifact_id] = live.job_id
-                self._store.save_job(live)
+                with self._lock:
+                    for artifact in live.artifacts:
+                        self._artifact_to_job[artifact.artifact_id] = live.job_id
+                    self._store.save_job(live)
 
-            self._build_stage_runner.run(
-                live,
-                persist=persist,
-                cancellation_event=cancellation_event,
+        self._build_stage_runner.run(
+            live,
+            persist=persist,
+            cancellation_event=cancellation_event,
+        )
+        with self._lock:
+            inference_verified = any(
+                validation.stage == JobState.INFERENCING
+                and validation.status == ValidationStatus.PASSED
+                for validation in live.validations
             )
+            if (
+                live.state == JobState.SUCCEEDED
+                and live.result_artifact_id
+                and inference_verified
+            ):
+                self._record_successful_inference(
+                    job=live,
+                    artifact_id=live.result_artifact_id,
+                )
             if live.state in {JobState.SUCCEEDED, JobState.FAILED, JobState.CANCELLED} and live.finished_utc is None:
                 live.finished_utc = datetime.now(timezone.utc)
             persist()

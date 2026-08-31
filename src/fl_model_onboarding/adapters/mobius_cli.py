@@ -22,23 +22,16 @@ class MobiusCliAdapter:
             "build",
             "--model",
             request.candidate.huggingface_model_id,
-            "--output",
-            str(output_dir),
             "--ep",
             "cpu" if request.enforce_cpu_target else "default",
             "--runtime",
             request.runtime,
-            "--external-data",
-            request.external_data_format,
-            "--max-shard-size",
-            request.max_shard_size,
         ]
         if request.candidate.recommended_mobius_dtype:
             argv.extend(["--dtype", request.candidate.recommended_mobius_dtype])
-        if request.hf_revision:
-            argv.extend(["--revision", request.hf_revision])
         if no_weights:
             argv.append("--no-weights")
+        argv.append(str(output_dir))
         return CommandSpec(
             argv=tuple(argv),
             cwd=request.workspace_root,

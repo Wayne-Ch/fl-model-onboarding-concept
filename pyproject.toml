@@ -40,4 +40,7 @@ fl_model_onboarding = ["web_dist/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --strict-markers"
+markers = [
+  "e2e: explicit local real-toolchain tests; skipped unless FL_ONBOARDING_E2E_* is configured",
+]

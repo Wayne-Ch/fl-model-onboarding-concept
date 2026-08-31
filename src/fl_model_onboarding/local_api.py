@@ -32,7 +32,7 @@ class BuildCreateRequest(BaseModel):
 
 
 class TextInferenceRequest(BaseModel):
-    prompt: str = Field(min_length=1)
+    prompt: str = Field(min_length=1, max_length=8192)
     max_tokens: int = Field(default=128, ge=1, le=4096)
 
 

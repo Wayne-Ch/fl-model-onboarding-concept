@@ -29,10 +29,10 @@ def test_mobius_command_contains_expected_arguments(tmp_path: Path) -> None:
     assert cmd.argv[0:2] == ("mobius", "build")
     assert "--runtime" in cmd.argv
     assert "ort-genai" in cmd.argv
-    assert "--external-data" in cmd.argv
-    assert "safetensors" in cmd.argv
     assert "--model" in cmd.argv
     assert "HuggingFaceTB/SmolLM2-1.7B-Instruct" in cmd.argv
+    assert cmd.argv[-1] == str(tmp_path / "out")
+    assert "--revision" not in cmd.argv
 
 
 def test_olive_command_contains_expected_arguments(tmp_path: Path) -> None:
@@ -42,10 +42,10 @@ def test_olive_command_contains_expected_arguments(tmp_path: Path) -> None:
         output_dir=tmp_path / "output",
         precision="int4",
     )
-    assert cmd.argv[0:2] == ("olive", "auto-opt")
+    assert cmd.argv[0:2] == ("olive", "optimize")
     assert "--model_name_or_path" in cmd.argv
     assert "--output_path" in cmd.argv
-    assert "--use_ort_genai" in cmd.argv
+    assert "text-generation-with-past" in cmd.argv
     assert "--precision" in cmd.argv
     assert "int4" in cmd.argv
 

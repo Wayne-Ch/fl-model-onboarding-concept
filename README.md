@@ -23,6 +23,20 @@ Launch the packaged UI and API together with one command:
 fl-onboarding service serve --host 127.0.0.1 --port 8777
 ```
 
+With the pinned short-path toolchain installed, enable the verified production SmolLM2 path:
+
+```powershell
+fl-onboarding service serve --workspace-base C:\fmo\w --model-cache-dir C:\fmo\cache --enable-production-runner
+```
+
+Run the real retained-package E2E only in an explicitly configured local toolchain:
+
+```powershell
+$env:FL_ONBOARDING_E2E_PYTHON = "C:\flprobe-venv\Scripts\python.exe"
+$env:FL_ONBOARDING_E2E_MODEL_DIR = "C:\fmo-poc\work\<run>\olive\llm"
+python -m pytest -m e2e tests\test_real_toolchain_e2e.py
+```
+
 Non-loopback binding is blocked by default and requires explicit opt-in:
 
 ```powershell
@@ -52,6 +66,9 @@ Notes:
 - Job state and event replay are persisted in SQLite.
 - Inference is artifact-scoped and only available for succeeded builds with matching task modality.
 - A model appears in the tested-model index only after an artifact-scoped Foundry Local inference succeeds.
+- Production mode materializes the resolved HF SHA locally, runs the verified Mobius f32 + Olive INT4
+  argument-array contracts with bounded timeouts, validates ONNX/ORT/OGA, creates an immutable
+  BYOM cache package, and records tested status only after Foundry Local SDK chat succeeds.
 - Missing build or inference adapters report structured `not_verified`/`INFERENCE_NOT_IMPLEMENTED`
   results; the service never substitutes fixture success.
 - ASR remains visible for discovery, but preflight reports the verified Whisper `genai_config`

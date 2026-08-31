@@ -731,6 +731,7 @@ components:
         prompt:
           type: string
           minLength: 1
+          maxLength: 8192
         max_tokens:
           type: integer
           minimum: 1
@@ -796,7 +797,7 @@ components:
 
     TestedModel:
       type: object
-      required: [model_id, display_name, task, artifact_id, verified_utc, evidence, tested_status]
+      required: [model_id, display_name, task, artifact_id, revision, task_profile, verified_utc, evidence, tested_status]
       properties:
         model_id:
           type: string
@@ -805,6 +806,10 @@ components:
         task:
           $ref: "#/components/schemas/CandidateModality"
         artifact_id:
+          type: string
+        revision:
+          type: string
+        task_profile:
           type: string
         verified_utc:
           type: string

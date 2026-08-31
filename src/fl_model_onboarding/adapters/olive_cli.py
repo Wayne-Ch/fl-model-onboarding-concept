@@ -10,7 +10,7 @@ class OliveCliAdapter:
     def __init__(self, runner: SafeSubprocessRunner | None = None) -> None:
         self._runner = runner or SafeSubprocessRunner()
 
-    def auto_opt_command(
+    def optimize_command(
         self,
         input_model_or_dir: Path,
         output_dir: Path,
@@ -20,7 +20,7 @@ class OliveCliAdapter:
     ) -> CommandSpec:
         argv: list[str] = [
             "olive",
-            "auto-opt",
+            "optimize",
             "--model_name_or_path",
             str(input_model_or_dir),
             "--output_path",
@@ -29,13 +29,16 @@ class OliveCliAdapter:
             device,
             "--provider",
             provider,
-            "--use_ort_genai",
+            "--task",
+            "text-generation-with-past",
             "--log_level",
             "1",
         ]
         if precision:
             argv.extend(["--precision", precision])
         return CommandSpec(argv=tuple(argv), timeout_seconds=14_400)
+
+    auto_opt_command = optimize_command
 
     def run_auto_opt(
         self,

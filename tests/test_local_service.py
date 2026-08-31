@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import sqlite3
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,7 @@ from fl_model_onboarding.local_service import (
     enforce_loopback_host,
     is_loopback_host,
 )
+from fl_model_onboarding.production_runner import production_package_paths
 from fl_model_onboarding.state_machine import transition
 
 _TOOLS = (
@@ -347,5 +349,71 @@ def test_blocking_preflight_records_tool_unavailable(tmp_path: Path) -> None:
         assert completed.state == JobState.FAILED
         assert completed.failure is not None
         assert completed.failure.classification == FailureClassification.TOOL_UNAVAILABLE
+    finally:
+        service.close()
+
+
+def test_restart_marks_interrupted_job_failed_instead_of_requeueing_invalid_state(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path, build_stage_runner=SlowCancellableRunner())
+    job, _ = service.create_build(_submission(), idempotency_key="interrupted")
+    deadline = time.time() + 5
+    while time.time() < deadline and service.get_build(job.job_id).state == JobState.QUEUED:
+        time.sleep(0.02)
+    interrupted = service.get_build(job.job_id)
+    staging, package = production_package_paths(interrupted)
+    staging.mkdir(parents=True)
+    package.mkdir(parents=True)
+    service.close()
+
+    resumed = _service(tmp_path)
+    try:
+        recovered = resumed.get_build(job.job_id)
+        assert recovered.state == JobState.FAILED
+        assert recovered.failure is not None
+        assert recovered.failure.classification == FailureClassification.NOT_VERIFIED
+        assert "not resumed" in recovered.failure.message
+        assert not staging.exists()
+        assert not package.exists()
+    finally:
+        resumed.close()
+
+
+def test_legacy_tested_index_is_migrated_to_profile_table(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE tested_models (
+                model_id TEXT PRIMARY KEY,
+                task TEXT NOT NULL,
+                artifact_id TEXT NOT NULL,
+                verified_utc TEXT NOT NULL,
+                evidence TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO tested_models
+                (model_id, task, artifact_id, verified_utc, evidence)
+            VALUES
+                ('owner/model', 'llm', 'artifact-1', '2026-08-31T00:00:00+00:00',
+                 'successful_fl_inference')
+            """
+        )
+
+    service = LocalOnboardingService(
+        db_path=db_path,
+        workspace_base=tmp_path / "w",
+        model_cache_dir=tmp_path / "cache",
+        preflight_inspector=PassingPreflightInspector(),  # type: ignore[arg-type]
+    )
+    try:
+        tested = service.health()["compatibility_index"]
+        assert tested[0]["model_id"] == "owner/model"  # type: ignore[index]
+        assert tested[0]["revision"] == ""  # type: ignore[index]
+        assert tested[0]["task_profile"] == ""  # type: ignore[index]
     finally:
         service.close()
