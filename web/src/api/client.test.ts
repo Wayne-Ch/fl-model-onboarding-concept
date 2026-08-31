@@ -152,13 +152,17 @@ describe("api client", () => {
     expect(preflightBody).toEqual({
       model_id: "owner/model",
       task: "llm",
-      task_profile: "llm-cpu-default"
+      task_profile: "llm-cpu-default",
+      allow_experimental: false
     });
     expect(buildBody).toEqual({
       model_id: "owner/model",
       task: "llm",
       task_profile: "llm-cpu-int4",
-      skip_olive: false
+      skip_olive: false,
+      allow_experimental: false,
+      optimization_strategy: "mobius-olive",
+      optimization_precision: "int4"
     });
   });
 });

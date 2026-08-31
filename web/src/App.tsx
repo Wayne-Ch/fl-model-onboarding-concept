@@ -15,6 +15,7 @@ const POLL_INTERVAL_MS = 2500;
 
 interface LoadedModel {
   detailLoaded: boolean;
+  experimentalOptedIn: boolean;
   preflight: ModelPreflight;
   summary: ModelSummary;
   metadata: {
@@ -26,6 +27,12 @@ interface LoadedModel {
     likelyCatalogMatch: string;
     mobiusSupport: string;
     mobiusRisk: string;
+    recipeStatus: string;
+    recipeReason: string;
+    recipeId?: string;
+    recipeVersion?: string;
+    requiresExperimentalOptIn: boolean;
+    buildableWithExperimentalOptIn: boolean;
     candidateOutcome?: CandidateOutcome;
   };
 }
@@ -153,6 +160,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
   const [strategy, setStrategy] = useState<string>("");
   const [precision, setPrecision] = useState<string>("");
   const [audioFormat, setAudioFormat] = useState<string>("");
+  const [allowExperimentalOptIn, setAllowExperimentalOptIn] = useState<boolean>(false);
 
   const [startingBuild, setStartingBuild] = useState<boolean>(false);
   const [buildError, setBuildError] = useState<string | undefined>();
@@ -183,6 +191,9 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     }
     if (selectedModel.summary.gated) {
       return "Gated model access is rejected in this POC.";
+    }
+    if (selectedModel.preflight.requiresExperimentalOptIn && !selectedModel.experimentalOptedIn) {
+      return selectedModel.preflight.recipeReason;
     }
     if (!selectedModel.preflight.buildable) {
       return selectedModel.preflight.blockedReason ?? "Backend marked this model as not buildable.";
@@ -223,9 +234,20 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
   }, []);
 
   const loadModelContext = useCallback(
-    async (model: ModelSummary) => {
+    async (
+      model: ModelSummary,
+      options?: {
+        forceReload?: boolean;
+        experimentalOptIn?: boolean;
+      }
+    ) => {
+      const experimentalOptIn = options?.experimentalOptIn ?? allowExperimentalOptIn;
       const existing = modelCache[model.id];
-      if (existing) {
+      if (
+        existing &&
+        options?.forceReload !== true &&
+        existing.experimentalOptedIn === experimentalOptIn
+      ) {
         applyPreflightDefaults(existing.preflight);
         return;
       }
@@ -240,7 +262,8 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
         const preflight = await client.preflightModel({
           modelId: model.id,
           task: detail.task === "asr" ? "asr" : "llm",
-          target: "cpu"
+          target: "cpu",
+          allowExperimental: experimentalOptIn
         });
         if (selectionTokenRef.current !== token) {
           return;
@@ -256,6 +279,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
 
         const loaded: LoadedModel = {
           detailLoaded: true,
+          experimentalOptedIn: experimentalOptIn,
           summary: {
             id: detail.id,
             displayName: detail.displayName,
@@ -273,6 +297,12 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             likelyCatalogMatch: detail.likelyCatalogMatch,
             mobiusSupport: detail.mobiusSupport,
             mobiusRisk: detail.mobiusRisk,
+            recipeStatus: preflight.recipeStatus || detail.recipeStatus,
+            recipeReason: preflight.recipeReason || detail.recipeReason,
+            recipeId: preflight.recipeId || detail.recipeId,
+            recipeVersion: preflight.recipeVersion || detail.recipeVersion,
+            requiresExperimentalOptIn: preflight.requiresExperimentalOptIn,
+            buildableWithExperimentalOptIn: detail.buildableWithExperimentalOptIn,
             candidateOutcome: detail.candidateOutcome ?? preflight.candidateOutcome
           }
         };
@@ -290,7 +320,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
         }
       }
     },
-    [applyPreflightDefaults, client, modelCache]
+    [allowExperimentalOptIn, applyPreflightDefaults, client, modelCache]
   );
 
   const onSearch = useCallback(
@@ -366,6 +396,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
       modelId: selectedModel.summary.id,
       task: selectedModel.summary.task === "asr" ? "asr" : "llm",
       target: "cpu",
+      allowExperimental: allowExperimentalOptIn,
       optimization: {
         strategy,
         precision,
@@ -392,7 +423,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     } finally {
       setStartingBuild(false);
     }
-  }, [audioFormat, blockedReason, client, refreshJob, selectedModel, strategy, precision]);
+  }, [allowExperimentalOptIn, audioFormat, blockedReason, client, refreshJob, selectedModel, strategy, precision]);
 
   const onCancelBuild = useCallback(async () => {
     if (!currentJob || isTerminalStage(currentJob.stage) || !currentJob.cancellable) {
@@ -506,6 +537,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             onChange={(event) => {
               const nextId = event.target.value;
               setSelectedModelId(nextId);
+              setAllowExperimentalOptIn(false);
               setCurrentJob(undefined);
               setEvents([]);
               setBuildError(undefined);
@@ -516,7 +548,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
               }
               const model = allOptions.get(nextId);
               if (model) {
-                void loadModelContext(model);
+                void loadModelContext(model, { experimentalOptIn: false });
               }
             }}
             disabled={healthState !== "ready"}
@@ -601,9 +633,45 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
                     : selectedModel.summary.testedStatus}
                 </dd>
               </div>
+              <div>
+                <dt>Recipe</dt>
+                <dd>
+                  {selectedModel.metadata.recipeId
+                    ? `${selectedModel.metadata.recipeId}@${selectedModel.metadata.recipeVersion ?? "unknown"}`
+                    : "Not registered"}
+                </dd>
+              </div>
+              <div>
+                <dt>Recipe status</dt>
+                <dd>{selectedModel.metadata.recipeStatus}</dd>
+              </div>
+              <div>
+                <dt>Recipe reason</dt>
+                <dd>{selectedModel.metadata.recipeReason}</dd>
+              </div>
             </dl>
             {selectedModel.metadata.candidateOutcome ? (
               <CandidateOutcomeDetails outcome={selectedModel.metadata.candidateOutcome} />
+            ) : null}
+            {selectedModel.metadata.recipeStatus === "experimental" ? (
+              <div>
+                <label htmlFor="experimental-opt-in">
+                  <input
+                    id="experimental-opt-in"
+                    type="checkbox"
+                    checked={allowExperimentalOptIn}
+                    onChange={(event) => {
+                      const next = event.target.checked;
+                      setAllowExperimentalOptIn(next);
+                      const model = allOptions.get(selectedModel.summary.id);
+                      if (model) {
+                        void loadModelContext(model, { forceReload: true, experimentalOptIn: next });
+                      }
+                    }}
+                  />{" "}
+                  Enable experimental recipe opt-in for this model
+                </label>
+              </div>
             ) : null}
             {blockedReason ? (
               <p className="warning" role="alert">

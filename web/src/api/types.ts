@@ -1,6 +1,7 @@
 export type ModelTask = "llm" | "asr" | "unknown";
 export type TestedStatus = "tested" | "not_verified";
 export type BuildStage = string;
+export type RecipeStatus = "verified" | "experimental" | "blocked" | "unregistered";
 
 export interface ModelSummary {
   id: string;
@@ -8,6 +9,14 @@ export interface ModelSummary {
   task: ModelTask;
   testedStatus: TestedStatus;
   gated: boolean;
+}
+
+export interface SupportedOptimization {
+  strategy: string;
+  precision: string;
+  taskProfile: string;
+  skipOlive: boolean;
+  default: boolean;
 }
 
 export interface CandidateGateOutcome {
@@ -53,6 +62,13 @@ export interface ModelDetail {
   mobiusSupport: string;
   mobiusRisk: string;
   testedStatus: TestedStatus;
+  recipeStatus: RecipeStatus;
+  recipeReason: string;
+  recipeId?: string;
+  recipeVersion?: string;
+  requiresExperimentalOptIn: boolean;
+  buildableWithExperimentalOptIn: boolean;
+  supportedOptimizations: SupportedOptimization[];
   candidateOutcome?: CandidateOutcome;
 }
 
@@ -68,6 +84,12 @@ export interface ModelPreflight {
   defaultStrategy?: string;
   defaultPrecision?: string;
   defaultAudioFormat?: string;
+  recipeStatus: RecipeStatus;
+  recipeReason: string;
+  recipeId?: string;
+  recipeVersion?: string;
+  requiresExperimentalOptIn: boolean;
+  supportedOptimizations: SupportedOptimization[];
   candidateOutcome?: CandidateOutcome;
 }
 
@@ -75,6 +97,7 @@ export interface BuildRequest {
   modelId: string;
   task: Exclude<ModelTask, "unknown">;
   target: "cpu";
+  allowExperimental?: boolean;
   optimization: {
     strategy: string;
     precision: string;
@@ -148,6 +171,7 @@ export interface ApiClient {
     modelId: string;
     task: Exclude<ModelTask, "unknown">;
     target: "cpu";
+    allowExperimental?: boolean;
   }): Promise<ModelPreflight>;
   startBuild(request: BuildRequest, idempotencyKey: string): Promise<BuildStatus>;
   getBuildStatus(jobId: string): Promise<BuildStatus>;

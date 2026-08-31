@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +22,12 @@ from fl_model_onboarding.contracts import (
 )
 from fl_model_onboarding.local_api import create_app
 from fl_model_onboarding.local_service import BuildSubmission, LocalOnboardingService
+from fl_model_onboarding.recipes import (
+    DEFAULT_MODEL_RECIPES,
+    GRANITE_MODEL_ID,
+    RecipeRegistry,
+    RecipeStatus,
+)
 from fl_model_onboarding.state_machine import transition
 
 _TOOLS = (
@@ -197,6 +204,7 @@ def _service(
     stage_runner=None,
     text_backend=None,
     asr_backend=None,
+    recipe_registry: RecipeRegistry | None = None,
 ) -> LocalOnboardingService:
     return LocalOnboardingService(
         db_path=tmp_path / "state.sqlite3",
@@ -208,6 +216,39 @@ def _service(
         build_stage_runner=stage_runner,  # type: ignore[arg-type]
         text_inference_backend=text_backend,  # type: ignore[arg-type]
         asr_inference_backend=asr_backend,  # type: ignore[arg-type]
+        recipe_registry=recipe_registry,
+    )
+
+
+def _experimental_granite_registry() -> RecipeRegistry:
+    granite = next(recipe for recipe in DEFAULT_MODEL_RECIPES if recipe.id == "granite-3.3-2b-cpu-int4")
+    experimental = replace(
+        granite,
+        status=RecipeStatus.EXPERIMENTAL,
+        status_reason="Recipe requires explicit experimental opt-in.",
+        verified_revision=None,
+    )
+    return RecipeRegistry(
+        tuple(
+            experimental if recipe.id == experimental.id else recipe
+            for recipe in DEFAULT_MODEL_RECIPES
+        )
+    )
+
+
+def _asr_enabled_registry() -> RecipeRegistry:
+    distil = next(recipe for recipe in DEFAULT_MODEL_RECIPES if recipe.id == "distil-whisper-cpu-fp16")
+    verified = replace(
+        distil,
+        status=RecipeStatus.VERIFIED,
+        status_reason="ASR recipe forced to verified for API route tests.",
+        verified_revision=distil.preferred_revision,
+    )
+    return RecipeRegistry(
+        tuple(
+            verified if recipe.id == verified.id else recipe
+            for recipe in DEFAULT_MODEL_RECIPES
+        )
     )
 
 
@@ -273,6 +314,84 @@ def test_model_search_detail_and_policy_blockers(tmp_path: Path) -> None:
         remote_body = remote.json()
         assert remote_body["buildable"] is False
         assert "remote_code_blocked" in remote_body["build_blockers"]
+
+
+def test_model_detail_exposes_recipe_status_and_unknown_models_stay_unbuildable(tmp_path: Path) -> None:
+    app = create_app(service=_service(tmp_path))
+    with TestClient(app) as client:
+        known = client.get(
+            "/api/models/detail",
+            params={"id": "HuggingFaceTB/SmolLM2-1.7B-Instruct"},
+        )
+        assert known.status_code == 200
+        known_body = known.json()
+        assert known_body["recipe_status"] == "verified"
+        assert known_body["buildable"] is True
+        assert known_body["supported_optimizations"][0]["task_profile"] == "llm-cpu-int4"
+
+        unknown = client.get("/api/models/detail", params={"id": "owner/unregistered-model"})
+        assert unknown.status_code == 200
+        unknown_body = unknown.json()
+        assert unknown_body["recipe_status"] == "unregistered"
+        assert unknown_body["buildable"] is False
+        assert "recipe_unregistered" in unknown_body["build_blockers"]
+
+
+def test_experimental_recipe_requires_opt_in_for_preflight_and_build(tmp_path: Path) -> None:
+    app = create_app(service=_service(tmp_path, recipe_registry=_experimental_granite_registry()))
+    with TestClient(app) as client:
+        blocked = client.post(
+            "/api/models/preflight",
+            json={
+                "model_id": GRANITE_MODEL_ID,
+                "task": "llm",
+                "task_profile": "llm-cpu-int4",
+            },
+        )
+        assert blocked.status_code == 200
+        blocked_body = blocked.json()
+        assert blocked_body["ok"] is False
+        assert blocked_body["recipe_status"] == "experimental"
+        assert blocked_body["requires_experimental_opt_in"] is True
+
+        allowed = client.post(
+            "/api/models/preflight",
+            json={
+                "model_id": GRANITE_MODEL_ID,
+                "task": "llm",
+                "task_profile": "llm-cpu-int4",
+                "allow_experimental": True,
+            },
+        )
+        assert allowed.status_code == 200
+        allowed_body = allowed.json()
+        assert allowed_body["recipe_status"] == "experimental"
+        assert allowed_body["requires_experimental_opt_in"] is False
+
+        denied_build = client.post(
+            "/api/builds",
+            headers={"Idempotency-Key": "granite-denied"},
+            json={
+                "model_id": GRANITE_MODEL_ID,
+                "task": "llm",
+                "task_profile": "llm-cpu-int4",
+            },
+        )
+        assert denied_build.status_code == 400
+        assert denied_build.json()["code"] == "EXPERIMENTAL_RECIPE_OPT_IN_REQUIRED"
+
+        allowed_build = client.post(
+            "/api/builds",
+            headers={"Idempotency-Key": "granite-allowed"},
+            json={
+                "model_id": GRANITE_MODEL_ID,
+                "task": "llm",
+                "task_profile": "llm-cpu-int4",
+                "allow_experimental": True,
+            },
+        )
+        assert allowed_build.status_code == 200
+        assert allowed_build.json()["job"]["request"]["recipe_status"] == "experimental"
 
 
 def test_preflight_build_idempotency_and_event_polling(tmp_path: Path) -> None:
@@ -407,6 +526,7 @@ def test_artifact_scoped_inference_routes(tmp_path: Path) -> None:
             stage_runner=DeterministicSuccessRunner(),
             text_backend=EchoTextBackend(),
             asr_backend=EchoAsrBackend(),
+            recipe_registry=_asr_enabled_registry(),
         )
     )
     with TestClient(app) as client:
@@ -476,7 +596,8 @@ def test_tested_model_index_requires_successful_inference_and_persists(tmp_path:
     )
     app = create_app(service=service)
     with TestClient(app) as client:
-        unverified = client.get("/api/models/detail", params={"id": "owner/model"}).json()
+        model_id = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
+        unverified = client.get("/api/models/detail", params={"id": model_id}).json()
         assert unverified["verification"] == {
             "status": "not_verified",
             "evidence": "none",
@@ -487,7 +608,7 @@ def test_tested_model_index_requires_successful_inference_and_persists(tmp_path:
         created = client.post(
             "/api/builds",
             headers={"Idempotency-Key": "tested-index"},
-            json={"model_id": "owner/model", "task": "llm", "task_profile": "llm-cpu-int4"},
+            json={"model_id": model_id, "task": "llm", "task_profile": "llm-cpu-int4"},
         )
         completed = _wait_for_terminal(client, created.json()["job"]["job_id"])
         assert completed["state"] == "succeeded"
@@ -501,7 +622,7 @@ def test_tested_model_index_requires_successful_inference_and_persists(tmp_path:
         assert inferred.status_code == 200
         tested = client.get("/api/health").json()["compatibility_index"]
         assert len(tested) == 1
-        assert tested[0]["model_id"] == "owner/model"
+        assert tested[0]["model_id"] == model_id
         assert tested[0]["evidence"] == "successful_fl_inference"
 
     restarted = LocalOnboardingService(
@@ -513,7 +634,7 @@ def test_tested_model_index_requires_successful_inference_and_persists(tmp_path:
         preflight_inspector=PassingPreflightInspector(),  # type: ignore[arg-type]
     )
     try:
-        assert restarted.health()["compatibility_index"][0]["model_id"] == "owner/model"  # type: ignore[index]
+        assert restarted.health()["compatibility_index"][0]["model_id"] == model_id  # type: ignore[index]
     finally:
         restarted.close()
 

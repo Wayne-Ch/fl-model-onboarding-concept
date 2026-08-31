@@ -28,6 +28,14 @@ const gatedModel: ModelSummary = {
   gated: true
 };
 
+const experimentalModel: ModelSummary = {
+  id: "ibm-granite/granite-3.3-2b-instruct",
+  displayName: "Granite 3.3 2B",
+  task: "llm",
+  testedStatus: "not_verified",
+  gated: false
+};
+
 const asrBlockedOutcome: CandidateOutcome = {
   modelId: "distil-whisper/distil-medium.en",
   revision: "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7",
@@ -53,6 +61,7 @@ const asrBlockedOutcome: CandidateOutcome = {
 };
 
 function detailFor(model: ModelSummary): ModelDetail {
+  const isExperimental = model.id === experimentalModel.id;
   return {
     id: model.id,
     displayName: model.displayName,
@@ -66,11 +75,25 @@ function detailFor(model: ModelSummary): ModelDetail {
     likelyCatalogMatch: model.id,
     mobiusSupport: "supported",
     mobiusRisk: "low",
-    testedStatus: model.testedStatus
+    testedStatus: model.testedStatus,
+    recipeStatus: isExperimental ? "experimental" : model.task === "asr" ? "blocked" : "verified",
+    recipeReason: isExperimental
+      ? "Recipe requires explicit experimental opt-in."
+      : model.task === "asr"
+        ? "Blocked for this ASR profile."
+        : "Verified recipe.",
+    recipeId: isExperimental ? "granite-3.3-2b-cpu-int4" : "smollm2-1.7b-cpu-int4",
+    recipeVersion: "1.0.0",
+    requiresExperimentalOptIn: isExperimental,
+    buildableWithExperimentalOptIn: isExperimental,
+    supportedOptimizations: isExperimental
+      ? [{ strategy: "mobius-olive", precision: "INT4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
+      : [{ strategy: "Auto", precision: "INT4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
   };
 }
 
 function preflightFor(model: ModelSummary): ModelPreflight {
+  const isExperimental = model.id === experimentalModel.id;
   if (model.task === "asr") {
     return {
       modelId: model.id,
@@ -83,20 +106,36 @@ function preflightFor(model: ModelSummary): ModelPreflight {
       verifiedAudioFormats: ["audio/wav", "audio/flac"],
       defaultStrategy: "Auto",
       defaultPrecision: "FP32",
-      defaultAudioFormat: "audio/wav"
+      defaultAudioFormat: "audio/wav",
+      recipeStatus: "blocked",
+      recipeReason: "Blocked for this ASR profile.",
+      recipeId: "distil-whisper-cpu-fp16",
+      recipeVersion: "1.0.0",
+      requiresExperimentalOptIn: false,
+      supportedOptimizations: [
+        { strategy: "Auto", precision: "FP32", taskProfile: "asr-cpu-fp16", skipOlive: false, default: true }
+      ]
     };
   }
   return {
     modelId: model.id,
     task: "llm",
     target: "cpu",
-    buildable: !model.gated,
+    buildable: !model.gated && !isExperimental,
     blockedReason: model.gated ? "Gated model access is rejected in this POC." : undefined,
-    strategies: ["Auto", "Olive"],
+    strategies: isExperimental ? ["mobius-olive"] : ["Auto", "Olive"],
     precisions: ["INT4", "FP16"],
     verifiedAudioFormats: [],
-    defaultStrategy: "Auto",
-    defaultPrecision: "INT4"
+    defaultStrategy: isExperimental ? "mobius-olive" : "Auto",
+    defaultPrecision: "INT4",
+    recipeStatus: isExperimental ? "experimental" : "verified",
+    recipeReason: isExperimental ? "Recipe requires explicit experimental opt-in." : "Verified recipe.",
+    recipeId: isExperimental ? "granite-3.3-2b-cpu-int4" : "smollm2-1.7b-cpu-int4",
+    recipeVersion: "1.0.0",
+    requiresExperimentalOptIn: isExperimental,
+    supportedOptimizations: isExperimental
+      ? [{ strategy: "mobius-olive", precision: "INT4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
+      : [{ strategy: "Auto", precision: "INT4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
   };
 }
 
@@ -129,23 +168,38 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
     if (modelId === gatedModel.id) {
       return detailFor(gatedModel);
     }
+    if (modelId === experimentalModel.id) {
+      return detailFor(experimentalModel);
+    }
     return detailFor(llmModel);
   });
 
-  const preflightModel = vi.fn(async ({ modelId }: { modelId: string }) => {
-    if (modelId === asrModel.id) {
-      return preflightFor(asrModel);
+  const preflightModel = vi.fn(
+    async ({ modelId, allowExperimental }: { modelId: string; allowExperimental?: boolean }) => {
+      if (modelId === asrModel.id) {
+        return preflightFor(asrModel);
+      }
+      if (modelId === gatedModel.id) {
+        return preflightFor(gatedModel);
+      }
+      if (modelId === experimentalModel.id) {
+        return {
+          ...preflightFor(experimentalModel),
+          buildable: Boolean(allowExperimental),
+          requiresExperimentalOptIn: !allowExperimental,
+          recipeReason: allowExperimental
+            ? "Experimental recipe opt-in enabled."
+            : "Recipe requires explicit experimental opt-in."
+        };
+      }
+      return preflightFor(llmModel);
     }
-    if (modelId === gatedModel.id) {
-      return preflightFor(gatedModel);
-    }
-    return preflightFor(llmModel);
-  });
+  );
 
   const base: ApiClient = {
     config: { baseUrl: "http://127.0.0.1:8080", fixtureMode: false },
     getHealth: vi.fn(async () => health),
-    searchModels: vi.fn(async () => [asrModel, gatedModel]),
+    searchModels: vi.fn(async () => [asrModel, gatedModel, experimentalModel]),
     getModelDetail,
     preflightModel,
     startBuild: vi.fn(async () => statusFor(llmModel, "queued")),
@@ -211,6 +265,28 @@ describe("OnboardingShell", () => {
 
     await screen.findByText("Gated model access is rejected in this POC.");
     expect(screen.getByRole("button", { name: "Build for CPU" })).toBeDisabled();
+  });
+
+  it("requires explicit opt-in before experimental recipes are buildable", async () => {
+    const client = createClient();
+    const user = userEvent.setup();
+    render(<OnboardingShell client={client} />);
+
+    await screen.findByText(/Connected/);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.selectOptions(screen.getByLabelText("Model"), experimentalModel.id);
+
+    const optInWarnings = await screen.findAllByText(/Recipe requires explicit experimental opt-in/);
+    expect(optInWarnings.length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Build for CPU" })).toBeDisabled();
+
+    await user.click(screen.getByLabelText("Enable experimental recipe opt-in for this model"));
+    await waitFor(() =>
+      expect(client.preflightModel).toHaveBeenCalledWith(
+        expect.objectContaining({ modelId: experimentalModel.id, allowExperimental: true })
+      )
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Build for CPU" })).not.toBeDisabled());
   });
 
   it("keeps the verified ASR blocker visible and out of tested success", async () => {

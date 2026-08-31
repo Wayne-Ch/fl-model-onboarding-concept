@@ -12,7 +12,9 @@ from fl_model_onboarding.candidates import PHASE0_CANDIDATES
 from fl_model_onboarding.contracts import (
     BuildJob,
     BuildRequest,
+    CandidateModality,
     JobState,
+    ModelCandidate,
     PreflightResult,
     ToolAvailability,
     ValidationStatus,
@@ -23,6 +25,7 @@ from fl_model_onboarding.production_runner import (
     SMOLLM2_REVISION,
     production_package_paths,
 )
+from fl_model_onboarding.recipes import DISTIL_WHISPER_MODEL_ID
 from fl_model_onboarding.state_machine import transition
 
 
@@ -211,6 +214,39 @@ def test_production_runner_rejects_unverified_profile_without_running_tools(tmp_
     assert job.state == JobState.FAILED
     assert job.failure is not None
     assert "llm-cpu-int4" in job.failure.message
+    assert process_runner.specs == []
+
+
+def test_production_runner_rejects_non_verified_recipe_without_running_tools(tmp_path: Path) -> None:
+    request = BuildRequest(
+        candidate=ModelCandidate(
+            key="distil-whisper-cpu-fp16",
+            huggingface_model_id=DISTIL_WHISPER_MODEL_ID,
+            modality=CandidateModality.ASR,
+            recommended_mobius_dtype="f32",
+            recommended_olive_precision="fp32",
+            notes="blocked recipe",
+        ),
+        workspace_root=tmp_path / "w",
+        model_cache_dir=tmp_path / "cache",
+        output_dir=tmp_path / "w" / "output",
+        task_profile="asr-cpu-fp16",
+        hf_revision="6e61418885eaf4d5cc9f64e508e80ac5b4c052b7",
+    )
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="distil-blocked", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=PinnedSnapshot(),  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert job.failure is not None
+    assert "verified" in job.failure.message
     assert process_runner.specs == []
 
 

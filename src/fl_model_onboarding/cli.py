@@ -56,6 +56,9 @@ def _submission_from_args(args: argparse.Namespace) -> BuildSubmission:
         task_profile=args.task_profile,
         hf_revision=args.hf_revision,
         skip_olive=bool(args.skip_olive),
+        allow_experimental=bool(getattr(args, "allow_experimental", False)),
+        optimization_strategy=getattr(args, "optimization_strategy", None),
+        optimization_precision=getattr(args, "optimization_precision", None),
     )
 
 
@@ -184,6 +187,11 @@ def _create_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--task-profile", default="default")
     doctor.add_argument("--hf-revision")
     doctor.add_argument("--skip-olive", action="store_true")
+    doctor.add_argument(
+        "--allow-experimental",
+        action="store_true",
+        help="Opt in to preflight/build for recipes marked experimental.",
+    )
 
     model = sub.add_parser("model", help="Model operations.")
     model_sub = model.add_subparsers(dest="model_command", required=True)
@@ -204,6 +212,11 @@ def _create_parser() -> argparse.ArgumentParser:
     model_preflight.add_argument("--task-profile", default="default")
     model_preflight.add_argument("--hf-revision")
     model_preflight.add_argument("--skip-olive", action="store_true")
+    model_preflight.add_argument(
+        "--allow-experimental",
+        action="store_true",
+        help="Opt in to preflight/build for recipes marked experimental.",
+    )
 
     build = sub.add_parser("build", help="Build job operations.")
     build_sub = build.add_subparsers(dest="build_command", required=True)
@@ -215,6 +228,13 @@ def _create_parser() -> argparse.ArgumentParser:
     build_create.add_argument("--task-profile", default="default")
     build_create.add_argument("--hf-revision")
     build_create.add_argument("--skip-olive", action="store_true")
+    build_create.add_argument(
+        "--allow-experimental",
+        action="store_true",
+        help="Opt in to build profiles marked experimental.",
+    )
+    build_create.add_argument("--optimization-strategy")
+    build_create.add_argument("--optimization-precision")
     build_create.add_argument("--idempotency-key", required=True)
 
     build_status = build_sub.add_parser("status", help="Get build status.")

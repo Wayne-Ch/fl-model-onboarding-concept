@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import sys
 import uuid
@@ -26,9 +27,17 @@ from .contracts import (
     ValidationStatus,
 )
 from .state_machine import fail_job, transition
+from .recipes import (
+    DEFAULT_RECIPE_REGISTRY,
+    SMOLLM2_MODEL_ID as VERIFIED_SMOLLM2_MODEL_ID,
+    SMOLLM2_VERIFIED_REVISION,
+    ModelRecipe,
+    RecipeRegistry,
+    RecipeStatus,
+)
 
-SMOLLM2_MODEL_ID = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
-SMOLLM2_REVISION = "31b70e2e869a7173562077fd711b654946d38674"
+SMOLLM2_MODEL_ID = VERIFIED_SMOLLM2_MODEL_ID
+SMOLLM2_REVISION = SMOLLM2_VERIFIED_REVISION
 
 
 def _result_payload(result: CommandResult) -> dict[str, object]:
@@ -110,12 +119,14 @@ class ProductionBuildStageRunner:
         olive_timeout_seconds: int = 5400,
         runtime_timeout_seconds: int = 900,
         model_acquisition: HuggingFaceAcquisitionClient | None = None,
+        recipe_registry: RecipeRegistry | None = None,
     ) -> None:
         self._process_runner = process_runner
         self._build_timeout_seconds = build_timeout_seconds
         self._olive_timeout_seconds = olive_timeout_seconds
         self._runtime_timeout_seconds = runtime_timeout_seconds
         self._model_acquisition = model_acquisition or HuggingFaceAcquisitionAdapter()
+        self._recipe_registry = recipe_registry or DEFAULT_RECIPE_REGISTRY
 
     def run(
         self,
@@ -124,7 +135,7 @@ class ProductionBuildStageRunner:
         persist: Callable[[], None],
         cancellation_event: Event,
     ) -> None:
-        staging_dir, package_dir = production_package_paths(job)
+        staging_dir, package_dir = production_package_paths(job, recipe_registry=self._recipe_registry)
         staging_preexisting = staging_dir.exists()
         package_preexisting = package_dir.exists()
         try:
@@ -160,21 +171,43 @@ class ProductionBuildStageRunner:
         cancellation_event: Event,
     ) -> None:
         request = job.request
-        if request.candidate.modality != CandidateModality.LLM or (
-            request.candidate.huggingface_model_id != SMOLLM2_MODEL_ID
-        ):
+        recipe_match = self._recipe_registry.resolve(
+            model_id=request.candidate.huggingface_model_id,
+            modality=request.candidate.modality,
+            task_profile=request.task_profile,
+            allow_experimental=True,
+        )
+        recipe = recipe_match.recipe
+        if recipe is None:
+            raise RuntimeError(recipe_match.reason)
+        if recipe.status != RecipeStatus.VERIFIED:
             raise RuntimeError(
-                "Production execution is verified only for HuggingFaceTB/SmolLM2-1.7B-Instruct."
+                f"Production execution is verified only for recipe status 'verified'; "
+                f"received '{recipe.id}' ({recipe.status.value})."
             )
-        if request.hf_revision != SMOLLM2_REVISION:
+        if recipe.verified_revision is None:
             raise RuntimeError(
-                f"Production execution requires pinned revision {SMOLLM2_REVISION}; "
+                f"Verified recipe '{recipe.id}' is missing a pinned verified revision."
+            )
+        if request.hf_revision != recipe.verified_revision:
+            raise RuntimeError(
+                f"Production execution requires pinned revision {recipe.verified_revision}; "
                 f"received {request.hf_revision or 'none'}."
             )
-        if request.task_profile != "llm-cpu-int4" or request.skip_olive:
-            raise RuntimeError(
-                "Production execution requires task_profile=llm-cpu-int4 with Olive enabled."
+        optimization = recipe.choice_for_profile(request.task_profile, request.skip_olive)
+        if optimization is None:
+            supported = ", ".join(
+                f"{choice.task_profile}/skip_olive={choice.skip_olive}"
+                for choice in recipe.optimization_choices
             )
+            raise RuntimeError(
+                f"Recipe '{recipe.id}' does not support task_profile={request.task_profile} "
+                f"with skip_olive={request.skip_olive}. Supported: {supported or 'none'}."
+            )
+        if request.candidate.modality != CandidateModality.LLM:
+            raise RuntimeError("Production execution currently supports LLM runtime validation only.")
+        if recipe.olive is None:
+            raise RuntimeError(f"Recipe '{recipe.id}' requires Olive settings for production packaging.")
 
         snapshot_dir = request.workspace_root / "snapshot"
         mobius_dir = request.workspace_root / "mobius"
@@ -185,27 +218,38 @@ class ProductionBuildStageRunner:
         transition(job, JobState.DOWNLOADING, f"Pinned Hugging Face revision {request.hf_revision}.")
         persist()
         snapshot_path = self._model_acquisition.acquire_snapshot(
-            SMOLLM2_MODEL_ID,
+            recipe.huggingface_model_id,
             snapshot_dir,
-            revision=SMOLLM2_REVISION,
+            revision=recipe.verified_revision,
         )
-        transition(job, JobState.MOBIUS_BUILDING, "Running verified Mobius CPU ort-genai f32 build.")
+        mobius_dtype = recipe.mobius.dtype or "default"
+        transition(
+            job,
+            JobState.MOBIUS_BUILDING,
+            (
+                f"Running verified Mobius {recipe.mobius.ep} {recipe.mobius.runtime} "
+                f"{mobius_dtype} build."
+            ),
+        )
         persist()
+        mobius_argv: list[str] = [
+            "mobius",
+            "build",
+            "--model",
+            str(snapshot_path),
+            "--ep",
+            recipe.mobius.ep,
+            "--runtime",
+            recipe.mobius.runtime,
+        ]
+        if recipe.mobius.task:
+            mobius_argv.extend(["--task", recipe.mobius.task])
+        if recipe.mobius.dtype:
+            mobius_argv.extend(["--dtype", recipe.mobius.dtype])
+        mobius_argv.append(str(mobius_dir))
         self._run_command(
             CommandSpec(
-                argv=(
-                    "mobius",
-                    "build",
-                    "--model",
-                    str(snapshot_path),
-                    "--ep",
-                    "cpu",
-                    "--runtime",
-                    "ort-genai",
-                    "--dtype",
-                    "f32",
-                    str(mobius_dir),
-                ),
+                argv=tuple(mobius_argv),
                 cwd=request.workspace_root,
                 timeout_seconds=self._build_timeout_seconds,
             ),
@@ -215,28 +259,40 @@ class ProductionBuildStageRunner:
 
         transition(job, JobState.MOBIUS_VALIDATING, "Mobius output created; ONNX validation follows Olive.")
         persist()
-        transition(job, JobState.OLIVE_OPTIMIZING, "Running verified Olive existing-ONNX INT4 optimization.")
+        transition(
+            job,
+            JobState.OLIVE_OPTIMIZING,
+            (
+                f"Running verified Olive {recipe.olive.input_source} "
+                f"{recipe.olive.precision or 'default'} optimization."
+            ),
+        )
         persist()
+        olive_argv: list[str] = [
+            "olive",
+            "optimize",
+            "--model_name_or_path",
+            str(mobius_dir),
+            "--task",
+            recipe.olive.task,
+            "--device",
+            recipe.olive.device,
+            "--provider",
+            recipe.olive.provider,
+        ]
+        if recipe.olive.precision:
+            olive_argv.extend(["--precision", recipe.olive.precision])
+        olive_argv.extend(
+            [
+                "--output_path",
+                str(olive_dir),
+                "--log_level",
+                recipe.olive.log_level,
+            ]
+        )
         self._run_command(
             CommandSpec(
-                argv=(
-                    "olive",
-                    "optimize",
-                    "--model_name_or_path",
-                    str(mobius_dir),
-                    "--task",
-                    "text-generation-with-past",
-                    "--device",
-                    "cpu",
-                    "--provider",
-                    "CPUExecutionProvider",
-                    "--precision",
-                    "int4",
-                    "--output_path",
-                    str(olive_dir),
-                    "--log_level",
-                    "1",
-                ),
+                argv=tuple(olive_argv),
                 cwd=request.workspace_root,
                 timeout_seconds=self._olive_timeout_seconds,
             ),
@@ -244,12 +300,13 @@ class ProductionBuildStageRunner:
             "Olive optimize",
         )
         source_dir = olive_dir
+        self._ensure_required_ancillary_files(source_dir=source_dir, recipe=recipe)
 
         transition(job, JobState.PACKAGING, "Creating immutable Foundry Local BYOM package.")
         persist()
         artifact_id = self._artifact_id(job)
-        model_name = f"smollm2-onboarding-{artifact_id[:12]}:1"
-        staging_dir, package_dir = production_package_paths(job)
+        model_name = f"{recipe.model_name_prefix}-{artifact_id[:12]}:1"
+        staging_dir, package_dir = production_package_paths(job, recipe_registry=self._recipe_registry)
         if package_dir.exists():
             raise FileExistsError(f"Immutable artifact path already exists: {package_dir}")
         if staging_dir.exists():
@@ -326,7 +383,7 @@ class ProductionBuildStageRunner:
                 description="Immutable Foundry Local BYOM model package",
             )
         )
-        transition(job, JobState.SUCCEEDED, "Verified SmolLM2 Foundry Local build and inference succeeded.")
+        transition(job, JobState.SUCCEEDED, recipe.success_message)
         job.finished_utc = datetime.now(timezone.utc)
         persist()
 
@@ -346,14 +403,43 @@ class ProductionBuildStageRunner:
     def _artifact_id(job: BuildJob) -> str:
         request = job.request
         return hashlib.sha256(
-            f"{SMOLLM2_MODEL_ID}:{request.hf_revision}:{request.task_profile}:{job.job_id}".encode()
+            f"{request.candidate.huggingface_model_id}:{request.hf_revision}:{request.task_profile}:{job.job_id}".encode()
         ).hexdigest()
 
+    @staticmethod
+    def _ensure_required_ancillary_files(*, source_dir: Path, recipe: ModelRecipe) -> None:
+        missing = [
+            rule.relative_path
+            for rule in recipe.ancillary_files
+            if rule.required and not (source_dir / rule.relative_path).exists()
+        ]
+        if missing:
+            joined = ", ".join(sorted(missing))
+            raise RuntimeError(
+                f"Recipe '{recipe.id}' packaging is missing required ancillary files: {joined}."
+            )
 
-def production_package_paths(job: BuildJob) -> tuple[Path, Path]:
+
+def production_package_paths(
+    job: BuildJob,
+    *,
+    recipe_registry: RecipeRegistry = DEFAULT_RECIPE_REGISTRY,
+) -> tuple[Path, Path]:
     artifact_id = ProductionBuildStageRunner._artifact_id(job)
     cache = job.request.model_cache_dir
+    recipe = recipe_registry.resolve(
+        model_id=job.request.candidate.huggingface_model_id,
+        modality=job.request.candidate.modality,
+        task_profile=job.request.task_profile,
+        allow_experimental=True,
+    ).recipe
+    prefix = recipe.artifact_cache_prefix if recipe else _fallback_cache_prefix(job.request.candidate.huggingface_model_id)
     return (
-        cache / f".partial-smollm2-{artifact_id[:12]}",
-        cache / f"smollm2-{artifact_id[:12]}",
+        cache / f".partial-{prefix}-{artifact_id[:12]}",
+        cache / f"{prefix}-{artifact_id[:12]}",
     )
+
+
+def _fallback_cache_prefix(model_id: str) -> str:
+    slug = re.sub(r"[^a-z0-9._-]+", "-", model_id.strip().split("/")[-1].lower())
+    return slug or "model"
