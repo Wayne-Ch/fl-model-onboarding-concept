@@ -336,6 +336,42 @@ def test_preflight_build_idempotency_and_event_polling(tmp_path: Path) -> None:
         assert empty.json()["events"] == []
 
 
+def test_asr_preflight_is_a_structured_unsupported_blocker(tmp_path: Path) -> None:
+    app = create_app(service=_service(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/models/preflight",
+            json={
+                "model_id": "distil-whisper/distil-medium.en",
+                "task": "asr",
+                "task_profile": "asr-cpu-fp16",
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["ok"] is False
+        blocker = payload["result"]["blockers"][0]
+        assert blocker["classification"] == "oga_runtime_contract_incompatible"
+        assert blocker["detail"]["decoder_input_ids"] == "parse_error"
+        outcome = payload["candidate_outcome"]
+        assert outcome["model_id"] == "distil-whisper/distil-medium.en"
+        assert outcome["revision"] == "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7"
+        assert outcome["versions"]["mobius"] == "0.1.0"
+        assert outcome["versions"]["onnxruntime_genai"] == "0.15.2"
+        assert outcome["versions"]["foundry_local_sdk"] == "1.2.4"
+        assert outcome["gate_outcomes"][-1]["status"] == "failed"
+        assert outcome["tested_status"] == "not_verified"
+        assert client.get("/api/health").json()["compatibility_index"] == []
+
+        detail = client.get(
+            "/api/models/detail",
+            params={"id": "distil-whisper/distil-medium.en"},
+        ).json()
+        assert detail["candidate_outcome"]["classification"] == (
+            "oga_runtime_contract_incompatible"
+        )
+
+
 def test_cancel_endpoint_and_conflict(tmp_path: Path) -> None:
     app = create_app(service=_service(tmp_path, stage_runner=SlowCancellableRunner()))
     with TestClient(app) as client:
@@ -429,3 +465,74 @@ def test_artifact_scoped_inference_routes(tmp_path: Path) -> None:
         )
         assert empty.status_code == 400
         assert empty.json()["code"] == "INVALID_AUDIO_PAYLOAD"
+
+
+def test_tested_model_index_requires_successful_inference_and_persists(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    service = _service(
+        tmp_path,
+        stage_runner=DeterministicSuccessRunner(),
+        text_backend=EchoTextBackend(),
+    )
+    app = create_app(service=service)
+    with TestClient(app) as client:
+        unverified = client.get("/api/models/detail", params={"id": "owner/model"}).json()
+        assert unverified["verification"] == {
+            "status": "not_verified",
+            "evidence": "none",
+            "artifact_id": None,
+            "verified_utc": None,
+        }
+
+        created = client.post(
+            "/api/builds",
+            headers={"Idempotency-Key": "tested-index"},
+            json={"model_id": "owner/model", "task": "llm", "task_profile": "llm-cpu-int4"},
+        )
+        completed = _wait_for_terminal(client, created.json()["job"]["job_id"])
+        assert completed["state"] == "succeeded"
+        assert client.get("/api/health").json()["compatibility_index"] == []
+
+        artifact_id = completed["result_artifact_id"]
+        inferred = client.post(
+            f"/api/artifacts/{artifact_id}/infer/text",
+            json={"prompt": "verify"},
+        )
+        assert inferred.status_code == 200
+        tested = client.get("/api/health").json()["compatibility_index"]
+        assert len(tested) == 1
+        assert tested[0]["model_id"] == "owner/model"
+        assert tested[0]["evidence"] == "successful_fl_inference"
+
+    restarted = LocalOnboardingService(
+        db_path=db_path,
+        workspace_base=tmp_path / "w",
+        model_cache_dir=tmp_path / "cache",
+        hf_metadata=FakeHFMetadata(),  # type: ignore[arg-type]
+        foundry_catalog=FakeFoundryCatalog(),  # type: ignore[arg-type]
+        preflight_inspector=PassingPreflightInspector(),  # type: ignore[arg-type]
+    )
+    try:
+        assert restarted.health()["compatibility_index"][0]["model_id"] == "owner/model"  # type: ignore[index]
+    finally:
+        restarted.close()
+
+
+def test_built_ui_is_served_without_replacing_repository_concept(tmp_path: Path) -> None:
+    web_dist = tmp_path / "web-dist"
+    assets = web_dist / "assets"
+    assets.mkdir(parents=True)
+    (web_dist / "index.html").write_text("<html>packaged-ui</html>", encoding="utf-8")
+    (assets / "app.js").write_text("console.log('ui')", encoding="utf-8")
+    concept_before = Path("index.html").read_bytes()
+
+    app = create_app(service=_service(tmp_path), web_dist=web_dist)
+    with TestClient(app) as client:
+        index = client.get("/")
+        asset = client.get("/assets/app.js")
+        assert index.status_code == 200
+        assert "packaged-ui" in index.text
+        assert asset.status_code == 200
+        assert "console.log" in asset.text
+
+    assert Path("index.html").read_bytes() == concept_before

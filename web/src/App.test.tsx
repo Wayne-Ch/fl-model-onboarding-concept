@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { OnboardingShell } from "./App";
-import type { ApiClient, AsrInferenceResult, BuildStatus, HealthSnapshot, JobEvent, ModelDetail, ModelPreflight, ModelSummary, TextInferenceResult } from "./api/types";
+import type { ApiClient, AsrInferenceResult, BuildStatus, CandidateOutcome, HealthSnapshot, JobEvent, ModelDetail, ModelPreflight, ModelSummary, TextInferenceResult } from "./api/types";
 
 const llmModel: ModelSummary = {
   id: "microsoft/Phi-3-mini-4k-instruct",
@@ -16,7 +16,7 @@ const asrModel: ModelSummary = {
   id: "openai/whisper-small.en",
   displayName: "Whisper Small",
   task: "asr",
-  testedStatus: "not_tested",
+  testedStatus: "not_verified",
   gated: false
 };
 
@@ -24,8 +24,32 @@ const gatedModel: ModelSummary = {
   id: "meta-llama/Llama-3.1-8B-Instruct",
   displayName: "Llama 3.1 8B",
   task: "llm",
-  testedStatus: "not_tested",
+  testedStatus: "not_verified",
   gated: true
+};
+
+const asrBlockedOutcome: CandidateOutcome = {
+  modelId: "distil-whisper/distil-medium.en",
+  revision: "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7",
+  profile: "cpu/ort-genai; mobius=f32; olive=existing-onnx-decoder/fp32",
+  status: "blocked",
+  testedStatus: "not_verified",
+  failedStage: "fl_loading",
+  classification: "oga_runtime_contract_incompatible",
+  errorSummary: "Generated Whisper genai_config rejected while parsing decoder_input_ids.",
+  versions: {
+    mobius: "0.1.0",
+    olive: "0.13.0",
+    onnxruntime_genai: "0.15.2",
+    foundry_local_sdk: "1.2.4"
+  },
+  gateOutcomes: [
+    { stage: "mobius_building", status: "passed", summary: "Mobius build succeeded." },
+    { stage: "fl_loading", status: "failed", summary: "OGA and Foundry Local SDK rejected the config." }
+  ],
+  evidenceReference: "docs/contract-probe-results.md (run 20260830-225442-66553c73)",
+  capabilityOwner: "Mobius-generated Whisper config <-> OGA/Foundry Local runtime contract integration",
+  nextAction: "Compare against the pinned OGA Whisper schema and rerun the same profile."
 };
 
 function detailFor(model: ModelSummary): ModelDetail {
@@ -186,6 +210,40 @@ describe("OnboardingShell", () => {
     await user.selectOptions(screen.getByLabelText("Model"), gatedModel.id);
 
     await screen.findByText("Gated model access is rejected in this POC.");
+    expect(screen.getByRole("button", { name: "Build for CPU" })).toBeDisabled();
+  });
+
+  it("keeps the verified ASR blocker visible and out of tested success", async () => {
+    const blockedAsr = { ...asrModel, id: asrBlockedOutcome.modelId };
+    const client = createClient({
+      searchModels: vi.fn(async () => [blockedAsr]),
+      getModelDetail: vi.fn(async () => ({
+        ...detailFor(blockedAsr),
+        revision: asrBlockedOutcome.revision,
+        candidateOutcome: asrBlockedOutcome
+      })),
+      preflightModel: vi.fn(async () => ({
+        ...preflightFor(blockedAsr),
+        buildable: false,
+        blockedReason: asrBlockedOutcome.errorSummary,
+        strategies: [],
+        precisions: [],
+        verifiedAudioFormats: [],
+        candidateOutcome: asrBlockedOutcome
+      }))
+    });
+    const user = userEvent.setup();
+    render(<OnboardingShell client={client} />);
+
+    await screen.findByText(/Connected/);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.selectOptions(screen.getByLabelText("Model"), blockedAsr.id);
+
+    expect(await screen.findByText("Candidate evidence history")).toBeInTheDocument();
+    expect(screen.getByText(/Blocked \/ Not tested successfully/)).toBeInTheDocument();
+    expect(screen.getByText(/oga_runtime_contract_incompatible/)).toBeInTheDocument();
+    expect(screen.getAllByText(/decoder_input_ids/)).toHaveLength(2);
+    expect(screen.getByText(/Mobius build succeeded/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build for CPU" })).toBeDisabled();
   });
 

@@ -1,6 +1,14 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, createApiClient } from "./api/client";
-import type { ApiClient, BuildRequest, BuildStatus, JobEvent, ModelPreflight, ModelSummary } from "./api/types";
+import type {
+  ApiClient,
+  BuildRequest,
+  BuildStatus,
+  CandidateOutcome,
+  JobEvent,
+  ModelPreflight,
+  ModelSummary
+} from "./api/types";
 
 const defaultClient = createApiClient();
 const POLL_INTERVAL_MS = 2500;
@@ -18,6 +26,7 @@ interface LoadedModel {
     likelyCatalogMatch: string;
     mobiusSupport: string;
     mobiusRisk: string;
+    candidateOutcome?: CandidateOutcome;
   };
 }
 
@@ -82,6 +91,48 @@ function mergeEvents(current: JobEvent[], incoming: JobEvent[]): JobEvent[] {
     bySequence.set(event.sequence, event);
   }
   return Array.from(bySequence.values()).sort((left, right) => left.sequence - right.sequence);
+}
+
+function CandidateOutcomeDetails({ outcome }: { outcome: CandidateOutcome }): JSX.Element {
+  return (
+    <div className="candidate-outcome">
+      <h3>Candidate evidence history</h3>
+      <p>
+        <strong>Model revision:</strong> {outcome.modelId}@{outcome.revision}
+      </p>
+      <p>
+        <strong>Profile:</strong> {outcome.profile}
+      </p>
+      <p>
+        <strong>Failed stage:</strong> {readableStage(outcome.failedStage)} ({outcome.classification})
+      </p>
+      <p>
+        <strong>Error:</strong> {outcome.errorSummary}
+      </p>
+      <ol>
+        {outcome.gateOutcomes.map((gate) => (
+          <li key={`${gate.stage}-${gate.status}`}>
+            <strong>{readableStage(gate.stage)}:</strong> {gate.status} - {gate.summary}
+          </li>
+        ))}
+      </ol>
+      <p>
+        <strong>Versions:</strong>{" "}
+        {Object.entries(outcome.versions)
+          .map(([name, version]) => `${name}=${version}`)
+          .join(", ")}
+      </p>
+      <p>
+        <strong>Evidence:</strong> {outcome.evidenceReference}
+      </p>
+      <p>
+        <strong>Capability owner:</strong> {outcome.capabilityOwner}
+      </p>
+      <p>
+        <strong>Next action:</strong> {outcome.nextAction}
+      </p>
+    </div>
+  );
 }
 
 export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element {
@@ -185,10 +236,12 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
       setSelectionError(undefined);
 
       try {
-        const [detail, preflight] = await Promise.all([
-          client.getModelDetail(model.id),
-          client.preflightModel({ modelId: model.id, target: "cpu" })
-        ]);
+        const detail = await client.getModelDetail(model.id);
+        const preflight = await client.preflightModel({
+          modelId: model.id,
+          task: detail.task === "asr" ? "asr" : "llm",
+          target: "cpu"
+        });
         if (selectionTokenRef.current !== token) {
           return;
         }
@@ -219,7 +272,8 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             estimatedSizeMb: detail.estimatedSizeMb,
             likelyCatalogMatch: detail.likelyCatalogMatch,
             mobiusSupport: detail.mobiusSupport,
-            mobiusRisk: detail.mobiusRisk
+            mobiusRisk: detail.mobiusRisk,
+            candidateOutcome: detail.candidateOutcome ?? preflight.candidateOutcome
           }
         };
 
@@ -310,6 +364,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
 
     const request: BuildRequest = {
       modelId: selectedModel.summary.id,
+      task: selectedModel.summary.task === "asr" ? "asr" : "llm",
       target: "cpu",
       optimization: {
         strategy,
@@ -540,9 +595,16 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
               </div>
               <div>
                 <dt>Tested status</dt>
-                <dd>{selectedModel.summary.testedStatus}</dd>
+                <dd>
+                  {selectedModel.metadata.candidateOutcome
+                    ? "Blocked / Not tested successfully"
+                    : selectedModel.summary.testedStatus}
+                </dd>
               </div>
             </dl>
+            {selectedModel.metadata.candidateOutcome ? (
+              <CandidateOutcomeDetails outcome={selectedModel.metadata.candidateOutcome} />
+            ) : null}
             {blockedReason ? (
               <p className="warning" role="alert">
                 {blockedReason}

@@ -8,18 +8,19 @@ import type {
   BuildFailure,
   BuildRequest,
   BuildStatus,
+  CandidateGateOutcome,
+  CandidateOutcome,
   HealthSnapshot,
   JobEvent,
   ModelDetail,
   ModelPreflight,
   ModelSummary,
   ModelTask,
-  ReproducibilitySummary,
   TestedStatus,
   TextInferenceResult
 } from "./types";
 
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:8080";
+const DEFAULT_API_BASE_URL = "";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -43,6 +44,9 @@ interface ParsedResponse<T> {
 }
 
 function isLoopbackHost(urlValue: string): boolean {
+  if (urlValue === "") {
+    return true;
+  }
   try {
     const parsed = new URL(urlValue);
     const host = parsed.hostname.toLowerCase();
@@ -68,22 +72,19 @@ function normalizeTestedStatus(value: string | undefined): TestedStatus {
   if (normalized === "tested") {
     return "tested";
   }
-  if (normalized === "not_tested" || normalized === "untested") {
-    return "not_tested";
-  }
-  if (normalized === "failed") {
-    return "failed";
-  }
-  return "unknown";
+  return "not_verified";
 }
 
 function parseModelSummary(input: unknown): ModelSummary {
   const record = asRecord(input, "model summary");
+  const verification = readRecord(record, ["verification"]) ?? {};
   return {
     id: readString(record, ["id", "model_id", "hf_id"]),
-    displayName: readString(record, ["display_name", "name", "id"]),
+    displayName: readString(record, ["display_name", "name", "model_id", "id"]),
     task: normalizeTask(readOptionalString(record, ["task", "model_task"])),
-    testedStatus: normalizeTestedStatus(readOptionalString(record, ["tested_status", "status"])),
+    testedStatus: normalizeTestedStatus(
+      readOptionalString(verification, ["status"]) ?? readOptionalString(record, ["tested_status"])
+    ),
     gated: readBoolean(record, ["gated"], false)
   };
 }
@@ -113,40 +114,99 @@ function parseHealth(input: unknown): HealthSnapshot {
 
 function parseModelDetail(input: unknown): ModelDetail {
   const record = asRecord(input, "model detail");
+  const cardData = readRecord(record, ["card_data"]) ?? {};
+  const taskHints = readUnknown(record, ["task_hints"]);
+  const matches = readUnknown(record, ["foundry_catalog_matches"]);
+  const firstMatch = Array.isArray(matches) && matches.length > 0 ? asRecord(matches[0], "catalog match") : {};
+  const verification = readRecord(record, ["verification"]) ?? {};
+  const bytes = readNumber(record, ["safetensors_total_bytes"]);
   return {
     id: readString(record, ["id", "model_id", "hf_id"]),
-    displayName: readString(record, ["display_name", "name", "id"]),
+    displayName: readString(record, ["display_name", "name", "model_id", "id"]),
     revision: readString(record, ["revision"], "unknown"),
-    task: normalizeTask(readOptionalString(record, ["task", "model_task"])),
-    modality: readString(record, ["modality"], "unknown"),
-    license: readString(record, ["license"], "unknown"),
+    task: normalizeTask(
+      readOptionalString(record, ["task", "model_task"]) ??
+        (Array.isArray(taskHints) && typeof taskHints[0] === "string" ? taskHints[0] : undefined)
+    ),
+    modality: Array.isArray(taskHints) && typeof taskHints[0] === "string" ? taskHints[0] : "unknown",
+    license: readString(cardData, ["license"], "unknown"),
     gated: readBoolean(record, ["gated"], false),
     requiresRemoteCode: readBoolean(record, ["requires_remote_code", "remote_code"], false),
-    estimatedSizeMb: readNumber(record, ["estimated_size_mb", "estimatedSizeMb"]),
-    likelyCatalogMatch: readString(record, ["likely_catalog_match", "catalog_match"], "unknown"),
-    mobiusSupport: readString(record, ["mobius_support"], "unknown"),
-    mobiusRisk: readString(record, ["mobius_risk"], "unknown"),
-    testedStatus: normalizeTestedStatus(readOptionalString(record, ["tested_status", "status"]))
+    estimatedSizeMb: bytes === undefined ? undefined : Math.round(bytes / (1024 * 1024)),
+    likelyCatalogMatch: readString(firstMatch, ["model_or_variant_id"], "none"),
+    mobiusSupport: readBoolean(record, ["buildable"], false) ? "preflight required" : "blocked",
+    mobiusRisk: readStringArray(record, ["warnings", "build_blockers"]).join("; ") || "not verified",
+    testedStatus: normalizeTestedStatus(readOptionalString(verification, ["status"])),
+    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"]))
+  };
+}
+
+function parseCandidateOutcome(input: unknown): CandidateOutcome | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate outcome");
+  const versionsRaw = readRecord(record, ["versions"]) ?? {};
+  const versions = Object.fromEntries(
+    Object.entries(versionsRaw).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
+  const gatesRaw = readUnknown(record, ["gate_outcomes"]);
+  const gateOutcomes = Array.isArray(gatesRaw)
+    ? gatesRaw.map((gate): CandidateGateOutcome => {
+        const gateRecord = asRecord(gate, "candidate gate outcome");
+        const status = readString(gateRecord, ["status"]);
+        if (status !== "passed" && status !== "failed") {
+          throw new ApiParseError(`Unknown candidate gate status "${status}".`);
+        }
+        return {
+          stage: readString(gateRecord, ["stage"]),
+          status,
+          summary: readString(gateRecord, ["summary"])
+        };
+      })
+    : [];
+  return {
+    modelId: readString(record, ["model_id"]),
+    revision: readString(record, ["revision"]),
+    profile: readString(record, ["profile"]),
+    status: "blocked",
+    testedStatus: "not_verified",
+    failedStage: readString(record, ["failed_stage"]),
+    classification: readString(record, ["classification"]),
+    errorSummary: readString(record, ["error_summary"]),
+    versions,
+    gateOutcomes,
+    evidenceReference: readString(record, ["evidence_reference"]),
+    capabilityOwner: readString(record, ["capability_owner"]),
+    nextAction: readString(record, ["next_action"])
   };
 }
 
 function parsePreflight(input: unknown): ModelPreflight {
   const record = asRecord(input, "preflight response");
-  const optimizations = readRecord(record, ["supported_optimizations", "optimization"]) ?? {};
-  const defaults = readRecord(record, ["defaults"]) ?? {};
+  const result = readRecord(record, ["result"]) ?? record;
+  const candidate = readRecord(result, ["candidate"]) ?? {};
+  const blockers = readUnknown(result, ["blockers"]);
+  const firstBlocker =
+    Array.isArray(blockers) && blockers.length > 0 ? asRecord(blockers[0], "preflight blocker") : undefined;
+  const task = normalizeTask(readOptionalString(candidate, ["modality"]));
+  const olivePrecision = readOptionalString(candidate, ["recommended_olive_precision"]);
+  const mobiusPrecision = readOptionalString(candidate, ["recommended_mobius_dtype"]);
+  const precisions = Array.from(new Set([olivePrecision, mobiusPrecision].filter((value): value is string => !!value)));
 
   return {
-    modelId: readString(record, ["model_id", "id", "modelId"]),
-    task: normalizeTask(readOptionalString(record, ["task", "model_task"])),
+    modelId: readString(candidate, ["huggingface_model_id"]),
+    task,
     target: "cpu",
-    buildable: readBoolean(record, ["buildable"], true),
-    blockedReason: readOptionalString(record, ["blocked_reason", "reason"]),
-    strategies: readStringArray(optimizations, ["strategies", "strategy_choices", "supported_strategies"]),
-    precisions: readStringArray(optimizations, ["precisions", "precision_choices", "supported_precisions"]),
-    verifiedAudioFormats: readStringArray(optimizations, ["verified_audio_formats", "supported_audio_formats"]),
-    defaultStrategy: readOptionalString(defaults, ["strategy", "default_strategy"]),
-    defaultPrecision: readOptionalString(defaults, ["precision", "default_precision"]),
-    defaultAudioFormat: readOptionalString(defaults, ["audio_format", "default_audio_format"])
+    buildable: readBoolean(record, ["ok"], false),
+    blockedReason: firstBlocker ? readString(firstBlocker, ["message"], "Preflight blocked.") : undefined,
+    strategies: task === "asr" ? [] : ["mobius-olive", "mobius-only"],
+    precisions: task === "asr" ? [] : precisions.length > 0 ? precisions : ["default"],
+    verifiedAudioFormats: [],
+    defaultStrategy: task === "asr" ? undefined : "mobius-olive",
+    defaultPrecision: task === "asr" ? undefined : olivePrecision ?? mobiusPrecision ?? "default",
+    defaultAudioFormat: undefined,
+    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"]))
   };
 }
 
@@ -171,39 +231,38 @@ function parseArtifactSummary(input: unknown): ArtifactSummary | undefined {
   const record = asRecord(input, "artifact summary");
   return {
     artifactId: readString(record, ["artifact_id", "artifactId"]),
-    packagePath: readOptionalString(record, ["package_path", "packagePath"]),
-    checksum: readOptionalString(record, ["checksum"])
-  };
-}
-
-function parseReproducibility(input: unknown): ReproducibilitySummary | undefined {
-  if (!input) {
-    return undefined;
-  }
-  const record = asRecord(input, "reproducibility summary");
-  return {
-    recipeId: readOptionalString(record, ["recipe_id", "recipeId"]),
-    mobiusVersion: readOptionalString(record, ["mobius_version", "mobiusVersion"]),
-    oliveVersion: readOptionalString(record, ["olive_version", "oliveVersion"])
+    packagePath: readOptionalString(record, ["path", "package_path", "packagePath"]),
+    checksum: readOptionalString(record, ["sha256", "checksum"])
   };
 }
 
 function parseBuildStatus(input: unknown): BuildStatus {
-  const record = asRecord(input, "build status");
-  const artifactSummary = parseArtifactSummary(readUnknown(record, ["artifact_summary"]));
-  const artifactId = readOptionalString(record, ["artifact_id", "artifactId"]) ?? artifactSummary?.artifactId;
+  const envelope = asRecord(input, "build status");
+  const record = readRecord(envelope, ["job"]) ?? envelope;
+  const request = readRecord(record, ["request"]) ?? {};
+  const candidate = readRecord(request, ["candidate"]) ?? {};
+  const artifacts = readUnknown(record, ["artifacts"]);
+  const resultArtifactId = readOptionalString(record, ["result_artifact_id"]);
+  const resultArtifact =
+    Array.isArray(artifacts) && resultArtifactId
+      ? artifacts.find((item) => {
+          const artifact = asRecord(item, "artifact");
+          return readOptionalString(artifact, ["artifact_id"]) === resultArtifactId;
+        })
+      : undefined;
+  const artifactSummary = parseArtifactSummary(resultArtifact);
+  const stage = readString(record, ["state"], "unknown");
 
   return {
     jobId: readString(record, ["job_id", "id", "jobId"]),
-    modelId: readString(record, ["model_id", "modelId"]),
-    task: normalizeTask(readOptionalString(record, ["task", "model_task"])),
-    stage: readString(record, ["stage", "status"], "unknown"),
-    cancellable: readBoolean(record, ["cancellable"], false),
-    artifactId,
+    modelId: readString(candidate, ["huggingface_model_id"]),
+    task: normalizeTask(readOptionalString(candidate, ["modality"])),
+    stage,
+    cancellable: !["succeeded", "failed", "cancelled"].includes(stage),
+    artifactId: resultArtifactId,
     artifactSummary,
-    reproducibility: parseReproducibility(readUnknown(record, ["reproducibility"])),
     failure: parseFailure(readUnknown(record, ["failure", "error"])),
-    updatedAt: readOptionalString(record, ["updated_at", "updatedAt"])
+    updatedAt: readOptionalString(record, ["finished_utc", "started_utc"])
   };
 }
 
@@ -215,9 +274,9 @@ function parseEvent(input: unknown): JobEvent {
   }
   return {
     sequence,
-    stage: readString(record, ["stage"], "unknown"),
+    stage: readString(record, ["state", "stage"], "unknown"),
     message: readString(record, ["message", "detail"], ""),
-    timestamp: readOptionalString(record, ["timestamp", "created_at"]),
+    timestamp: readOptionalString(record, ["timestamp_utc", "timestamp", "created_at"]),
     classification: readOptionalString(record, ["classification"])
   };
 }
@@ -391,7 +450,11 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
       const { data } = await parseResponse(transport, `/api/models/detail?id=${encodedId}`, undefined, parseModelDetail);
       return data;
     },
-    async preflightModel(request: { modelId: string; target: "cpu" }): Promise<ModelPreflight> {
+    async preflightModel(request: {
+      modelId: string;
+      task: "llm" | "asr";
+      target: "cpu";
+    }): Promise<ModelPreflight> {
       const { data } = await parseResponse(
         transport,
         "/api/models/preflight",
@@ -400,7 +463,8 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             model_id: request.modelId,
-            target: request.target
+            task: request.task,
+            task_profile: `${request.task}-cpu-default`
           })
         },
         parsePreflight
@@ -419,8 +483,9 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
           },
           body: JSON.stringify({
             model_id: request.modelId,
-            target: request.target,
-            optimization: request.optimization
+            task: request.task,
+            task_profile: `${request.task}-cpu-${request.optimization.precision}`,
+            skip_olive: request.optimization.strategy === "mobius-only"
           })
         },
         parseBuildStatus

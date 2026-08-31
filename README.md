@@ -8,7 +8,16 @@ Interactive concept prototype for a moonshot Foundry Local model-onboarding expe
 
 ## Local service + CLI (POC)
 
-Run the local loopback service:
+Build the web UI once when working from source:
+
+```powershell
+Set-Location web
+npm ci
+npm run build
+Set-Location ..
+```
+
+Launch the packaged UI and API together with one command:
 
 ```powershell
 fl-onboarding service serve --host 127.0.0.1 --port 8777
@@ -42,3 +51,10 @@ Notes:
 - `/api/builds` requires `Idempotency-Key`.
 - Job state and event replay are persisted in SQLite.
 - Inference is artifact-scoped and only available for succeeded builds with matching task modality.
+- A model appears in the tested-model index only after an artifact-scoped Foundry Local inference succeeds.
+- Missing build or inference adapters report structured `not_verified`/`INFERENCE_NOT_IMPLEMENTED`
+  results; the service never substitutes fixture success.
+- ASR remains visible for discovery, but preflight reports the verified Whisper `genai_config`
+  incompatibility as a structured blocker and exposes no working precision.
+- The original repository-root `index.html` remains the standalone concept mock. The service serves
+  the separately built React UI from the Python package.

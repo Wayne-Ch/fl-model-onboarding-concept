@@ -1,5 +1,5 @@
 export type ModelTask = "llm" | "asr" | "unknown";
-export type TestedStatus = "tested" | "not_tested" | "failed" | "unknown";
+export type TestedStatus = "tested" | "not_verified";
 export type BuildStage = string;
 
 export interface ModelSummary {
@@ -8,6 +8,28 @@ export interface ModelSummary {
   task: ModelTask;
   testedStatus: TestedStatus;
   gated: boolean;
+}
+
+export interface CandidateGateOutcome {
+  stage: BuildStage;
+  status: "passed" | "failed";
+  summary: string;
+}
+
+export interface CandidateOutcome {
+  modelId: string;
+  revision: string;
+  profile: string;
+  status: "blocked";
+  testedStatus: "not_verified";
+  failedStage: BuildStage;
+  classification: string;
+  errorSummary: string;
+  versions: Record<string, string>;
+  gateOutcomes: CandidateGateOutcome[];
+  evidenceReference: string;
+  capabilityOwner: string;
+  nextAction: string;
 }
 
 export interface HealthSnapshot {
@@ -31,6 +53,7 @@ export interface ModelDetail {
   mobiusSupport: string;
   mobiusRisk: string;
   testedStatus: TestedStatus;
+  candidateOutcome?: CandidateOutcome;
 }
 
 export interface ModelPreflight {
@@ -45,10 +68,12 @@ export interface ModelPreflight {
   defaultStrategy?: string;
   defaultPrecision?: string;
   defaultAudioFormat?: string;
+  candidateOutcome?: CandidateOutcome;
 }
 
 export interface BuildRequest {
   modelId: string;
+  task: Exclude<ModelTask, "unknown">;
   target: "cpu";
   optimization: {
     strategy: string;
@@ -119,7 +144,11 @@ export interface ApiClient {
   getHealth(): Promise<HealthSnapshot>;
   searchModels(query: string, limit?: number): Promise<ModelSummary[]>;
   getModelDetail(modelId: string): Promise<ModelDetail>;
-  preflightModel(request: { modelId: string; target: "cpu" }): Promise<ModelPreflight>;
+  preflightModel(request: {
+    modelId: string;
+    task: Exclude<ModelTask, "unknown">;
+    target: "cpu";
+  }): Promise<ModelPreflight>;
   startBuild(request: BuildRequest, idempotencyKey: string): Promise<BuildStatus>;
   getBuildStatus(jobId: string): Promise<BuildStatus>;
   getBuildEvents(jobId: string, afterSequence: number): Promise<JobEvent[]>;

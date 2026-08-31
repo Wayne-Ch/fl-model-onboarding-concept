@@ -359,6 +359,7 @@ components:
         - network
         - process_failed
         - compatibility
+        - oga_runtime_contract_incompatible
         - cancelled
         - unknown
 
@@ -611,6 +612,10 @@ components:
           type: boolean
         result:
           type: object
+        candidate_outcome:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateOutcome"
+            - type: "null"
 
     ModelSearchResult:
       type: object
@@ -627,6 +632,12 @@ components:
         last_modified:
           type: string
           nullable: true
+        verification:
+          $ref: "#/components/schemas/ModelVerification"
+        candidate_outcome:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateOutcome"
+            - type: "null"
 
     ModelSearchResponse:
       type: object
@@ -698,6 +709,12 @@ components:
           type: array
           items:
             type: string
+        verification:
+          $ref: "#/components/schemas/ModelVerification"
+        candidate_outcome:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateOutcome"
+            - type: "null"
 
     CancelBuildRequest:
       type: object
@@ -740,9 +757,11 @@ components:
 
     HealthResponse:
       type: object
-      required: [status, jobs_total, storage_path]
+      required: [status, service, jobs_total, storage_path, compatibility_index]
       properties:
         status:
+          type: string
+        service:
           type: string
         active_job_id:
           type: string
@@ -751,4 +770,107 @@ components:
           type: integer
           minimum: 0
         storage_path:
+          type: string
+        compatibility_index:
+          type: array
+          items:
+            $ref: "#/components/schemas/TestedModel"
+
+    ModelVerification:
+      type: object
+      required: [status, evidence, artifact_id, verified_utc]
+      properties:
+        status:
+          type: string
+          enum: [tested, not_verified]
+        evidence:
+          type: string
+          enum: [successful_fl_inference, none]
+        artifact_id:
+          type: string
+          nullable: true
+        verified_utc:
+          type: string
+          format: date-time
+          nullable: true
+
+    TestedModel:
+      type: object
+      required: [model_id, display_name, task, artifact_id, verified_utc, evidence, tested_status]
+      properties:
+        model_id:
+          type: string
+        display_name:
+          type: string
+        task:
+          $ref: "#/components/schemas/CandidateModality"
+        artifact_id:
+          type: string
+        verified_utc:
+          type: string
+          format: date-time
+        evidence:
+          type: string
+          enum: [successful_fl_inference]
+        tested_status:
+          type: string
+          enum: [tested]
+
+    CandidateOutcome:
+      type: object
+      required:
+        - model_id
+        - revision
+        - profile
+        - status
+        - tested_status
+        - failed_stage
+        - classification
+        - error_summary
+        - versions
+        - gate_outcomes
+        - evidence_reference
+        - capability_owner
+        - next_action
+      properties:
+        model_id:
+          type: string
+        revision:
+          type: string
+        profile:
+          type: string
+        status:
+          type: string
+          enum: [blocked]
+        tested_status:
+          type: string
+          enum: [not_verified]
+        failed_stage:
+          $ref: "#/components/schemas/BuildState"
+        classification:
+          $ref: "#/components/schemas/FailureClassification"
+        error_summary:
+          type: string
+        versions:
+          type: object
+          additionalProperties:
+            type: string
+        gate_outcomes:
+          type: array
+          items:
+            type: object
+            required: [stage, status, summary]
+            properties:
+              stage:
+                $ref: "#/components/schemas/BuildState"
+              status:
+                type: string
+                enum: [passed, failed]
+              summary:
+                type: string
+        evidence_reference:
+          type: string
+        capability_owner:
+          type: string
+        next_action:
           type: string

@@ -39,6 +39,7 @@ class FailureClassification(StrEnum):
     NETWORK = "network"
     PROCESS_FAILED = "process_failed"
     COMPATIBILITY = "compatibility"
+    OGA_RUNTIME_CONTRACT_INCOMPATIBLE = "oga_runtime_contract_incompatible"
     CANCELLED = "cancelled"
     UNKNOWN = "unknown"
 

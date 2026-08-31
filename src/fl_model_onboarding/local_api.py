@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, File, Header, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .contracts import CandidateModality
@@ -38,7 +40,15 @@ class CancelRequest(BaseModel):
     reason: str = Field(default="Cancelled by client request.", min_length=1)
 
 
-def create_app(service: LocalOnboardingService | None = None) -> FastAPI:
+def default_web_dist() -> Path:
+    return Path(__file__).resolve().parent / "web_dist"
+
+
+def create_app(
+    service: LocalOnboardingService | None = None,
+    *,
+    web_dist: Path | None = None,
+) -> FastAPI:
     live_service = service or LocalOnboardingService()
 
     @asynccontextmanager
@@ -143,5 +153,13 @@ def create_app(service: LocalOnboardingService | None = None) -> FastAPI:
             audio_bytes=payload,
             filename=audio.filename or "audio.bin",
         )
+
+    static_root = (web_dist or default_web_dist()).resolve()
+    if static_root.is_dir():
+        app.mount("/assets", StaticFiles(directory=static_root / "assets"), name="web-assets")
+
+        @app.get("/", include_in_schema=False)
+        async def web_index() -> FileResponse:
+            return FileResponse(static_root / "index.html")
 
     return app

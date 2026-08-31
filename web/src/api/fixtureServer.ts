@@ -78,17 +78,17 @@ const MODELS: FixtureModel[] = [
     likelyCatalogMatch: "phi-3-mini-4k-instruct",
     mobiusSupport: "supported",
     mobiusRisk: "low",
-    testedStatus: "tested",
+    testedStatus: "not_verified",
     buildable: true,
     strategies: ["Auto", "Olive"],
     precisions: ["INT4", "FP16"],
     verifiedAudioFormats: []
   },
   {
-    id: "openai/whisper-small.en",
-    displayName: "Whisper Small English",
+    id: "distil-whisper/distil-medium.en",
+    displayName: "Distil Whisper Medium English",
     task: "asr",
-    revision: "31c1d9e",
+    revision: "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7",
     modality: "audio",
     license: "apache-2.0",
     gated: false,
@@ -97,11 +97,12 @@ const MODELS: FixtureModel[] = [
     likelyCatalogMatch: "whisper-small-en",
     mobiusSupport: "supported",
     mobiusRisk: "medium",
-    testedStatus: "tested",
-    buildable: true,
-    strategies: ["Auto", "Olive"],
-    precisions: ["FP32"],
-    verifiedAudioFormats: ["audio/wav", "audio/flac"]
+    testedStatus: "not_verified",
+    buildable: false,
+    blockedReason: "Generated Whisper genai_config rejected while parsing decoder_input_ids.",
+    strategies: [],
+    precisions: [],
+    verifiedAudioFormats: []
   },
   {
     id: "meta-llama/Llama-3.1-8B-Instruct",
@@ -116,7 +117,7 @@ const MODELS: FixtureModel[] = [
     likelyCatalogMatch: "llama-3.1-8b-instruct",
     mobiusSupport: "partial",
     mobiusRisk: "high",
-    testedStatus: "not_tested",
+    testedStatus: "not_verified",
     buildable: false,
     blockedReason: "Gated model access is rejected in this POC.",
     strategies: ["Auto"],
@@ -142,8 +143,43 @@ function findModel(modelId: string): FixtureModel | undefined {
   return MODELS.find((model) => model.id === modelId);
 }
 
+function candidateOutcome(model: FixtureModel): Record<string, unknown> | null {
+  if (model.id !== "distil-whisper/distil-medium.en") {
+    return null;
+  }
+  return {
+    model_id: model.id,
+    revision: model.revision,
+    profile: "cpu/ort-genai; mobius=f32; olive=existing-onnx-decoder/fp32",
+    status: "blocked",
+    tested_status: "not_verified",
+    failed_stage: "fl_loading",
+    classification: "oga_runtime_contract_incompatible",
+    error_summary: model.blockedReason,
+    versions: {
+      mobius: "0.1.0",
+      olive: "0.13.0",
+      onnx: "1.22.0",
+      onnxruntime: "1.29.0",
+      onnxruntime_genai: "0.15.2",
+      foundry_local_sdk: "1.2.4",
+      foundry_cli: "0.11.0"
+    },
+    gate_outcomes: [
+      { stage: "mobius_building", status: "passed", summary: "Mobius CPU ort-genai f32 build succeeded." },
+      { stage: "olive_optimizing", status: "passed", summary: "Olive decoder FP32 optimization succeeded." },
+      { stage: "runtime_validating", status: "passed", summary: "ONNX checker and ORT CPU load succeeded." },
+      { stage: "fl_loading", status: "failed", summary: "OGA and Foundry Local SDK rejected decoder_input_ids." }
+    ],
+    evidence_reference: "docs/contract-probe-results.md#candidate-outcome-summary (run 20260830-225442-66553c73)",
+    capability_owner: "Mobius-generated Whisper config <-> OGA/Foundry Local runtime contract integration",
+    next_action: "Compare generated config to the pinned OGA Whisper schema/runtime and rerun the same profile."
+  };
+}
+
 export function createFixtureTransport(): Transport {
   const jobs = new Map<string, FixtureJob>();
+  const testedArtifacts = new Map<string, string>();
   let nextJobId = 1;
 
   function addEvent(job: FixtureJob, stage: BuildStage, message: string): void {
@@ -160,27 +196,39 @@ export function createFixtureTransport(): Transport {
   function currentStatus(job: FixtureJob): Record<string, unknown> {
     return {
       job_id: job.jobId,
-      model_id: job.model.id,
-      task: job.model.task,
-      stage: job.currentStage,
-      cancellable: job.cancellable,
-      artifact_id: job.artifactId,
-      artifact_summary: job.artifactId
-        ? {
+      state: job.currentStage,
+      request: {
+        candidate: {
+          key: job.model.id.replaceAll("/", "-"),
+          huggingface_model_id: job.model.id,
+          modality: job.model.task
+        },
+        workspace_root: "C:\\fake\\workspace",
+        model_cache_dir: "C:\\fake\\cache",
+        output_dir: `C:\\fake\\jobs\\${job.jobId}`,
+        task_profile: `${job.model.task}-cpu-${job.model.precisions[0]}`,
+        runtime: "foundry-local"
+      },
+      started_utc: nowIso(),
+      finished_utc: ["succeeded", "failed", "cancelled"].includes(job.currentStage) ? nowIso() : null,
+      events: job.events.map((event) => ({
+        sequence: event.sequence,
+        state: event.stage,
+        message: event.message,
+        timestamp_utc: event.timestamp
+      })),
+      artifacts: job.artifactId
+        ? [{
             artifact_id: job.artifactId,
-            package_path: `C:\\fake\\artifacts\\${job.artifactId}.zip`,
-            checksum: `sha256:${job.artifactId}`
-          }
-        : undefined,
-      reproducibility: job.artifactId
-        ? {
-            recipe_id: "fixture-recipe-v1",
-            mobius_version: "0.9.0-fixture",
-            olive_version: "0.8.0-fixture"
-          }
-        : undefined,
+            kind: "model",
+            path: `C:\\fake\\artifacts\\${job.artifactId}.zip`,
+            description: "Fixture model artifact",
+            sha256: job.artifactId
+          }]
+        : [],
+      validations: [],
       failure: job.failure,
-      updated_at: nowIso()
+      result_artifact_id: job.artifactId ?? null
     };
   }
 
@@ -223,16 +271,21 @@ export function createFixtureTransport(): Transport {
       const pathname = url.pathname;
 
       if (pathname === "/api/health" && method === "GET") {
-        const tested = MODELS.filter((model) => model.testedStatus === "tested").map((model) => ({
-          id: model.id,
+        const tested = MODELS.filter((model) => testedArtifacts.has(model.id)).map((model) => ({
+          model_id: model.id,
           display_name: model.displayName,
           task: model.task,
-          tested_status: model.testedStatus,
-          gated: model.gated
+          tested_status: "tested",
+          artifact_id: testedArtifacts.get(model.id),
+          verified_utc: nowIso(),
+          evidence: "successful_fl_inference"
         }));
         return jsonResponse(200, {
           status: "ok",
           service: "fixture-local-onboarding",
+          active_job_id: null,
+          jobs_total: jobs.size,
+          storage_path: "fixture://state",
           compatibility_index: tested
         });
       }
@@ -248,11 +301,17 @@ export function createFixtureTransport(): Transport {
         })
           .slice(0, Number.isFinite(limit) ? limit : 25)
           .map((model) => ({
-            id: model.id,
-            display_name: model.displayName,
-            task: model.task,
-            tested_status: model.testedStatus,
-            gated: model.gated
+            model_id: model.id,
+            downloads: 100,
+            likes: 10,
+            last_modified: nowIso(),
+            verification: {
+              status: testedArtifacts.has(model.id) ? "tested" : "not_verified",
+              evidence: testedArtifacts.has(model.id) ? "successful_fl_inference" : "none",
+              artifact_id: testedArtifacts.get(model.id) ?? null,
+              verified_utc: testedArtifacts.has(model.id) ? nowIso() : null
+            },
+            candidate_outcome: candidateOutcome(model)
           }));
         return jsonResponse(200, { results: filtered });
       }
@@ -267,19 +326,30 @@ export function createFixtureTransport(): Transport {
           return jsonResponse(404, { error: "Model not found." });
         }
         return jsonResponse(200, {
-          id: model.id,
-          display_name: model.displayName,
+          model_id: model.id,
           revision: model.revision,
-          task: model.task,
-          modality: model.modality,
-          license: model.license,
           gated: model.gated,
           requires_remote_code: model.requiresRemoteCode,
-          estimated_size_mb: model.estimatedSizeMb,
-          likely_catalog_match: model.likelyCatalogMatch,
-          mobius_support: model.mobiusSupport,
-          mobius_risk: model.mobiusRisk,
-          tested_status: model.testedStatus
+          buildable: model.buildable,
+          build_blockers: model.blockedReason ? [model.blockedReason] : [],
+          task_hints: [model.task],
+          safetensors_total_bytes: model.estimatedSizeMb * 1024 * 1024,
+          card_data: { license: model.license },
+          foundry_catalog_matches: [{
+            alias: model.likelyCatalogMatch,
+            model_or_variant_id: model.likelyCatalogMatch,
+            source_schema: "models",
+            confidence: "medium",
+            reason: "Fixture catalog match"
+          }],
+          warnings: [model.mobiusRisk],
+          verification: {
+            status: testedArtifacts.has(model.id) ? "tested" : "not_verified",
+            evidence: testedArtifacts.has(model.id) ? "successful_fl_inference" : "none",
+            artifact_id: testedArtifacts.get(model.id) ?? null,
+            verified_utc: testedArtifacts.has(model.id) ? nowIso() : null
+          },
+          candidate_outcome: candidateOutcome(model)
         });
       }
 
@@ -294,21 +364,19 @@ export function createFixtureTransport(): Transport {
           return jsonResponse(404, { error: "Model not found." });
         }
         return jsonResponse(200, {
-          model_id: model.id,
-          task: model.task,
-          target: "cpu",
-          buildable: model.buildable,
-          blocked_reason: model.blockedReason,
-          supported_optimizations: {
-            strategies: model.strategies,
-            precisions: model.precisions,
-            verified_audio_formats: model.verifiedAudioFormats
+          cache_key: `fixture-${model.id}`,
+          ok: model.buildable,
+          cached: false,
+          result: {
+            candidate: {
+              huggingface_model_id: model.id,
+              modality: model.task,
+              recommended_mobius_dtype: model.precisions[0],
+              recommended_olive_precision: model.precisions[0]
+            },
+            blockers: model.blockedReason ? [{ message: model.blockedReason }] : []
           },
-          defaults: {
-            strategy: model.strategies[0],
-            precision: model.precisions[0],
-            audio_format: model.verifiedAudioFormats[0]
-          }
+          candidate_outcome: candidateOutcome(model)
         });
       }
 
@@ -345,7 +413,7 @@ export function createFixtureTransport(): Transport {
         };
         addEvent(job, "queued", "Build queued.");
         jobs.set(jobId, job);
-        return jsonResponse(202, currentStatus(job));
+        return jsonResponse(200, { idempotent_replay: false, job: currentStatus(job) });
       }
 
       const buildStatusMatch = pathname.match(/^\/api\/builds\/([^/]+)$/);
@@ -368,7 +436,12 @@ export function createFixtureTransport(): Transport {
         if (job.currentStage !== "succeeded" && job.currentStage !== "failed" && job.currentStage !== "cancelled") {
           advance(job);
         }
-        const events = job.events.filter((event) => event.sequence > after);
+        const events = job.events.filter((event) => event.sequence > after).map((event) => ({
+          sequence: event.sequence,
+          state: event.stage,
+          message: event.message,
+          timestamp_utc: event.timestamp
+        }));
         return jsonResponse(200, { events });
       }
 
@@ -394,8 +467,15 @@ export function createFixtureTransport(): Transport {
         if (!ownerJob || ownerJob.currentStage !== "succeeded") {
           return jsonResponse(404, { error: "Artifact not available for inference." });
         }
+        if (ownerJob.model.task !== "llm") {
+          return jsonResponse(409, { error: "Artifact task does not support text inference." });
+        }
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         const prompt = typeof body.prompt === "string" ? body.prompt : "";
+        if (!prompt.trim()) {
+          return jsonResponse(400, { error: "Prompt must not be empty." });
+        }
+        testedArtifacts.set(ownerJob.model.id, artifactId);
         return jsonResponse(200, {
           artifact_id: artifactId,
           output: `Fixture response: ${prompt || "Hello from Foundry Local"}`
@@ -409,11 +489,18 @@ export function createFixtureTransport(): Transport {
         if (!ownerJob || ownerJob.currentStage !== "succeeded") {
           return jsonResponse(404, { error: "Artifact not available for inference." });
         }
+        if (ownerJob.model.task !== "asr") {
+          return jsonResponse(409, { error: "Artifact task does not support ASR inference." });
+        }
         if (!(init?.body instanceof FormData)) {
           return jsonResponse(400, { error: "Expected multipart form data." });
         }
         const filePart = init.body.get("audio");
+        if (!(filePart instanceof File) || filePart.size === 0) {
+          return jsonResponse(400, { error: "Audio payload must not be empty." });
+        }
         const filename = filePart instanceof File ? filePart.name : "unknown.wav";
+        testedArtifacts.set(ownerJob.model.id, artifactId);
         return jsonResponse(200, {
           artifact_id: artifactId,
           transcript: `Fixture transcript for ${filename}`

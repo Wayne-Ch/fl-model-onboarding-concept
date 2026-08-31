@@ -51,6 +51,66 @@ _BEARER_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{8,})")
 _API_KEY_RE = re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)")
 
 _DEFAULT_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+_ASR_MODEL_ID = "distil-whisper/distil-medium.en"
+_ASR_REVISION = "6e61418885eaf4d5cc9f64e508e80ac5b4c052b7"
+
+
+def _asr_candidate_outcome() -> dict[str, object]:
+    return {
+        "model_id": _ASR_MODEL_ID,
+        "revision": _ASR_REVISION,
+        "profile": "cpu/ort-genai; mobius=f32; olive=existing-onnx-decoder/fp32",
+        "status": "blocked",
+        "tested_status": "not_verified",
+        "failed_stage": JobState.FL_LOADING.value,
+        "classification": FailureClassification.OGA_RUNTIME_CONTRACT_INCOMPATIBLE.value,
+        "error_summary": (
+            "Generated Whisper genai_config rejected while parsing decoder_input_ids."
+        ),
+        "versions": {
+            "mobius": "0.1.0",
+            "olive": "0.13.0",
+            "onnx": "1.22.0",
+            "onnxruntime": "1.29.0",
+            "onnxruntime_genai": "0.15.2",
+            "foundry_local_sdk": "1.2.4",
+            "foundry_cli": "0.11.0",
+        },
+        "gate_outcomes": [
+            {
+                "stage": JobState.MOBIUS_BUILDING.value,
+                "status": "passed",
+                "summary": "Mobius CPU ort-genai f32 build succeeded.",
+            },
+            {
+                "stage": JobState.OLIVE_OPTIMIZING.value,
+                "status": "passed",
+                "summary": "Olive existing-ONNX decoder FP32 optimization succeeded.",
+            },
+            {
+                "stage": JobState.RUNTIME_VALIDATING.value,
+                "status": "passed",
+                "summary": "ONNX checker and ORT CPU load succeeded.",
+            },
+            {
+                "stage": JobState.FL_LOADING.value,
+                "status": "failed",
+                "summary": "OGA and Foundry Local SDK rejected decoder_input_ids.",
+            },
+        ],
+        "evidence_reference": (
+            "docs/contract-probe-results.md#candidate-outcome-summary "
+            "(run 20260830-225442-66553c73)"
+        ),
+        "capability_owner": (
+            "Mobius-generated Whisper config <-> OGA/Foundry Local runtime contract integration"
+        ),
+        "next_action": (
+            "Compare the generated config to the pinned OGA Whisper schema/runtime, update the "
+            "responsible component in a later source-adaptation phase, then rerun the same "
+            "candidate profile."
+        ),
+    }
 
 
 def default_data_root() -> Path:
@@ -265,6 +325,13 @@ class SQLiteStateStore:
                     cache_key TEXT PRIMARY KEY,
                     result_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS tested_models (
+                    model_id TEXT PRIMARY KEY,
+                    task TEXT NOT NULL,
+                    artifact_id TEXT NOT NULL,
+                    verified_utc TEXT NOT NULL,
+                    evidence TEXT NOT NULL
+                );
                 """
             )
 
@@ -462,6 +529,44 @@ class SQLiteStateStore:
                 (cache_key, payload),
             )
 
+    def load_tested_models(self) -> list[dict[str, str]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT model_id, task, artifact_id, verified_utc, evidence
+                FROM tested_models
+                ORDER BY verified_utc DESC, model_id ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def save_tested_model(
+        self,
+        *,
+        model_id: str,
+        task: CandidateModality,
+        artifact_id: str,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO tested_models (model_id, task, artifact_id, verified_utc, evidence)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(model_id) DO UPDATE SET
+                    task = excluded.task,
+                    artifact_id = excluded.artifact_id,
+                    verified_utc = excluded.verified_utc,
+                    evidence = excluded.evidence
+                """,
+                (
+                    model_id,
+                    task.value,
+                    artifact_id,
+                    datetime.now(timezone.utc).isoformat(),
+                    "successful_fl_inference",
+                ),
+            )
+
 
 class LocalOnboardingService:
     def __init__(
@@ -551,9 +656,18 @@ class LocalOnboardingService:
             )
             return {
                 "status": "ok",
+                "service": "fl-model-onboarding",
                 "active_job_id": active_job_id,
                 "jobs_total": len(self._jobs),
                 "storage_path": str(self.db_path),
+                "compatibility_index": [
+                    {
+                        **record,
+                        "display_name": record["model_id"].split("/")[-1],
+                        "tested_status": "tested",
+                    }
+                    for record in self._store.load_tested_models()
+                ],
             }
 
     def search_models(self, *, query: str, limit: int) -> dict[str, object]:
@@ -569,7 +683,13 @@ class LocalOnboardingService:
         return {
             "query": q,
             "limit": bounded_limit,
-            "results": [to_jsonable(result) for result in results],
+            "results": [
+                {
+                    **to_jsonable(result),
+                    "verification": self._verification_for_model(result.model_id),
+                }
+                for result in results
+            ],
         }
 
     def model_detail(self, *, model_id: str) -> dict[str, object]:
@@ -620,6 +740,10 @@ class LocalOnboardingService:
             "card_data": metadata.card_data,
             "foundry_catalog_matches": [to_jsonable(item) for item in matches],
             "warnings": warnings,
+            "verification": self._verification_for_model(metadata.model_id),
+            "candidate_outcome": (
+                _asr_candidate_outcome() if metadata.model_id == _ASR_MODEL_ID else None
+            ),
         }
 
     def preflight(self, submission: BuildSubmission) -> dict[str, object]:
@@ -631,11 +755,26 @@ class LocalOnboardingService:
         )
         payload = to_jsonable(output)
         payload["cache_key"] = cache_key
+        supported = output.ok
+        candidate_outcome = None
+        if normalized.task == CandidateModality.ASR:
+            candidate_outcome = _asr_candidate_outcome()
+            payload["blockers"] = [
+                {
+                    "stage": candidate_outcome["failed_stage"],
+                    "classification": candidate_outcome["classification"],
+                    "message": candidate_outcome["error_summary"],
+                    "detail": {"decoder_input_ids": "parse_error"},
+                },
+                *payload.get("blockers", []),
+            ]
+            supported = False
         return {
             "cache_key": cache_key,
-            "ok": output.ok,
+            "ok": supported,
             "cached": cached,
             "result": payload,
+            "candidate_outcome": candidate_outcome,
         }
 
     def create_build(self, submission: BuildSubmission, idempotency_key: str) -> tuple[BuildJob, bool]:
@@ -766,6 +905,7 @@ class LocalOnboardingService:
             prompt=prompt,
             max_tokens=max_tokens,
         )
+        self._record_successful_inference(job=job, artifact_id=artifact_id)
         return {"artifact_id": artifact_id, "output": _sanitize_text(output)}
 
     def infer_asr(self, *, artifact_id: str, audio_bytes: bytes, filename: str) -> dict[str, object]:
@@ -785,7 +925,34 @@ class LocalOnboardingService:
             audio_bytes=audio_bytes,
             filename=filename,
         )
+        self._record_successful_inference(job=job, artifact_id=artifact_id)
         return {"artifact_id": artifact_id, "transcript": _sanitize_text(transcript)}
+
+    def _record_successful_inference(self, *, job: BuildJob, artifact_id: str) -> None:
+        self._store.save_tested_model(
+            model_id=job.request.candidate.huggingface_model_id,
+            task=job.request.candidate.modality,
+            artifact_id=artifact_id,
+        )
+
+    def _verification_for_model(self, model_id: str) -> dict[str, object]:
+        record = next(
+            (item for item in self._store.load_tested_models() if item["model_id"] == model_id),
+            None,
+        )
+        if record is None:
+            return {
+                "status": "not_verified",
+                "evidence": "none",
+                "artifact_id": None,
+                "verified_utc": None,
+            }
+        return {
+            "status": "tested",
+            "evidence": record["evidence"],
+            "artifact_id": record["artifact_id"],
+            "verified_utc": record["verified_utc"],
+        }
 
     def _resolve_inference_target(
         self,
