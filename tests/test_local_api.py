@@ -535,6 +535,16 @@ def test_built_ui_is_served_without_replacing_repository_concept(tmp_path: Path)
         assert asset.status_code == 200
         assert "console.log" in asset.text
 
+        deep_link = client.get("/models/owner/model/build")
+        missing_api = client.get("/api/not-a-real-route")
+        missing_asset = client.get("/assets/missing.js")
+        assert deep_link.status_code == 200
+        assert "packaged-ui" in deep_link.text
+        assert missing_api.status_code == 404
+        assert missing_api.headers["content-type"].startswith("application/json")
+        assert missing_asset.status_code == 404
+        assert "packaged-ui" not in missing_asset.text
+
     assert Path("index.html").read_bytes() == concept_before
 
 

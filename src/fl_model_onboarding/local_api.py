@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, File, Header, Query, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -160,6 +160,13 @@ def create_app(
 
         @app.get("/", include_in_schema=False)
         async def web_index() -> FileResponse:
+            return FileResponse(static_root / "index.html")
+
+        @app.get("/{client_path:path}", include_in_schema=False)
+        async def web_client_route(client_path: str) -> FileResponse:
+            first_segment = client_path.split("/", maxsplit=1)[0]
+            if first_segment in {"api", "assets"}:
+                raise HTTPException(status_code=404)
             return FileResponse(static_root / "index.html")
 
     return app
