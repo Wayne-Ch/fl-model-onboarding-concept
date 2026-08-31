@@ -290,6 +290,20 @@ def first_failed_stage(events: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def is_happy_path(
+    checker: dict[str, Any],
+    ort: dict[str, Any],
+    oga: dict[str, Any],
+    foundry_sdk: dict[str, Any],
+) -> bool:
+    return bool(
+        checker.get("success")
+        and ort.get("success")
+        and oga.get("success")
+        and foundry_sdk.get("success")
+    )
+
+
 def summarize_foundry_catalog(payload: dict[str, Any] | None) -> dict[str, Any]:
     if payload is None:
         return {"parsed": False}
@@ -438,6 +452,7 @@ def _run_foundry_sdk_probe_subprocess(
     candidate: Candidate,
     model_dir: Path,
     scratch_dir: Path,
+    timeout_seconds: int,
 ) -> dict[str, Any]:
     payload = {
         "task": candidate.task,
@@ -505,14 +520,29 @@ except Exception as exc:  # noqa: BLE001
 
 print(json.dumps(result))
 """
-    completed = subprocess.run(
-        [sys.executable, "-c", script, json.dumps(payload)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", script, json.dumps(payload)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout or b"").decode(errors="replace")
+        stderr = exc.stderr if isinstance(exc.stderr, str) else (exc.stderr or b"").decode(errors="replace")
+        return {
+            "success": False,
+            "stage": "fl_sdk_probe_timeout",
+            "error": f"Foundry SDK probe timed out after {timeout_seconds} seconds",
+            "timed_out": True,
+            "timeout_seconds": timeout_seconds,
+            "subprocess_returncode": None,
+            "subprocess_stdout_preview": truncate(redact(stdout), 1200),
+            "subprocess_stderr_preview": truncate(redact(stderr), 1200),
+        }
 
     stdout = redact(completed.stdout or "")
     stderr = redact(completed.stderr or "")
@@ -538,14 +568,24 @@ print(json.dumps(result))
     }
 
 
-def try_foundry_sdk(model_dir: Path, candidate: Candidate, scratch_dir: Path) -> dict[str, Any]:
+def try_foundry_sdk(
+    model_dir: Path,
+    candidate: Candidate,
+    scratch_dir: Path,
+    foundry_timeout_seconds: int,
+) -> dict[str, Any]:
     contract_path = model_dir / "inference_model.json"
     created_contract = False
     if not contract_path.exists():
         contract_path.write_text(json.dumps({"Name": candidate.byom_name}, indent=2), encoding="utf-8")
         created_contract = True
 
-    result = _run_foundry_sdk_probe_subprocess(candidate, model_dir, scratch_dir)
+    result = _run_foundry_sdk_probe_subprocess(
+        candidate,
+        model_dir,
+        scratch_dir,
+        timeout_seconds=foundry_timeout_seconds,
+    )
     result["inference_model_created"] = created_contract
     return result
 
@@ -558,6 +598,7 @@ def run_candidate_pipeline(
     scratch_dir: Path,
     build_timeout_seconds: int,
     olive_timeout_seconds: int,
+    foundry_timeout_seconds: int,
 ) -> dict[str, Any]:
     events: list[dict[str, Any]] = []
     result: dict[str, Any] = {
@@ -759,8 +800,14 @@ def run_candidate_pipeline(
     sdk_root = validation_root
     if not (sdk_root / "genai_config.json").exists() and (mobius_output_dir / "genai_config.json").exists():
         sdk_root = mobius_output_dir
-    foundry_sdk = try_foundry_sdk(sdk_root, candidate, scratch_dir)
-    events.append({"stage": f"{candidate.key}.fl_sdk", "success": bool(foundry_sdk.get("success")), "detail": foundry_sdk})
+    foundry_sdk = try_foundry_sdk(
+        model_dir=sdk_root,
+        candidate=candidate,
+        scratch_dir=scratch_dir,
+        foundry_timeout_seconds=foundry_timeout_seconds,
+    )
+    sdk_stage = str(foundry_sdk.get("stage") or "fl_sdk")
+    events.append({"stage": f"{candidate.key}.{sdk_stage}", "success": bool(foundry_sdk.get("success")), "detail": foundry_sdk})
 
     result["validation"] = {
         "validation_root": str(validation_root),
@@ -770,12 +817,7 @@ def run_candidate_pipeline(
         "foundry_sdk": foundry_sdk,
     }
 
-    happy_path = bool(
-        checker.get("success")
-        and ort.get("success")
-        and (oga.get("success") if candidate.task == "chat" else True)
-        and foundry_sdk.get("success")
-    )
+    happy_path = is_happy_path(checker=checker, ort=ort, oga=oga, foundry_sdk=foundry_sdk)
     result["status"] = "happy_path" if happy_path else "blocked"
     result["first_failure_stage"] = first_failed_stage(events)
     return result
@@ -874,6 +916,7 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
             scratch_dir=scratch_dir,
             build_timeout_seconds=args.build_timeout_seconds,
             olive_timeout_seconds=args.olive_timeout_seconds,
+            foundry_timeout_seconds=args.foundry_timeout_seconds,
         )
         for candidate in CANDIDATES
     ]
@@ -904,6 +947,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=5400,
         help="Timeout for each Olive optimize command.",
+    )
+    parser.add_argument(
+        "--foundry-timeout-seconds",
+        type=int,
+        default=900,
+        help="Timeout for each per-candidate Foundry SDK probe subprocess.",
     )
     parser.add_argument(
         "--keep-scratch",

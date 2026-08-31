@@ -57,7 +57,7 @@
      - Foundry Local SDK BYOM load ❌ with same underlying parser failure when loading `distil-whisper-contract-probe:1`
      - Decoder-only Olive output was not discoverable as a Foundry model entry (no valid package-level runtime metadata for SDK discovery).
 8. **Probe script tests**
-   - `python -m pytest experiments\contract-probes\test_run_contract_probes.py -q` => `5 passed`
+   - `python -m pytest experiments\contract-probes\test_run_contract_probes.py -q` => `7 passed`
 
 ## VERSION-SENSITIVE
 
@@ -72,17 +72,38 @@
 
 ## BLOCKED
 
-1. **ASR runtime contract blocker (current environment):** Mobius-generated Whisper `genai_config.json` rejected by OGA/Foundry runtime parser (`model:decoder:inputs: Unknown value "decoder_input_ids"`).  
-   - Stage evidence: OGA load and Foundry SDK model load fail with the same parse error.
-   - Impact: prevents ASR BYOM load/inference happy path even though ONNX graphs are valid and ORT-loadable.
+1. **ASR runtime contract blocker (canonical classification: `BLOCKED_RUNTIME_CONTRACT`)**
+   - **Candidate/revision:** `distil-whisper/distil-medium.en` @ `6e61418885eaf4d5cc9f64e508e80ac5b4c052b7`.
+   - **Tool versions at failure boundary:** `mobius-onnx=0.1.0` (producer) vs pinned consumers `onnxruntime-genai=0.15.2` and `foundry-local-sdk=1.2.4`.
+   - **Canonical failed stage:** `asr.oga` (first runtime gate failure for package load), mirrored by `asr.fl_sdk_load` with the same parser contract error.
+   - **Sanitized shared error signature (OGA + Foundry):** `model:decoder:inputs: Unknown value \"decoder_input_ids\"`.
+   - **Gate results for this candidate (must remain non-happy-path):**
+     - HF revision capture ✅
+     - Mobius CPU/ort-genai build ✅
+     - ONNX checker ✅
+     - ORT CPU load ✅
+     - Olive existing-ONNX directory optimize ❌ (non-runtime contract mismatch, see blocker #2)
+     - OGA runtime package load ❌
+     - Foundry SDK BYOM load/inference ❌
+   - **Reproduction commands (no rebuild required):**
+     ```powershell
+     C:\flprobe-venv\Scripts\python.exe -c "import onnxruntime_genai as og; og.Model(r'C:\fmo-poc\work\20260830-225442-66553c73\mobius\asr')"
+     C:\flprobe-venv\Scripts\python.exe -c "from foundry_local_sdk import Configuration, FoundryLocalManager; cfg=Configuration(app_name='contract-probe-evidence', model_cache_dir=r'C:\fmo-poc\work\20260830-225442-66553c73\mobius'); FoundryLocalManager.initialize(cfg); m=FoundryLocalManager.instance; model=next(x for x in m.catalog.get_cached_models() if 'distil-whisper-contract-probe:1' in x.id); model.load()"
+     ```
+   - **Evidence paths:**
+     - `C:\fmo-poc\work\20260830-225442-66553c73\evidence\asr-oga-load.txt`
+     - `C:\fmo-poc\work\20260830-225442-66553c73\evidence\asr-foundry-load.txt`
+     - `C:\fmo-poc\work\20260830-225442-66553c73\mobius\asr\genai_config.json`
+   - **Owner boundary:** the failing contract is in Mobius-generated Whisper package metadata consumed by pinned OGA/Foundry runtimes; this spike does not modify Mobius/OGA/Foundry source and must not hand-edit generated third-party artifacts to claim success.
+   - **Acceptance note:** this candidate is **BLOCKED** and must not be counted as tested/successful for end-to-end ASR BYOM.
 2. **ASR INT8 optimization blocker:** Olive INT8 path requires calibration dataset plumbing (`datasets` module) and did not complete from the existing-ONNX decoder probe path in this run.
 
 ## Candidate outcome summary
 
-| Candidate | Outcome | Last successful stage | Blocking stage |
-| --- | --- | --- | --- |
-| `HuggingFaceTB/SmolLM2-1.7B-Instruct` | **HAPPY PATH** | Foundry SDK BYOM chat inference | N/A |
-| `distil-whisper/distil-medium.en` | **BLOCKED** | ORT load of Olive FP32 decoder ONNX | OGA/Foundry runtime parse of Whisper `genai_config.json` |
+| Candidate | Outcome | Last successful gate | Canonical failed stage | Blocking signature |
+| --- | --- | --- | --- | --- |
+| `HuggingFaceTB/SmolLM2-1.7B-Instruct` | **HAPPY PATH** | Foundry SDK BYOM chat inference | N/A | N/A |
+| `distil-whisper/distil-medium.en` | **BLOCKED** | ORT load of Olive FP32 decoder ONNX | `asr.oga` (mirrored at `asr.fl_sdk_load`) | `Unknown value "decoder_input_ids"` |
 
 ## Artifacts and cleanup
 
@@ -102,4 +123,4 @@ C:\flprobe-venv\Scripts\python.exe experiments\contract-probes\run_contract_prob
 ## Next action
 
 1. Keep LLM candidate as the reliable POC path.
-2. For ASR, investigate/align Whisper `genai_config.json` input contract expected by current OGA/Foundry runtime before attempting another BYOM load probe.
+2. For ASR, run a source-adaptation investigation that compares Mobius-generated Whisper `genai_config.json` (`model.decoder.inputs`) against a known OGA 0.15.2 Whisper package schema, identify required key/name mapping (including `decoder_input_ids`), and then re-run only package-load gates (OGA/Foundry) before any new full rebuild.
