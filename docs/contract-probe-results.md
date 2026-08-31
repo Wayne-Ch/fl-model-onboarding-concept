@@ -87,6 +87,7 @@
      - Foundry SDK BYOM load/inference ❌
    - **Reproduction commands (no rebuild required):**
      ```powershell
+     C:\flprobe-venv\Scripts\python.exe experiments\contract-probes\run_contract_probes.py --scratch-root C:\fmo-poc\work --foundry-timeout-seconds 900
      C:\flprobe-venv\Scripts\python.exe -c "import onnxruntime_genai as og; og.Model(r'C:\fmo-poc\work\20260830-225442-66553c73\mobius\asr')"
      C:\flprobe-venv\Scripts\python.exe -c "from foundry_local_sdk import Configuration, FoundryLocalManager; cfg=Configuration(app_name='contract-probe-evidence', model_cache_dir=r'C:\fmo-poc\work\20260830-225442-66553c73\mobius'); FoundryLocalManager.initialize(cfg); m=FoundryLocalManager.instance; model=next(x for x in m.catalog.get_cached_models() if 'distil-whisper-contract-probe:1' in x.id); model.load()"
      ```
@@ -117,7 +118,7 @@
 ## Re-run command
 
 ```powershell
-C:\flprobe-venv\Scripts\python.exe experiments\contract-probes\run_contract_probes.py --scratch-root C:\fmo-poc\work
+C:\flprobe-venv\Scripts\python.exe experiments\contract-probes\run_contract_probes.py --scratch-root C:\fmo-poc\work --foundry-timeout-seconds 900
 ```
 
 ## Next action
