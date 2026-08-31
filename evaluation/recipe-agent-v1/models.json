@@ -1,0 +1,287 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Recipe Agent v1 evaluation set - frozen unseen models",
+  "selection_timestamp": "2026-08-31T23:02:16.338440+00:00",
+  "foundry_catalog_snapshot": {
+    "model_count": 50,
+    "timestamp": "2026-08-31T23:02:16.338440+00:00"
+  },
+  "selection_rules": {
+    "max_params_billion": 4.0,
+    "min_downloads": 500,
+    "excluded_recipe_ids": [
+      "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "distil-whisper/distil-medium.en",
+      "ibm-granite/granite-3.3-2b-instruct"
+    ],
+    "recognized_architectures": [
+      "bloom",
+      "cohere",
+      "falcon",
+      "gemma",
+      "gemma2",
+      "gemma3",
+      "glm",
+      "gpt2",
+      "gpt_neox",
+      "llama",
+      "mistral",
+      "mpt",
+      "olmo",
+      "olmo2",
+      "opt",
+      "phi",
+      "phi3",
+      "phimoe",
+      "qwen2",
+      "qwen3",
+      "stablelm",
+      "starcoder2",
+      "tinyllama"
+    ]
+  },
+  "models": [
+    {
+      "index": 1,
+      "model_id": "Qwen/Qwen2.5-3B-Instruct",
+      "sha": "aa8e72537993ba99e69dfaafa59ed015b17504d1",
+      "model_type": "qwen2",
+      "architectures": [
+        "Qwen2ForCausalLM"
+      ],
+      "params_billion": 3.09,
+      "downloads": 7540588,
+      "likes": 557,
+      "license": "other",
+      "last_modified": "2024-09-25T12:33:00+00:00",
+      "catalog_match": false,
+      "recipe_exists": false,
+      "cpu_practical": true,
+      "cpu_rationale": "Size within CPU range based on file analysis",
+      "mobius_recognition": "model_type 'qwen2' in recognized set",
+      "evaluation_prompts": [
+        {
+          "name": "basic_instruction",
+          "prompt": "Explain what a hash table is in two sentences.",
+          "expected_behavior": "Coherent explanation of hash table data structure"
+        },
+        {
+          "name": "reasoning",
+          "prompt": "If a train travels 60 mph for 2.5 hours, how far does it go? Show your work.",
+          "expected_behavior": "Correct answer of 150 miles with arithmetic shown"
+        },
+        {
+          "name": "code_generation",
+          "prompt": "Write a Python function that checks if a string is a palindrome.",
+          "expected_behavior": "Syntactically valid Python function with correct logic"
+        },
+        {
+          "name": "creative_writing",
+          "prompt": "Write a haiku about programming.",
+          "expected_behavior": "A haiku (5-7-5 syllable structure) related to programming"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "model_type": "llama",
+      "architectures": [
+        "LlamaForCausalLM"
+      ],
+      "params_billion": 1.1,
+      "downloads": 1918507,
+      "likes": 1755,
+      "license": "apache-2.0",
+      "last_modified": "2024-03-17T05:07:08+00:00",
+      "catalog_match": false,
+      "recipe_exists": false,
+      "cpu_practical": true,
+      "cpu_rationale": "Size within CPU range based on file analysis",
+      "mobius_recognition": "model_type 'llama' in recognized set",
+      "evaluation_prompts": [
+        {
+          "name": "basic_instruction",
+          "prompt": "Explain what a hash table is in two sentences.",
+          "expected_behavior": "Coherent explanation of hash table data structure"
+        },
+        {
+          "name": "reasoning",
+          "prompt": "If a train travels 60 mph for 2.5 hours, how far does it go? Show your work.",
+          "expected_behavior": "Correct answer of 150 miles with arithmetic shown"
+        },
+        {
+          "name": "code_generation",
+          "prompt": "Write a Python function that checks if a string is a palindrome.",
+          "expected_behavior": "Syntactically valid Python function with correct logic"
+        },
+        {
+          "name": "creative_writing",
+          "prompt": "Write a haiku about programming.",
+          "expected_behavior": "A haiku (5-7-5 syllable structure) related to programming"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "model_id": "allenai/OLMo-2-0425-1B-Instruct",
+      "sha": "48d788eca847d4d7548f375ad03d3c9312f6139e",
+      "model_type": "olmo2",
+      "architectures": [
+        "Olmo2ForCausalLM"
+      ],
+      "params_billion": 1.48,
+      "downloads": 74486,
+      "likes": 58,
+      "license": "apache-2.0",
+      "last_modified": "2025-04-30T22:32:46+00:00",
+      "catalog_match": false,
+      "recipe_exists": false,
+      "cpu_practical": true,
+      "cpu_rationale": "Size within CPU range based on file analysis",
+      "mobius_recognition": "model_type 'olmo2' in recognized set",
+      "evaluation_prompts": [
+        {
+          "name": "basic_instruction",
+          "prompt": "Explain what a hash table is in two sentences.",
+          "expected_behavior": "Coherent explanation of hash table data structure"
+        },
+        {
+          "name": "reasoning",
+          "prompt": "If a train travels 60 mph for 2.5 hours, how far does it go? Show your work.",
+          "expected_behavior": "Correct answer of 150 miles with arithmetic shown"
+        },
+        {
+          "name": "code_generation",
+          "prompt": "Write a Python function that checks if a string is a palindrome.",
+          "expected_behavior": "Syntactically valid Python function with correct logic"
+        },
+        {
+          "name": "creative_writing",
+          "prompt": "Write a haiku about programming.",
+          "expected_behavior": "A haiku (5-7-5 syllable structure) related to programming"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "model_id": "ministral/Ministral-3b-instruct",
+      "sha": "2c95908929198d6e69af8638f0dbbd9bc6b93f9e",
+      "model_type": "mistral",
+      "architectures": [
+        "MistralForCausalLM"
+      ],
+      "params_billion": 3.32,
+      "downloads": 17902,
+      "likes": 87,
+      "license": "apache-2.0",
+      "last_modified": "2024-03-21T14:39:28+00:00",
+      "catalog_match": false,
+      "recipe_exists": false,
+      "cpu_practical": true,
+      "cpu_rationale": "Size within CPU range based on file analysis",
+      "mobius_recognition": "model_type 'mistral' in recognized set",
+      "evaluation_prompts": [
+        {
+          "name": "basic_instruction",
+          "prompt": "Explain what a hash table is in two sentences.",
+          "expected_behavior": "Coherent explanation of hash table data structure"
+        },
+        {
+          "name": "reasoning",
+          "prompt": "If a train travels 60 mph for 2.5 hours, how far does it go? Show your work.",
+          "expected_behavior": "Correct answer of 150 miles with arithmetic shown"
+        },
+        {
+          "name": "code_generation",
+          "prompt": "Write a Python function that checks if a string is a palindrome.",
+          "expected_behavior": "Syntactically valid Python function with correct logic"
+        },
+        {
+          "name": "creative_writing",
+          "prompt": "Write a haiku about programming.",
+          "expected_behavior": "A haiku (5-7-5 syllable structure) related to programming"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "model_id": "kakaocorp/kanana-2-3b-instruct",
+      "sha": "6a5d7889964c4c590299d16e309eabab1f73f8a9",
+      "model_type": "qwen3",
+      "architectures": [
+        "Qwen3ForCausalLM"
+      ],
+      "params_billion": 3.51,
+      "downloads": 8179,
+      "likes": 11,
+      "license": "other",
+      "last_modified": "2026-07-29T08:58:26+00:00",
+      "catalog_match": false,
+      "recipe_exists": false,
+      "cpu_practical": true,
+      "cpu_rationale": "Size within CPU range based on file analysis",
+      "mobius_recognition": "model_type 'qwen3' in recognized set",
+      "evaluation_prompts": [
+        {
+          "name": "basic_instruction",
+          "prompt": "Explain what a hash table is in two sentences.",
+          "expected_behavior": "Coherent explanation of hash table data structure"
+        },
+        {
+          "name": "reasoning",
+          "prompt": "If a train travels 60 mph for 2.5 hours, how far does it go? Show your work.",
+          "expected_behavior": "Correct answer of 150 miles with arithmetic shown"
+        },
+        {
+          "name": "code_generation",
+          "prompt": "Write a Python function that checks if a string is a palindrome.",
+          "expected_behavior": "Syntactically valid Python function with correct logic"
+        },
+        {
+          "name": "creative_writing",
+          "prompt": "Write a haiku about programming.",
+          "expected_behavior": "A haiku (5-7-5 syllable structure) related to programming"
+        }
+      ]
+    }
+  ],
+  "alternates": [
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+      "model_type": "llama",
+      "params_billion": null,
+      "downloads": 1400792,
+      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-3B-Instruct-AWQ",
+      "model_type": "qwen2",
+      "params_billion": null,
+      "downloads": 546798,
+      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+    },
+    {
+      "model_id": "unsloth/Llama-3.2-1B-Instruct",
+      "model_type": "llama",
+      "params_billion": null,
+      "downloads": 506972,
+      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+    },
+    {
+      "model_id": "RedHatAI/Llama-3.2-1B-Instruct-FP8-dynamic",
+      "model_type": "llama",
+      "params_billion": null,
+      "downloads": 439432,
+      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+    },
+    {
+      "model_id": "Qwen/Qwen2.5-Coder-3B-Instruct",
+      "model_type": "qwen2",
+      "params_billion": null,
+      "downloads": 330913,
+      "rejection_reason": "Not selected; alternates for diversity or if primary becomes unavailable"
+    }
+  ]
+}
