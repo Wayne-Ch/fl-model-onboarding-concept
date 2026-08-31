@@ -3,21 +3,97 @@ info:
   title: Foundry Local Onboarding POC API
   version: 0.1.0
   description: >
-    Loopback-only POC API contracts for model onboarding. Build and preflight are idempotent
-    and side-effect constrained to local cache/workspace operations.
+    Loopback-first local API for model onboarding. Build and preflight are idempotent,
+    stateful in SQLite, and authoritative over browser status.
 servers:
   - url: http://127.0.0.1:8777
 paths:
-  /api/preflight:
+  /api/health:
+    get:
+      summary: Service health and storage status
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/models/search:
+    get:
+      summary: Search Hugging Face models
+      operationId: searchModels
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Search result set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelSearchResponse"
+        "400":
+          description: Invalid query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/models/detail:
+    get:
+      summary: Get selected model detail and buildability assessment
+      operationId: getModelDetail
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Model metadata, gating policy flags, and Foundry catalog matches.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelDetailResponse"
+        "400":
+          description: Invalid model id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream metadata lookup failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/models/preflight:
     post:
-      summary: Run idempotent candidate preflight
-      operationId: preflightCandidate
+      summary: Run idempotent candidate preflight evaluation
+      operationId: preflightModel
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PreflightRequest"
+              $ref: "#/components/schemas/BuildSubmissionRequest"
       responses:
         "200":
           description: Cached or newly computed preflight result.
@@ -25,6 +101,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PreflightResponse"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/builds:
     post:
       summary: Create or replay a build job by idempotency key
@@ -41,23 +124,24 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BuildCreateRequest"
+              $ref: "#/components/schemas/BuildSubmissionRequest"
       responses:
         "200":
-          description: New job or idempotent replay of the original job.
+          description: New job or idempotent replay of original job.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/BuildCreateResponse"
         "409":
-          description: Idempotency key reused with a different body.
+          description: Idempotency key conflict or one-active-build restriction.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
   /api/builds/{job_id}:
     get:
-      summary: Get build job status
+      summary: Get build job state and history
       operationId: getBuild
       parameters:
         - in: path
@@ -72,9 +156,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BuildJob"
+        "404":
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/builds/{job_id}/events:
     get:
-      summary: Poll monotonic job events
+      summary: Poll monotonic job events after a cursor
       operationId: getBuildEvents
       parameters:
         - in: path
@@ -96,6 +187,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BuildEventsResponse"
+        "404":
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/builds/{job_id}/cancel:
     post:
       summary: Cancel an active build job
@@ -106,9 +204,15 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelBuildRequest"
       responses:
         "200":
-          description: Job cancellation accepted.
+          description: Build job after cancellation.
           content:
             application/json:
               schema:
@@ -119,6 +223,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/artifacts/{artifact_id}/infer/text:
     post:
       summary: Infer text from a completed text-capable artifact
@@ -137,23 +248,30 @@ paths:
               $ref: "#/components/schemas/TextInferenceRequest"
       responses:
         "200":
-          description: Inference result.
+          description: Text inference result.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TextInferenceResponse"
         "409":
-          description: Artifact is unavailable due to failed/cancelled build or lifecycle state.
+          description: Artifact unavailable due to job lifecycle state or task mismatch.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Artifact does not support text inference.
+        "404":
+          description: Artifact not found.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Inference backend not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/artifacts/{artifact_id}/infer/asr:
     post:
       summary: Infer transcription from a completed ASR-capable artifact
@@ -167,30 +285,52 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: "#/components/schemas/AsrInferenceRequest"
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
       responses:
         "200":
-          description: Inference result.
+          description: ASR inference result.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AsrInferenceResponse"
+        "400":
+          description: Empty or invalid audio payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Artifact is unavailable due to failed/cancelled build or lifecycle state.
+          description: Artifact unavailable due to job lifecycle state or task mismatch.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Artifact does not support ASR inference.
+        "404":
+          description: Artifact not found.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Inference backend not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
+    CandidateModality:
+      type: string
+      enum: [llm, asr]
+
     BuildState:
       type: string
       enum:
@@ -207,13 +347,30 @@ components:
         - succeeded
         - failed
         - cancelled
-    FailureInfo:
+
+    FailureClassification:
+      type: string
+      enum:
+        - not_verified
+        - tool_unavailable
+        - missing_dependency
+        - invalid_request
+        - path_containment
+        - network
+        - process_failed
+        - compatibility
+        - cancelled
+        - unknown
+
+    MatchConfidence:
+      type: string
+      enum: [low, medium, high]
+
+    ErrorResponse:
       type: object
-      required: [stage, classification, message]
+      required: [code, message]
       properties:
-        stage:
-          $ref: "#/components/schemas/BuildState"
-        classification:
+        code:
           type: string
         message:
           type: string
@@ -221,6 +378,22 @@ components:
           type: object
           additionalProperties:
             type: string
+
+    FailureInfo:
+      type: object
+      required: [stage, classification, message]
+      properties:
+        stage:
+          $ref: "#/components/schemas/BuildState"
+        classification:
+          $ref: "#/components/schemas/FailureClassification"
+        message:
+          type: string
+        detail:
+          type: object
+          additionalProperties:
+            type: string
+
     BuildArtifact:
       type: object
       required: [artifact_id, kind, path, description]
@@ -239,6 +412,7 @@ components:
         sha256:
           type: string
           nullable: true
+
     JobEvent:
       type: object
       required: [sequence, timestamp_utc, state, message]
@@ -253,58 +427,70 @@ components:
           $ref: "#/components/schemas/BuildState"
         message:
           type: string
-    BuildJob:
+
+    ValidationResult:
       type: object
-      required: [job_id, state, request, started_utc, events, artifacts]
+      required: [stage, status, checks]
       properties:
-        job_id:
-          type: string
-        state:
+        stage:
           $ref: "#/components/schemas/BuildState"
-        request:
-          $ref: "#/components/schemas/BuildRequestContext"
-        started_utc:
+        status:
           type: string
-          format: date-time
-        finished_utc:
-          type: string
-          format: date-time
-          nullable: true
-        events:
+          enum: [passed, failed, not_verified]
+        checks:
           type: array
           items:
-            $ref: "#/components/schemas/JobEvent"
-        artifacts:
-          type: array
-          items:
-            $ref: "#/components/schemas/BuildArtifact"
+            type: string
         failure:
           $ref: "#/components/schemas/FailureInfo"
-        result_artifact_id:
+
+    CatalogMatchAssessment:
+      type: object
+      required: [alias, model_or_variant_id, source_schema, confidence, reason]
+      properties:
+        alias:
+          type: string
+        model_or_variant_id:
+          type: string
+        source_schema:
+          type: string
+          enum: [models, variants]
+        confidence:
+          $ref: "#/components/schemas/MatchConfidence"
+        reason:
+          type: string
+        cached:
+          type: boolean
+          nullable: true
+        model_type:
           type: string
           nullable: true
+
+    ModelCandidate:
+      type: object
+      required: [key, huggingface_model_id, modality]
+      properties:
+        key:
+          type: string
+        huggingface_model_id:
+          type: string
+        modality:
+          $ref: "#/components/schemas/CandidateModality"
+        recommended_mobius_dtype:
+          type: string
+          nullable: true
+        recommended_olive_precision:
+          type: string
+          nullable: true
+        notes:
+          type: string
+
     BuildRequestContext:
       type: object
       required: [candidate, workspace_root, model_cache_dir, output_dir, task_profile, runtime]
       properties:
         candidate:
-          type: object
-          required: [key, huggingface_model_id, modality]
-          properties:
-            key:
-              type: string
-            huggingface_model_id:
-              type: string
-            modality:
-              type: string
-            recommended_mobius_dtype:
-              type: string
-              nullable: true
-            recommended_olive_precision:
-              type: string
-              nullable: true
-            notes:
-              type: string
+          $ref: "#/components/schemas/ModelCandidate"
         workspace_root:
           type: string
         model_cache_dir:
@@ -328,20 +514,68 @@ components:
           type: boolean
         dry_run:
           type: boolean
-    BuildCreateRequest:
+
+    BuildJob:
       type: object
-      required: [candidate_key, task_profile]
+      required:
+        - job_id
+        - state
+        - request
+        - started_utc
+        - events
+        - artifacts
+        - validations
       properties:
-        candidate_key:
+        job_id:
           type: string
+        state:
+          $ref: "#/components/schemas/BuildState"
+        request:
+          $ref: "#/components/schemas/BuildRequestContext"
+        started_utc:
+          type: string
+          format: date-time
+        finished_utc:
+          type: string
+          format: date-time
+          nullable: true
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobEvent"
+        artifacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/BuildArtifact"
+        validations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationResult"
+        failure:
+          $ref: "#/components/schemas/FailureInfo"
+        result_artifact_id:
+          type: string
+          nullable: true
+
+    BuildSubmissionRequest:
+      type: object
+      required: [model_id, task, task_profile]
+      properties:
+        model_id:
+          type: string
+          minLength: 1
+        task:
+          $ref: "#/components/schemas/CandidateModality"
         task_profile:
           type: string
+          minLength: 1
         hf_revision:
           type: string
           nullable: true
-        dry_run:
+        skip_olive:
           type: boolean
           default: false
+
     BuildCreateResponse:
       type: object
       required: [job, idempotent_replay]
@@ -350,6 +584,7 @@ components:
           type: boolean
         job:
           $ref: "#/components/schemas/BuildJob"
+
     BuildEventsResponse:
       type: object
       required: [job_id, after, events]
@@ -363,38 +598,128 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/JobEvent"
-    PreflightRequest:
-      type: object
-      required: [candidate_key, task_profile]
-      properties:
-        candidate_key:
-          type: string
-        task_profile:
-          type: string
-        hf_revision:
-          type: string
-          nullable: true
+
     PreflightResponse:
       type: object
-      required: [cache_key, ok]
+      required: [cache_key, ok, cached, result]
       properties:
         cache_key:
           type: string
         ok:
           type: boolean
+        cached:
+          type: boolean
         result:
           type: object
+
+    ModelSearchResult:
+      type: object
+      required: [model_id]
+      properties:
+        model_id:
+          type: string
+        downloads:
+          type: integer
+          nullable: true
+        likes:
+          type: integer
+          nullable: true
+        last_modified:
+          type: string
+          nullable: true
+
+    ModelSearchResponse:
+      type: object
+      required: [query, limit, results]
+      properties:
+        query:
+          type: string
+        limit:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelSearchResult"
+
+    ModelDetailResponse:
+      type: object
+      required:
+        - model_id
+        - buildable
+        - build_blockers
+        - task_hints
+        - foundry_catalog_matches
+        - warnings
+      properties:
+        model_id:
+          type: string
+        revision:
+          type: string
+          nullable: true
+        sha:
+          type: string
+          nullable: true
+        private:
+          type: boolean
+          nullable: true
+        gated:
+          type: boolean
+          nullable: true
+        requires_remote_code:
+          type: boolean
+        buildable:
+          type: boolean
+        build_blockers:
+          type: array
+          items:
+            type: string
+        task_hints:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidateModality"
+        last_modified:
+          type: string
+          nullable: true
+        safetensors_total_bytes:
+          type: integer
+          nullable: true
+        safetensors_parameter_count:
+          type: integer
+          nullable: true
+        card_data:
+          type: object
+          nullable: true
+          additionalProperties: true
+        foundry_catalog_matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogMatchAssessment"
+        warnings:
+          type: array
+          items:
+            type: string
+
+    CancelBuildRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+
     TextInferenceRequest:
       type: object
       required: [prompt]
       properties:
         prompt:
           type: string
+          minLength: 1
         max_tokens:
           type: integer
           minimum: 1
           maximum: 4096
           default: 128
+
     TextInferenceResponse:
       type: object
       required: [artifact_id, output]
@@ -403,12 +728,7 @@ components:
           type: string
         output:
           type: string
-    AsrInferenceRequest:
-      type: object
-      required: [audio_path]
-      properties:
-        audio_path:
-          type: string
+
     AsrInferenceResponse:
       type: object
       required: [artifact_id, transcript]
@@ -417,11 +737,18 @@ components:
           type: string
         transcript:
           type: string
-    ErrorResponse:
+
+    HealthResponse:
       type: object
-      required: [code, message]
+      required: [status, jobs_total, storage_path]
       properties:
-        code:
+        status:
           type: string
-        message:
+        active_job_id:
+          type: string
+          nullable: true
+        jobs_total:
+          type: integer
+          minimum: 0
+        storage_path:
           type: string

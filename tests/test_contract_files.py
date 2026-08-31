@@ -11,6 +11,10 @@ def test_openapi_contains_required_paths() -> None:
     path = Path("contracts") / "openapi.yaml"
     spec = yaml.safe_load(path.read_text(encoding="utf-8"))
     paths = spec["paths"]
+    assert "/api/health" in paths
+    assert "/api/models/search" in paths
+    assert "/api/models/detail" in paths
+    assert "/api/models/preflight" in paths
     assert "/api/builds" in paths
     assert "/api/builds/{job_id}/events" in paths
     assert "/api/artifacts/{artifact_id}/infer/text" in paths
@@ -23,6 +27,11 @@ def test_openapi_contains_required_paths() -> None:
     assert "request" in build_job["properties"]
     assert "started_utc" in build_job["properties"]
     assert "finished_utc" in build_job["properties"]
+    assert "validations" in build_job["properties"]
+
+    failure_classification = spec["components"]["schemas"]["FailureClassification"]["enum"]
+    assert "not_verified" in failure_classification
+    assert "tool_unavailable" in failure_classification
 
 
 def test_state_machine_contract_contains_cancellable_flags() -> None:

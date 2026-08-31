@@ -32,6 +32,7 @@ TERMINAL_STATES = frozenset({JobState.SUCCEEDED, JobState.FAILED, JobState.CANCE
 
 class FailureClassification(StrEnum):
     NOT_VERIFIED = "not_verified"
+    TOOL_UNAVAILABLE = "tool_unavailable"
     MISSING_DEPENDENCY = "missing_dependency"
     INVALID_REQUEST = "invalid_request"
     PATH_CONTAINMENT = "path_containment"

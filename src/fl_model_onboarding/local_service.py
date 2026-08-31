@@ -14,11 +14,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from queue import Queue
 from threading import Event, Thread
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .adapters.foundry_cli import FoundryCliCatalogAdapter
 from .adapters.huggingface_metadata import HuggingFaceMetadataAdapter
-from .adapters.interfaces import FoundryCatalogClient, HuggingFaceMetadataClient
+from .adapters.interfaces import FoundryCatalogClient, HuggingFaceMetadataClient, ProcessRunner
 from .cancellation import ProcessOwnershipRegistry
 from .contracts import (
     ArtifactKind,
@@ -43,13 +43,12 @@ from .paths import ensure_dir
 from .preflight import PreflightInspector
 from .serialization import to_jsonable
 from .state_machine import CANCELLABLE_STATES, fail_job, transition
+from .subprocess_runner import SafeSubprocessRunner
 from .workspace_layout import default_workspace_base, workspace_root_for_job
 
-_TOKEN_PATTERNS = (
-    re.compile(r"\bhf_[A-Za-z0-9]{16,}\b"),
-    re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._~+/=-]{8,})"),
-    re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)"),
-)
+_HF_TOKEN_RE = re.compile(r"\bhf_[A-Za-z0-9]{16,}\b")
+_BEARER_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{8,})")
+_API_KEY_RE = re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)")
 
 _DEFAULT_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
@@ -139,7 +138,7 @@ class BuildStageRunner(Protocol):
         self,
         job: BuildJob,
         *,
-        persist: callable,
+        persist: Callable[[], None],
         cancellation_event: Event,
     ) -> None:
         ...
@@ -174,7 +173,7 @@ class UnverifiedBuildStageRunner:
         self,
         job: BuildJob,
         *,
-        persist: callable,
+        persist: Callable[[], None],
         cancellation_event: Event,
     ) -> None:
         if cancellation_event.is_set():
@@ -473,16 +472,27 @@ class LocalOnboardingService:
         model_cache_dir: Path | None = None,
         hf_metadata: HuggingFaceMetadataClient | None = None,
         foundry_catalog: FoundryCatalogClient | None = None,
+        process_runner: ProcessRunner | None = None,
         preflight_inspector: PreflightInspector | None = None,
         process_registry: ProcessOwnershipRegistry | None = None,
         build_stage_runner: BuildStageRunner | None = None,
         text_inference_backend: TextInferenceBackend | None = None,
         asr_inference_backend: AsrInferenceBackend | None = None,
     ) -> None:
-        data_root = default_data_root()
+        data_root = default_data_root() if (db_path is None or model_cache_dir is None) else None
         self._workspace_base = (workspace_base or default_workspace_base()).resolve()
-        self._model_cache_dir = ensure_dir((model_cache_dir or data_root / "cache").resolve())
-        self._store = SQLiteStateStore((db_path or (data_root / "state" / "service.sqlite3")).resolve())
+        if model_cache_dir is not None:
+            resolved_cache_dir = model_cache_dir.resolve()
+        else:
+            assert data_root is not None
+            resolved_cache_dir = (data_root / "cache").resolve()
+        self._model_cache_dir = ensure_dir(resolved_cache_dir)
+        if db_path is not None:
+            resolved_db_path = db_path.resolve()
+        else:
+            assert data_root is not None
+            resolved_db_path = (data_root / "state" / "service.sqlite3").resolve()
+        self._store = SQLiteStateStore(resolved_db_path)
         self._lock = threading.RLock()
         self._jobs = self._store.load_jobs()
         self._idempotency = self._store.load_idempotency()
@@ -491,11 +501,13 @@ class LocalOnboardingService:
         self._cancel_events: dict[str, Event] = {}
         self._queue: Queue[str | None] = Queue()
         self._shutdown = Event()
+        self._closed = False
 
+        self._process_runner = process_runner or SafeSubprocessRunner()
         self._hf_metadata = hf_metadata or HuggingFaceMetadataAdapter()
-        self._foundry_catalog = foundry_catalog or FoundryCliCatalogAdapter()
+        self._foundry_catalog = foundry_catalog or FoundryCliCatalogAdapter(self._process_runner)
         self._preflight_inspector = preflight_inspector or PreflightInspector(
-            runner=self._foundry_catalog._runner,  # type: ignore[attr-defined]
+            runner=self._process_runner,
             foundry=self._foundry_catalog,
             hf_metadata=self._hf_metadata,
         )
@@ -523,8 +535,12 @@ class LocalOnboardingService:
         return _DEFAULT_CORS_ORIGIN_REGEX
 
     def close(self) -> None:
-        self._shutdown.set()
-        self._queue.put(None)
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._shutdown.set()
+            self._queue.put(None)
         self._worker.join(timeout=5)
 
     def health(self) -> dict[str, object]:
@@ -609,16 +625,10 @@ class LocalOnboardingService:
     def preflight(self, submission: BuildSubmission) -> dict[str, object]:
         normalized = submission.normalized()
         request = self._build_request(normalized, job_id="_preflight")
-        result = self._inspect_preflight(request)
-        cache_key = result.cache_key or _sha256_json(normalized.cache_identity())
-        with self._lock:
-            cached = cache_key in self._preflight_cache
-            if cached:
-                output = self._preflight_cache[cache_key]
-            else:
-                self._preflight_cache[cache_key] = result
-                self._store.save_preflight_cache(cache_key, result)
-                output = result
+        output, cached, cache_key = self._inspect_preflight_with_cache_state(
+            request,
+            fallback_cache_payload=normalized.cache_identity(),
+        )
         payload = to_jsonable(output)
         payload["cache_key"] = cache_key
         return {
@@ -655,6 +665,20 @@ class LocalOnboardingService:
                         status_code=500,
                     )
                 return replay_job, True
+            active_job = next(
+                (job for job in self._jobs.values() if job.state in CANCELLABLE_STATES),
+                None,
+            )
+            if active_job is not None:
+                raise ServiceError(
+                    code="ACTIVE_BUILD_EXISTS",
+                    message=(
+                        f"Build job '{active_job.job_id}' is still active in state '{active_job.state.value}'. "
+                        "Only one active build is supported."
+                    ),
+                    status_code=409,
+                    detail={"active_job_id": active_job.job_id},
+                )
 
             job_id = str(uuid.uuid4())
             request = self._build_request(normalized, job_id=job_id)
@@ -667,6 +691,19 @@ class LocalOnboardingService:
             self._store.save_idempotency(key, self._idempotency[key])
             self._queue.put(job_id)
             return job, False
+
+    def record_artifact(self, job_id: str, artifact: BuildArtifact) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise ServiceError(
+                    code="JOB_NOT_FOUND",
+                    message=f"Build job '{job_id}' was not found.",
+                    status_code=404,
+                )
+            job.register_artifact(artifact)
+            self._artifact_to_job[artifact.artifact_id] = job_id
+            self._store.save_job(job)
 
     def get_build(self, job_id: str) -> BuildJob:
         with self._lock:
@@ -870,23 +907,37 @@ class LocalOnboardingService:
             persist()
 
     def _inspect_preflight(self, request: BuildRequest) -> PreflightResult:
-        result = self._preflight_inspector.inspect(request)
-        cache_key = result.cache_key or _sha256_json(
-            {
+        result, _, _ = self._inspect_preflight_with_cache_state(
+            request,
+            fallback_cache_payload={
                 "model": request.candidate.huggingface_model_id,
                 "task_profile": request.task_profile,
                 "revision": request.hf_revision,
                 "skip_olive": request.skip_olive,
                 "runtime": request.runtime,
+            },
+        )
+        return result
+
+    def _inspect_preflight_with_cache_state(
+        self,
+        request: BuildRequest,
+        *,
+        fallback_cache_payload: dict[str, object],
+    ) -> tuple[PreflightResult, bool, str]:
+        result = self._preflight_inspector.inspect(request)
+        cache_key = result.cache_key or _sha256_json(
+            {
+                **fallback_cache_payload,
             }
         )
         with self._lock:
             cached = self._preflight_cache.get(cache_key)
             if cached is not None:
-                return cached
+                return cached, True, cache_key
             self._preflight_cache[cache_key] = result
             self._store.save_preflight_cache(cache_key, result)
-            return result
+            return result, False, cache_key
 
     def _build_request(self, submission: BuildSubmission, *, job_id: str) -> BuildRequest:
         workspace = workspace_root_for_job(job_id=job_id, base_dir=self._workspace_base)
@@ -1212,9 +1263,8 @@ def _sanitize_failure(value: FailureInfo) -> FailureInfo:
 
 
 def _sanitize_text(text: str) -> str:
-    cleaned = text
-    for pattern in _TOKEN_PATTERNS:
-        cleaned = pattern.sub(r"\1[REDACTED]" if r"\1" in pattern.pattern else "[REDACTED]", cleaned)
+    cleaned = _HF_TOKEN_RE.sub("[REDACTED]", text)
+    cleaned = _BEARER_RE.sub("Bearer [REDACTED]", cleaned)
+    cleaned = _API_KEY_RE.sub(r"\1[REDACTED]", cleaned)
     escaped = html.escape(cleaned, quote=False)
     return escaped[:4000]
-
