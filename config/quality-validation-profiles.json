@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0.0",
+  "profiles": [
+    {
+      "profile_id": "textgen-basic-quality-v1",
+      "version": "1.0.0",
+      "task": "text-generation",
+      "deterministic_inference": {
+        "temperature": 0.0,
+        "seed": 17,
+        "max_tokens": 64
+      },
+      "prompts": [
+        {
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "category": "arithmetic",
+          "prompt": "What is 17 + 28? Reply using only digits.",
+          "expected": {
+            "exact_match": "45",
+            "relevance_keywords": [
+              "45"
+            ],
+            "max_words": 2
+          }
+        },
+        {
+          "prompt_id": "factual-red-planet",
+          "category": "factual-recall",
+          "prompt": "Which planet is known as the Red Planet? Reply with one word.",
+          "expected": {
+            "allowed_answers": [
+              "Mars"
+            ],
+            "required_tokens": [
+              "mars"
+            ],
+            "max_words": 2
+          }
+        },
+        {
+          "prompt_id": "instruction-two-words-blue-river",
+          "category": "instruction-following",
+          "prompt": "Output exactly two words: blue river",
+          "expected": {
+            "required_tokens": [
+              "blue",
+              "river"
+            ],
+            "forbidden_tokens": [
+              "three",
+              "sentence"
+            ],
+            "relevance_keywords": [
+              "blue",
+              "river"
+            ],
+            "max_words": 2
+          }
+        },
+        {
+          "prompt_id": "format-json-answer-unit",
+          "category": "output-format",
+          "prompt": "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.",
+          "expected": {
+            "required_json_keys": [
+              "answer",
+              "unit"
+            ],
+            "required_tokens": [
+              "12",
+              "cm"
+            ],
+            "forbidden_tokens": [
+              "```"
+            ],
+            "relevance_keywords": [
+              "answer",
+              "unit"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
