@@ -12,12 +12,10 @@
       ],
       "family": "llama",
       "model_type_aliases": [
-        "llama",
-        "mllama"
+        "llama"
       ],
       "architecture_aliases": [
-        "LlamaForCausalLM",
-        "MllamaForCausalLM"
+        "LlamaForCausalLM"
       ],
       "task": "text-generation",
       "modality": "llm",
@@ -28,14 +26,16 @@
         "ep": "cpu",
         "runtime": "ort-genai",
         "dtype": "f32",
-        "dtype_rule": "Pinned by verified SmolLM2 and Granite probes."
+        "dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+        "dtype_confidence": "evidence-pinned"
       },
       "olive_rules": {
         "task": "text-generation-with-past",
         "device": "cpu",
         "provider": "CPUExecutionProvider",
         "precision": "int4",
-        "precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+        "precision_rule": "Pinned by verified SmolLM2 and Granite probes.",
+        "precision_confidence": "evidence-pinned"
       },
       "required_artifacts": [
         {
@@ -135,14 +135,16 @@
         "ep": "cpu",
         "runtime": "ort-genai",
         "dtype": "f32",
-        "dtype_rule": "Pinned by verified SmolLM2 and Granite probes."
+        "dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+        "dtype_confidence": "evidence-pinned"
       },
       "olive_rules": {
         "task": "text-generation-with-past",
         "device": "cpu",
         "provider": "CPUExecutionProvider",
         "precision": "int4",
-        "precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+        "precision_rule": "Pinned by verified SmolLM2 and Granite probes.",
+        "precision_confidence": "evidence-pinned"
       },
       "required_artifacts": [
         {
@@ -240,14 +242,16 @@
         "ep": "cpu",
         "runtime": "ort-genai",
         "dtype": null,
-        "dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value."
+        "dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value.",
+        "dtype_confidence": "candidate-unverified"
       },
       "olive_rules": {
         "task": "text-generation-with-past",
         "device": "cpu",
         "provider": "CPUExecutionProvider",
         "precision": "int4",
-        "precision_rule": "Candidate path only; not yet FL verified."
+        "precision_rule": "Candidate path only; not yet FL verified.",
+        "precision_confidence": "candidate-unverified"
       },
       "required_artifacts": [
         {
@@ -356,14 +360,16 @@
         "ep": "cpu",
         "runtime": "ort-genai",
         "dtype": null,
-        "dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value."
+        "dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value.",
+        "dtype_confidence": "candidate-unverified"
       },
       "olive_rules": {
         "task": "text-generation-with-past",
         "device": "cpu",
         "provider": "CPUExecutionProvider",
         "precision": "int4",
-        "precision_rule": "Candidate path only; not yet FL verified."
+        "precision_rule": "Candidate path only; not yet FL verified.",
+        "precision_confidence": "candidate-unverified"
       },
       "required_artifacts": [
         {
@@ -465,14 +471,16 @@
         "ep": "cpu",
         "runtime": "ort-genai",
         "dtype": "f32",
-        "dtype_rule": "Pinned by existing blocked ASR investigation evidence."
+        "dtype_rule": "Pinned by existing blocked ASR investigation evidence.",
+        "dtype_confidence": "evidence-pinned"
       },
       "olive_rules": {
         "task": "automatic-speech-recognition",
         "device": "cpu",
         "provider": "CPUExecutionProvider",
         "precision": "fp32",
-        "precision_rule": "Current safe fallback for blocked ASR path; still source-change-required."
+        "precision_rule": "Current safe fallback for blocked ASR path; still source-change-required.",
+        "precision_confidence": "evidence-pinned"
       },
       "required_artifacts": [
         {

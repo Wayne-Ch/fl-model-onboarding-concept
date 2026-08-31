@@ -65,6 +65,13 @@
         "fp32"
       ]
     },
+    "argument_confidence": {
+      "type": "string",
+      "enum": [
+        "evidence-pinned",
+        "candidate-unverified"
+      ]
+    },
     "mobius_rules": {
       "type": "object",
       "required": [
@@ -72,7 +79,8 @@
         "ep",
         "runtime",
         "dtype",
-        "dtype_rule"
+        "dtype_rule",
+        "dtype_confidence"
       ],
       "properties": {
         "task": {
@@ -92,6 +100,9 @@
         },
         "dtype_rule": {
           "type": "string"
+        },
+        "dtype_confidence": {
+          "$ref": "#/$defs/argument_confidence"
         }
       },
       "additionalProperties": false
@@ -103,7 +114,8 @@
         "device",
         "provider",
         "precision",
-        "precision_rule"
+        "precision_rule",
+        "precision_confidence"
       ],
       "properties": {
         "task": {
@@ -123,6 +135,9 @@
         },
         "precision_rule": {
           "type": "string"
+        },
+        "precision_confidence": {
+          "$ref": "#/$defs/argument_confidence"
         }
       },
       "additionalProperties": false
@@ -429,6 +444,89 @@
           }
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verified"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mobius_rules": {
+                "properties": {
+                  "dtype_confidence": {
+                    "const": "evidence-pinned"
+                  }
+                }
+              },
+              "olive_rules": {
+                "properties": {
+                  "precision_confidence": {
+                    "const": "evidence-pinned"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "tool-supported-unverified"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mobius_rules": {
+                "properties": {
+                  "dtype_confidence": {
+                    "const": "candidate-unverified"
+                  }
+                }
+              },
+              "olive_rules": {
+                "properties": {
+                  "precision_confidence": {
+                    "const": "candidate-unverified"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "source-change-required"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mobius_rules": {
+                "properties": {
+                  "dtype_confidence": {
+                    "const": "evidence-pinned"
+                  }
+                }
+              },
+              "olive_rules": {
+                "properties": {
+                  "precision_confidence": {
+                    "const": "evidence-pinned"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": false
     }
   }

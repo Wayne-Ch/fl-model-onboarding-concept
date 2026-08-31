@@ -13,6 +13,7 @@ A capability can be `verified`, `tool-supported-unverified`, or `source-change-r
 `source-change-required` means current upstream contracts are incompatible and require owner-side fixes.
 
 This separation prevents a frequent mistake: **Mobius model-type recognition is not treated as Foundry Local compatibility proof.**
+It also prevents overclaiming multimodal variants: only aliases directly supported by evidence are marked verified.
 
 ## Data + schema
 
@@ -26,12 +27,33 @@ The loader fails closed on:
 2. Duplicate aliases that would produce ambiguous task/device/precision matches.
 3. Invalid status transition declarations.
 4. Schema-version mismatch.
+5. Argument-confidence/status mismatches (for example, unverified capabilities using evidence-pinned argument confidence).
 
 ## Current seeded families
 
 - **Verified (LLM CPU INT4)**: `llama`, `granite`
 - **Tool-supported-unverified (LLM CPU INT4 candidates)**: `qwen` (`qwen2`/`qwen3`), `phi` (`phi`/`phi3`/`phi3small`/`phimoe`)
 - **Source-change-required (non-text boundary reference)**: `whisper` ASR
+
+`mllama` / `MllamaForCausalLM` is intentionally **not** in the verified llama capability. It resolves as unregistered/not-eligible for text-only recipe generation until dedicated evidence exists.
+
+## Verified arguments vs candidate arguments
+
+Each capability includes explicit argument confidence markers:
+
+- `mobius_rules.dtype_confidence`
+- `olive_rules.precision_confidence`
+
+Allowed values:
+
+- `evidence-pinned` (verified or source-change-required entries with observed evidence)
+- `candidate-unverified` (tool-supported-unverified entries)
+
+Schema and loader invariants require:
+
+1. `verified` -> both confidence markers must be `evidence-pinned`.
+2. `tool-supported-unverified` -> both confidence markers must be `candidate-unverified`.
+3. `source-change-required` -> both confidence markers must be `evidence-pinned`.
 
 ## Capability boundary behavior
 

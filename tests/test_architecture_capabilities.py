@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from fl_model_onboarding.architecture_capabilities import (
+    ArgumentEvidenceConfidence,
     CapabilityModality,
     CapabilityStatus,
     ResolutionOutcome,
@@ -111,6 +112,28 @@ def test_qwen_family_resolves_as_tool_supported_unverified() -> None:
     assert result.capability is not None
     assert result.capability.status == CapabilityStatus.TOOL_SUPPORTED_UNVERIFIED
     assert result.capability.family == "qwen"
+
+
+def test_mllama_is_not_treated_as_verified_llama() -> None:
+    registry = load_architecture_capability_registry()
+    metadata = _metadata(
+        model_id="owner/unseen-mllama",
+        model_type="mllama",
+        architectures=("MllamaForCausalLM",),
+    )
+    result = registry.resolve(
+        metadata=metadata,
+        task="llm",
+        device="cpu",
+        requested_precision="int4",
+    )
+    assert result.outcome == ResolutionOutcome.NOT_ELIGIBLE
+    assert result.capability is None
+    assert result.eligible_for_candidate_recipe is False
+    assert result.reason_code in {
+        ResolutionReasonCode.UNKNOWN_ARCHITECTURE,
+        ResolutionReasonCode.NON_TEXT_ARCHITECTURE,
+    }
 
 
 def test_unknown_model_type_is_not_eligible() -> None:
@@ -279,9 +302,31 @@ def test_schema_and_data_paths_are_loadable() -> None:
     schema = json.loads(architecture_capability_schema_path().read_text(encoding="utf-8"))
     data = json.loads(architecture_capability_data_path().read_text(encoding="utf-8"))
     assert schema["properties"]["schema_version"]["const"] == data["schema_version"]
+    assert "dtype_confidence" in schema["$defs"]["mobius_rules"]["required"]
+    assert "precision_confidence" in schema["$defs"]["olive_rules"]["required"]
     assert len(data["capabilities"]) >= 3
     registry = load_architecture_capability_registry()
     assert len(registry.all()) == len(data["capabilities"])
+
+
+def test_verified_and_unverified_argument_confidence_is_explicit() -> None:
+    registry = load_architecture_capability_registry()
+    by_family = {cap.family: cap for cap in registry.all() if cap.modality == CapabilityModality.LLM}
+
+    llama = by_family["llama"]
+    granite = by_family["granite"]
+    qwen = by_family["qwen"]
+    phi = by_family["phi"]
+
+    assert llama.mobius_rules.dtype_confidence == ArgumentEvidenceConfidence.EVIDENCE_PINNED
+    assert llama.olive_rules.precision_confidence == ArgumentEvidenceConfidence.EVIDENCE_PINNED
+    assert granite.mobius_rules.dtype_confidence == ArgumentEvidenceConfidence.EVIDENCE_PINNED
+    assert granite.olive_rules.precision_confidence == ArgumentEvidenceConfidence.EVIDENCE_PINNED
+
+    assert qwen.mobius_rules.dtype_confidence == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
+    assert qwen.olive_rules.precision_confidence == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
+    assert phi.mobius_rules.dtype_confidence == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
+    assert phi.olive_rules.precision_confidence == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
 
 
 def test_loader_rejects_duplicate_alias_precision_mapping(tmp_path: Path) -> None:
@@ -321,4 +366,30 @@ def test_loader_rejects_invalid_status_transition(tmp_path: Path) -> None:
     data_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     with pytest.raises(ValueError, match="invalid transition"):
+        load_architecture_capability_registry(data_path=data_path, schema_path=schema_path)
+
+
+def test_loader_rejects_verified_capability_with_candidate_argument_confidence(
+    tmp_path: Path,
+) -> None:
+    schema_path = architecture_capability_schema_path()
+    payload = json.loads(architecture_capability_data_path().read_text(encoding="utf-8"))
+    payload["capabilities"][0]["mobius_rules"]["dtype_confidence"] = "candidate-unverified"
+    data_path = tmp_path / "verified-confidence-mismatch.json"
+    data_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be evidence-pinned for verified capabilities"):
+        load_architecture_capability_registry(data_path=data_path, schema_path=schema_path)
+
+
+def test_loader_rejects_unverified_capability_with_pinned_argument_confidence(
+    tmp_path: Path,
+) -> None:
+    schema_path = architecture_capability_schema_path()
+    payload = json.loads(architecture_capability_data_path().read_text(encoding="utf-8"))
+    payload["capabilities"][2]["olive_rules"]["precision_confidence"] = "evidence-pinned"
+    data_path = tmp_path / "unverified-confidence-mismatch.json"
+    data_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be candidate-unverified for unverified capabilities"):
         load_architecture_capability_registry(data_path=data_path, schema_path=schema_path)

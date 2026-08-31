@@ -49,6 +49,11 @@ class RequestPrecision(StrEnum):
     FP32 = "fp32"
 
 
+class ArgumentEvidenceConfidence(StrEnum):
+    EVIDENCE_PINNED = "evidence-pinned"
+    CANDIDATE_UNVERIFIED = "candidate-unverified"
+
+
 class ResolutionOutcome(StrEnum):
     EXACT = "exact"
     NOT_ELIGIBLE = "not-eligible"
@@ -102,6 +107,7 @@ class MobiusArgumentRules:
     runtime: str
     dtype: str | None
     dtype_rule: str
+    dtype_confidence: ArgumentEvidenceConfidence
 
 
 @dataclass(frozen=True)
@@ -111,6 +117,7 @@ class OliveArgumentRules:
     provider: str
     precision: str | None
     precision_rule: str
+    precision_confidence: ArgumentEvidenceConfidence
 
 
 @dataclass(frozen=True)
@@ -604,6 +611,12 @@ def _parse_capability(row: object, index: int) -> ArchitectureCapability:
         _coerce_mapping(value.get("oga_runtime_contract"), f"{path}.oga_runtime_contract"),
         f"{path}.oga_runtime_contract",
     )
+    _validate_argument_confidence(
+        status=status,
+        mobius_rules=mobius_rules,
+        olive_rules=olive_rules,
+        path=path,
+    )
 
     capability = ArchitectureCapability(
         capability_id=_coerce_str(value.get("capability_id"), f"{path}.capability_id"),
@@ -654,6 +667,9 @@ def _parse_mobius_rules(row: dict[str, object], path: str) -> MobiusArgumentRule
         runtime=_coerce_str(row.get("runtime"), f"{path}.runtime"),
         dtype=_coerce_optional_str(row.get("dtype"), f"{path}.dtype"),
         dtype_rule=_coerce_str(row.get("dtype_rule"), f"{path}.dtype_rule"),
+        dtype_confidence=ArgumentEvidenceConfidence(
+            _coerce_str(row.get("dtype_confidence"), f"{path}.dtype_confidence")
+        ),
     )
 
 
@@ -664,6 +680,9 @@ def _parse_olive_rules(row: dict[str, object], path: str) -> OliveArgumentRules:
         provider=_coerce_str(row.get("provider"), f"{path}.provider"),
         precision=_coerce_optional_str(row.get("precision"), f"{path}.precision"),
         precision_rule=_coerce_str(row.get("precision_rule"), f"{path}.precision_rule"),
+        precision_confidence=ArgumentEvidenceConfidence(
+            _coerce_str(row.get("precision_confidence"), f"{path}.precision_confidence")
+        ),
     )
 
 
@@ -773,6 +792,44 @@ def _validate_status_transitions(
         )
 
 
+def _validate_argument_confidence(
+    *,
+    status: CapabilityStatus,
+    mobius_rules: MobiusArgumentRules,
+    olive_rules: OliveArgumentRules,
+    path: str,
+) -> None:
+    if status == CapabilityStatus.VERIFIED:
+        if mobius_rules.dtype_confidence != ArgumentEvidenceConfidence.EVIDENCE_PINNED:
+            raise ValueError(
+                f"{path}.mobius_rules.dtype_confidence must be evidence-pinned for verified capabilities."
+            )
+        if olive_rules.precision_confidence != ArgumentEvidenceConfidence.EVIDENCE_PINNED:
+            raise ValueError(
+                f"{path}.olive_rules.precision_confidence must be evidence-pinned for verified capabilities."
+            )
+        return
+    if status == CapabilityStatus.TOOL_SUPPORTED_UNVERIFIED:
+        if mobius_rules.dtype_confidence != ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED:
+            raise ValueError(
+                f"{path}.mobius_rules.dtype_confidence must be candidate-unverified for unverified capabilities."
+            )
+        if olive_rules.precision_confidence != ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED:
+            raise ValueError(
+                f"{path}.olive_rules.precision_confidence must be candidate-unverified for unverified capabilities."
+            )
+        return
+    if status == CapabilityStatus.SOURCE_CHANGE_REQUIRED:
+        if mobius_rules.dtype_confidence != ArgumentEvidenceConfidence.EVIDENCE_PINNED:
+            raise ValueError(
+                f"{path}.mobius_rules.dtype_confidence must be evidence-pinned for source-change-required capabilities."
+            )
+        if olive_rules.precision_confidence != ArgumentEvidenceConfidence.EVIDENCE_PINNED:
+            raise ValueError(
+                f"{path}.olive_rules.precision_confidence must be evidence-pinned for source-change-required capabilities."
+            )
+
+
 def _normalize_alias(value: str) -> str:
     normalized = _ALIAS_NORMALIZE_RE.sub("", value.strip().lower())
     return normalized
@@ -862,6 +919,7 @@ DEFAULT_ARCHITECTURE_CAPABILITY_REGISTRY = load_architecture_capability_registry
 
 
 __all__ = [
+    "ArgumentEvidenceConfidence",
     "AllowedOptimizationChoice",
     "ArchitectureCapability",
     "ArchitectureCapabilityRegistry",
