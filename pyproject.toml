@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fl-model-onboarding"
+version = "0.1.0"
+description = "Foundation contracts and CLI for Foundry Local model onboarding."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "huggingface_hub>=1.22.0,<2.0.0",
+  "fastapi>=0.115.0,<1.0.0",
+  "uvicorn>=0.30.0,<1.0.0",
+  "python-multipart>=0.0.9,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0,<9.0.0",
+  "httpx>=0.27.0,<1.0.0",
+  "PyYAML>=6.0.0,<7.0.0",
+]
+runtime = [
+  "mobius-onnx==0.1.0",
+  "olive-ai==0.13.0",
+  "onnx==1.22.0",
+  "onnxruntime==1.29.0",
+  "onnxruntime-genai==0.15.2",
+  "foundry-local-sdk==1.2.4",
+]
+
+[project.scripts]
+fl-onboarding = "fl_model_onboarding.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+fl_model_onboarding = ["web_dist/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+  "e2e: explicit local real-toolchain tests; skipped unless FL_ONBOARDING_E2E_* is configured",
+]

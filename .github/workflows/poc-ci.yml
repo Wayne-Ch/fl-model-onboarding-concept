@@ -1,0 +1,109 @@
+name: POC CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "wayne-ch-*"
+      - "feature/**"
+      - "poc/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect repository surfaces
+    runs-on: ubuntu-latest
+    outputs:
+      has_python: ${{ steps.scan.outputs.has_python }}
+      has_web: ${{ steps.scan.outputs.has_web }}
+      has_web_lock: ${{ steps.scan.outputs.has_web_lock }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan workspace
+        id: scan
+        shell: pwsh
+        run: |
+          "has_python=$((Test-Path 'pyproject.toml').ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "has_web=$((Test-Path 'web/package.json').ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "has_web_lock=$((Test-Path 'web/package-lock.json').ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          if ((Test-Path "web/package.json") -and -not (Test-Path "web/package-lock.json")) {
+            Write-Error "web/package.json exists but web/package-lock.json is missing. Commit the lock file for CI."
+            exit 1
+          }
+
+  python-tests:
+    name: Python tests (Windows)
+    needs: detect
+    if: ${{ needs.detect.outputs.has_python == 'true' }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project dev dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Verify contract files
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "contracts/openapi.yaml")) {
+            Write-Error "Missing required contract: contracts/openapi.yaml"
+            exit 1
+          }
+          if (-not (Test-Path "contracts/job-state-machine.json")) {
+            Write-Error "Missing required contract: contracts/job-state-machine.json"
+            exit 1
+          }
+
+      - name: Run pytest
+        shell: pwsh
+        run: |
+          python -m pytest -q
+
+  web-tests:
+    name: Web tests and build
+    needs: detect
+    if: ${{ needs.detect.outputs.has_web == 'true' && needs.detect.outputs.has_web_lock == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache npm
+        if: ${{ needs.detect.outputs.has_web_lock == 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Run web tests
+        run: npm run test
+
+      - name: Build web app
+        run: npm run build
