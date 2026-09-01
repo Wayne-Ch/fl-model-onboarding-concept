@@ -6,6 +6,8 @@ import re
 import sqlite3
 import uuid
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -749,10 +751,12 @@ class RecipeAttemptStore:
         db_path: Path,
         *,
         schema_path: Path | None = None,
+        _connection_factory: Callable[..., sqlite3.Connection] | None = None,
     ) -> None:
         self._db_path = db_path.resolve()
         self._schema_path = schema_path or recipe_attempt_schema_path()
         self._schema_root: dict[str, object] | None = None
+        self._connection_factory = _connection_factory or sqlite3.connect
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode=WAL;")
@@ -1455,8 +1459,9 @@ class RecipeAttemptStore:
             )
             return self._load_attempt(connection, attempt_id_value)
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connection_factory(
             str(self._db_path),
             timeout=30,
             check_same_thread=False,
@@ -1464,7 +1469,17 @@ class RecipeAttemptStore:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON;")
         connection.execute("PRAGMA busy_timeout=30000;")
-        return connection
+        try:
+            yield connection
+        except Exception:
+            if connection.in_transaction:
+                connection.rollback()
+            raise
+        else:
+            if connection.in_transaction:
+                connection.commit()
+        finally:
+            connection.close()
 
     def _schema(self) -> dict[str, object]:
         if self._schema_root is None:

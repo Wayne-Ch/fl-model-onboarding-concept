@@ -5,7 +5,7 @@ import sqlite3
 import threading
 import time
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -51,6 +51,31 @@ from fl_model_onboarding.recipe_compiler import (
 
 _REVISION_SHA = "0123456789abcdef0123456789abcdef01234567"
 _ALT_REVISION_SHA = "89abcdef0123456789abcdef0123456789abcdef"
+
+
+@dataclass
+class _ConnectionLifecycleTracker:
+    opened: int = 0
+    closed: int = 0
+
+
+def _tracked_connection_factory(tracker: _ConnectionLifecycleTracker):
+    class _TrackedConnection(sqlite3.Connection):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            tracker.opened += 1
+            self._tracker_closed = False
+
+        def close(self) -> None:
+            if not self._tracker_closed:
+                tracker.closed += 1
+                self._tracker_closed = True
+            super().close()
+
+    def connect(*args, **kwargs) -> sqlite3.Connection:
+        return sqlite3.connect(*args, factory=_TrackedConnection, **kwargs)
+
+    return connect
 
 
 def _toolchain(*, ort_version: str = "1.29.0") -> RecipeCompilerToolchain:
@@ -774,6 +799,24 @@ def test_concurrent_promotion_transaction_is_atomic(tmp_path: Path) -> None:
     assert count == 1
 
 
+def test_store_closes_connections_after_success_and_exception_paths(tmp_path: Path) -> None:
+    tracker = _ConnectionLifecycleTracker()
+    store = RecipeAttemptStore(
+        tmp_path / "recipe-attempt.sqlite3",
+        _connection_factory=_tracked_connection_factory(tracker),
+    )
+    assert tracker.opened == 1
+    assert tracker.closed == 1
+
+    generated = _candidate()
+    store.upsert_generated_recipe(generated)
+    assert tracker.opened == tracker.closed
+
+    with pytest.raises(KeyError):
+        store.start_attempt("missing-attempt")
+    assert tracker.opened == tracker.closed
+
+
 def test_multiple_readers_can_poll_while_writer_advances_attempt(tmp_path: Path) -> None:
     store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
     _, attempt = _create_attempt(store, idempotency_key="reader-writer")
@@ -806,6 +849,25 @@ def test_multiple_readers_can_poll_while_writer_advances_attempt(tmp_path: Path)
     assert not errors
     final = store.get_attempt(attempt.attempt_id)
     assert final.state == AttemptState.SUCCEEDED
+
+
+def test_store_releases_database_file_for_rename_after_repeated_operations(tmp_path: Path) -> None:
+    db_path = tmp_path / "recipe-attempt.sqlite3"
+    store = RecipeAttemptStore(db_path)
+    generated, attempt = _create_attempt(store, idempotency_key="rename-database")
+
+    for _ in range(20):
+        assert store.get_generated_recipe(generated.fingerprint) is not None
+        _ = store.get_attempt(attempt.attempt_id)
+        _ = store.list_attempts()
+
+    renamed = tmp_path / "recipe-attempt-renamed.sqlite3"
+    db_path.rename(renamed)
+    assert renamed.exists()
+
+    with sqlite3.connect(renamed) as connection:
+        count = int(connection.execute("SELECT COUNT(*) FROM attempts").fetchone()[0])
+    assert count == 1
 
 
 def test_store_rejects_unsupported_schema_version(tmp_path: Path) -> None:
