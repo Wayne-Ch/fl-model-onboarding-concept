@@ -53,3 +53,20 @@ def test_generated_recipe_schema_contains_required_top_level_keys() -> None:
     assert "pinned_revision" in required
     assert "provenance" in required
     assert "fingerprint" in required
+
+
+def test_recipe_attempt_schema_contains_core_record_definitions() -> None:
+    path = Path("contracts") / "recipe-attempt.schema.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    defs = schema["$defs"]
+    assert "generated_recipe_record" in defs
+    assert "recipe_attempt" in defs
+    assert "verified_recipe_record" in defs
+    assert defs["generated_recipe_record"]["properties"]["schema_version"]["const"] == "1.0.0"
+    assert defs["attempt_state"]["enum"] == [
+        "generated",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+    ]
