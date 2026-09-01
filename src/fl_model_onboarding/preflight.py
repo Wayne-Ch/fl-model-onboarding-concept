@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import sys
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,8 @@ from .preflight_cache import PreflightResultCache, build_preflight_cache_key
 
 
 _SEMVER_RE = re.compile(r"(?P<version>\d+\.\d+\.\d+(?:\.\d+)?)")
+_COMMAND_NOT_FOUND_DETAIL = "command-not-found"
+_MISSING_MODULE_MARKER = "no module named"
 
 
 @dataclass(frozen=True)
@@ -111,8 +114,8 @@ class PreflightInspector:
 
         tools = (
             self._probe_command("foundry", ("--version",)),
-            self._probe_command("mobius", ("--version",)),
-            self._probe_command("olive", ("--help",)),
+            self._probe_command("mobius", ("--help",), version_args=("--version",)),
+            self._probe_command("olive", ("--help",), version_args=("--version",)),
             self._probe_python_module("onnxruntime", "onnxruntime"),
             self._probe_python_module("onnxruntime-genai", "onnxruntime_genai"),
             self._probe_python_module("foundry-local-sdk", "foundry_local_sdk"),
@@ -124,46 +127,42 @@ class PreflightInspector:
             warnings.append(
                 f"Foundry CLI {foundry_version} is older than 0.11.0; command contracts may differ."
             )
-        if not by_name["foundry"].available:
-            compatibility_blockers.append(
-                failure(
-                    JobState.PREFLIGHT,
-                    FailureClassification.MISSING_DEPENDENCY,
-                    "foundry CLI is required for cache, status, and catalog probes.",
-                )
+        self._append_required_tool_blocker(
+            blockers=compatibility_blockers,
+            tool=by_name["foundry"],
+            stage=JobState.PREFLIGHT,
+            missing_message="foundry CLI is required for cache, status, and catalog probes.",
+            probe_failure_message="foundry CLI probe failed; unable to confirm command availability.",
+        )
+        self._append_required_tool_blocker(
+            blockers=compatibility_blockers,
+            tool=by_name["mobius"],
+            stage=JobState.MOBIUS_BUILDING,
+            missing_message="mobius CLI is required to build BYOM ONNX packages.",
+            probe_failure_message="mobius CLI probe failed; availability could not be verified from this environment.",
+        )
+        if not request.skip_olive:
+            self._append_required_tool_blocker(
+                blockers=compatibility_blockers,
+                tool=by_name["olive"],
+                stage=JobState.OLIVE_OPTIMIZING,
+                missing_message="olive CLI is required for optimization stage unless skip_olive is enabled.",
+                probe_failure_message="olive CLI probe failed; availability could not be verified from this environment.",
             )
-        if not by_name["mobius"].available:
-            compatibility_blockers.append(
-                failure(
-                    JobState.MOBIUS_BUILDING,
-                    FailureClassification.MISSING_DEPENDENCY,
-                    "mobius CLI is required to build BYOM ONNX packages.",
-                )
-            )
-        if not by_name["olive"].available and not request.skip_olive:
-            compatibility_blockers.append(
-                failure(
-                    JobState.OLIVE_OPTIMIZING,
-                    FailureClassification.MISSING_DEPENDENCY,
-                    "olive CLI is required for optimization stage unless skip_olive is enabled.",
-                )
-            )
-        if not by_name["onnxruntime-genai"].available:
-            compatibility_blockers.append(
-                failure(
-                    JobState.RUNTIME_VALIDATING,
-                    FailureClassification.MISSING_DEPENDENCY,
-                    "onnxruntime-genai is required for OGA model-loading validation.",
-                )
-            )
-        if not by_name["foundry-local-sdk"].available:
-            compatibility_blockers.append(
-                failure(
-                    JobState.FL_LOADING,
-                    FailureClassification.MISSING_DEPENDENCY,
-                    "foundry-local-sdk is required for SDK loading/inference checks.",
-                )
-            )
+        self._append_required_tool_blocker(
+            blockers=compatibility_blockers,
+            tool=by_name["onnxruntime-genai"],
+            stage=JobState.RUNTIME_VALIDATING,
+            missing_message="onnxruntime-genai is required for OGA model-loading validation.",
+            probe_failure_message="onnxruntime-genai probe failed; package could not be validated in this runtime.",
+        )
+        self._append_required_tool_blocker(
+            blockers=compatibility_blockers,
+            tool=by_name["foundry-local-sdk"],
+            stage=JobState.FL_LOADING,
+            missing_message="foundry-local-sdk is required for SDK loading/inference checks.",
+            probe_failure_message="foundry-local-sdk probe failed; package could not be validated in this runtime.",
+        )
 
         catalog_matches = ()
 
@@ -301,19 +300,75 @@ class PreflightInspector:
             warnings=tuple(merged_warnings),
         )
 
-    def _probe_command(self, name: str, args: tuple[str, ...]) -> ToolAvailability:
-        spec = CommandSpec(argv=(name, *args), timeout_seconds=30)
+    def _append_required_tool_blocker(
+        self,
+        *,
+        blockers: list[FailureInfo],
+        tool: ToolAvailability,
+        stage: JobState,
+        missing_message: str,
+        probe_failure_message: str,
+    ) -> None:
+        if tool.available:
+            return
+        if self._is_missing_dependency(tool):
+            blockers.append(
+                failure(
+                    stage,
+                    FailureClassification.MISSING_DEPENDENCY,
+                    missing_message,
+                )
+            )
+            return
+        blockers.append(
+            failure(
+                stage,
+                FailureClassification.TOOL_UNAVAILABLE,
+                probe_failure_message,
+                detail={"tool": tool.name, "probe_detail": tool.detail},
+            )
+        )
+
+    @staticmethod
+    def _is_missing_dependency(tool: ToolAvailability) -> bool:
+        detail = tool.detail.lower()
+        return detail == _COMMAND_NOT_FOUND_DETAIL or _MISSING_MODULE_MARKER in detail
+
+    def _probe_command(
+        self,
+        name: str,
+        availability_args: tuple[str, ...],
+        *,
+        version_args: tuple[str, ...] | None = None,
+    ) -> ToolAvailability:
+        spec = CommandSpec(argv=(name, *availability_args), timeout_seconds=30)
         try:
             result = self._runner.run(spec)
             output = (result.stdout or result.stderr or "").strip()
             first_line = output.splitlines()[0] if output else ""
+            if not result.ok:
+                detail = first_line or f"exit_code={result.exit_code}"
+                return ToolAvailability(
+                    name=name,
+                    kind="command",
+                    available=False,
+                    version=None,
+                    detail=f"probe-failed:{detail}",
+                )
             parsed_version = _extract_version(first_line) if first_line else None
+            detail = first_line or "probe-ok"
+            if version_args:
+                version, version_probe_error = self._probe_command_version(name, version_args)
+                if version:
+                    parsed_version = version
+                elif version_probe_error:
+                    detail = f"{detail}; version-probe-failed:{version_probe_error}"
             return ToolAvailability(
                 name=name,
                 kind="command",
-                available=result.ok,
+                available=True,
                 version=parsed_version,
-                detail=first_line or f"exit_code={result.exit_code}",
+                detail=detail,
             )
         except FileNotFoundError:
             return ToolAvailability(
@@ -321,7 +376,7 @@ class PreflightInspector:
                 kind="command",
                 available=False,
                 version=None,
-                detail="command-not-found",
+                detail=_COMMAND_NOT_FOUND_DETAIL,
             )
         except Exception as exc:
             return ToolAvailability(
@@ -329,8 +384,24 @@ class PreflightInspector:
                 kind="command",
                 available=False,
                 version=None,
-                detail=str(exc),
+                detail=f"probe-error:{exc}",
             )
+
+    def _probe_command_version(
+        self,
+        name: str,
+        version_args: tuple[str, ...],
+    ) -> tuple[str | None, str | None]:
+        spec = CommandSpec(argv=(name, *version_args), timeout_seconds=30)
+        try:
+            result = self._runner.run(spec)
+        except Exception as exc:
+            return None, str(exc)
+        output = (result.stdout or result.stderr or "").strip()
+        first_line = output.splitlines()[0] if output else ""
+        if not result.ok:
+            return None, first_line or f"exit_code={result.exit_code}"
+        return _extract_version(first_line), None
 
     def _probe_python_module(self, distribution_name: str, import_name: str) -> ToolAvailability:
         python_code = (
@@ -338,7 +409,7 @@ class PreflightInspector:
             f"importlib.import_module('{import_name}');"
             f"print(importlib.metadata.version('{distribution_name}'))"
         )
-        spec = CommandSpec(argv=("python", "-c", python_code), timeout_seconds=30)
+        spec = CommandSpec(argv=(sys.executable, "-c", python_code), timeout_seconds=30)
         try:
             result = self._runner.run(spec)
             if result.ok:
@@ -356,6 +427,14 @@ class PreflightInspector:
                 available=False,
                 version=None,
                 detail=(result.stderr or result.stdout).strip(),
+            )
+        except FileNotFoundError:
+            return ToolAvailability(
+                name=distribution_name,
+                kind="python-package",
+                available=False,
+                version=None,
+                detail=_COMMAND_NOT_FOUND_DETAIL,
             )
         except Exception as exc:
             return ToolAvailability(

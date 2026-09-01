@@ -11,14 +11,14 @@ def build_preflight_cache_key(
     huggingface_sha: str,
     tools: tuple[ToolAvailability, ...],
 ) -> str:
-    versions = {tool.name: tool.version for tool in tools}
+    by_name = {tool.name: tool for tool in tools}
     fingerprint = ToolchainFingerprint(
-        mobius_version=versions.get("mobius") or "missing",
-        olive_version=versions.get("olive") or "missing",
-        oga_version=versions.get("onnxruntime-genai") or "missing",
-        ort_version=versions.get("onnxruntime") or "missing",
-        foundry_cli_version=versions.get("foundry") or "missing",
-        foundry_sdk_version=versions.get("foundry-local-sdk") or "missing",
+        mobius_version=_tool_fingerprint_value(by_name.get("mobius")),
+        olive_version=_tool_fingerprint_value(by_name.get("olive")),
+        oga_version=_tool_fingerprint_value(by_name.get("onnxruntime-genai")),
+        ort_version=_tool_fingerprint_value(by_name.get("onnxruntime")),
+        foundry_cli_version=_tool_fingerprint_value(by_name.get("foundry")),
+        foundry_sdk_version=_tool_fingerprint_value(by_name.get("foundry-local-sdk")),
     )
     semantic_profile = (
         f"{request.task_profile}"
@@ -32,6 +32,14 @@ def build_preflight_cache_key(
         task_profile=semantic_profile,
         toolchain=fingerprint,
     )
+
+
+def _tool_fingerprint_value(tool: ToolAvailability | None) -> str:
+    if tool is None:
+        return "missing"
+    status = "available" if tool.available else "unavailable"
+    version = tool.version or "unknown"
+    return f"{status}-{version}"
 
 
 @dataclass

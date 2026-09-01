@@ -43,3 +43,43 @@ def test_preflight_cache_key_uses_full_sha_and_profile(tmp_path: Path) -> None:
 def test_preflight_result_cache_put_get() -> None:
     cache = PreflightResultCache.create()
     assert cache.get("x") is None
+
+
+def test_preflight_cache_key_distinguishes_available_unknown_from_unavailable_unknown(tmp_path: Path) -> None:
+    request = BuildRequest(
+        candidate=PHASE0_CANDIDATES["smollm2-1.7b-instruct"],
+        workspace_root=tmp_path,
+        model_cache_dir=tmp_path / "cache",
+        output_dir=tmp_path / "out",
+        task_profile="llm-cpu-int4",
+    )
+    full_sha = "1234567890abcdef1234567890abcdef12345678"
+    available_unknown = (
+        ToolAvailability("foundry", "command", True, "0.11.0"),
+        ToolAvailability("mobius", "command", True, None),
+        ToolAvailability("olive", "command", True, None),
+        ToolAvailability("onnxruntime", "python-package", True, "1.29.0"),
+        ToolAvailability("onnxruntime-genai", "python-package", True, "0.15.2"),
+        ToolAvailability("foundry-local-sdk", "python-package", True, "1.2.4"),
+        ToolAvailability("huggingface_hub", "python-package", True, "1.22.0"),
+    )
+    unavailable_unknown = (
+        ToolAvailability("foundry", "command", True, "0.11.0"),
+        ToolAvailability("mobius", "command", False, None),
+        ToolAvailability("olive", "command", False, None),
+        ToolAvailability("onnxruntime", "python-package", True, "1.29.0"),
+        ToolAvailability("onnxruntime-genai", "python-package", True, "0.15.2"),
+        ToolAvailability("foundry-local-sdk", "python-package", True, "1.2.4"),
+        ToolAvailability("huggingface_hub", "python-package", True, "1.22.0"),
+    )
+    available_key = build_preflight_cache_key(
+        request=request,
+        huggingface_sha=full_sha,
+        tools=available_unknown,
+    )
+    unavailable_key = build_preflight_cache_key(
+        request=request,
+        huggingface_sha=full_sha,
+        tools=unavailable_unknown,
+    )
+    assert available_key != unavailable_key

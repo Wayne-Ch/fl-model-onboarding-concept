@@ -18,7 +18,7 @@ class AllToolsRunner:
             return CommandResult(spec=spec, exit_code=0, stdout="0.1.0\n", stderr="")
         if cmd == "olive":
             return CommandResult(spec=spec, exit_code=0, stdout="olive help\n", stderr="")
-        if cmd == "python":
+        if Path(cmd).name.lower().startswith("python") and len(spec.argv) >= 3 and spec.argv[1] == "-c":
             source = spec.argv[2]
             for pkg, version in (
                 ("onnxruntime", "1.29.0"),

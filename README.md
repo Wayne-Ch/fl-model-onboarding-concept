@@ -78,5 +78,7 @@ Notes:
   results; the service never substitutes fixture success.
 - ASR remains visible for discovery, but preflight reports the verified Whisper `genai_config`
   incompatibility as a structured blocker and exposes no working precision.
+- If you install or update Mobius/Olive/Foundry/Python packages while the local service is running,
+  stop it (`Ctrl+C`) and rerun `.\scripts\run-local-ui.ps1` so preflight probes the updated toolchain.
 - The original repository-root `index.html` remains the standalone concept mock. The service serves
   the separately built React UI from the Python package.
