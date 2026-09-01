@@ -108,6 +108,99 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/recipes/generated/preview:
+    get:
+      summary: Compile and persist deterministic generated recipe preview for a model
+      operationId: getGeneratedRecipePreview
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - in: query
+          name: task
+          required: false
+          schema:
+            type: string
+            enum: [llm, asr]
+            default: llm
+      responses:
+        "200":
+          description: Generated recipe preview and eligibility details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedRecipePreviewResponse"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/recipes/generated/attempts:
+    post:
+      summary: Create or replay a generated recipe attempt with explicit confirmation
+      operationId: createGeneratedRecipeAttempt
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratedRecipeAttemptCreateRequest"
+      responses:
+        "200":
+          description: New generated attempt or idempotent replay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedRecipeAttemptCreateResponse"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Request conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/recipes/generated/attempts/{attempt_id}:
+    get:
+      summary: Get generated recipe attempt state and gate evidence
+      operationId: getGeneratedRecipeAttempt
+      parameters:
+        - in: path
+          name: attempt_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generated attempt state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeAttempt"
+        "404":
+          description: Attempt not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/builds:
     post:
       summary: Create or replay a build job by idempotency key
@@ -551,6 +644,21 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SupportedOptimization"
+        foundry_catalog_status:
+          type: string
+        foundry_catalog_matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogMatchAssessment"
+        warnings:
+          type: array
+          items:
+            type: string
+        model_detail:
+          type: object
+          additionalProperties: true
+        generated_recipe:
+          $ref: "#/components/schemas/GeneratedRecipePreview"
         requires_experimental_opt_in:
           type: boolean
 
@@ -683,6 +791,254 @@ components:
         job:
           $ref: "#/components/schemas/BuildJob"
 
+    GeneratedRecipeCapability:
+      type: object
+      required: [outcome, reason_code, reason, matched_aliases]
+      properties:
+        outcome:
+          type: string
+        reason_code:
+          type: string
+        reason:
+          type: string
+        matched_aliases:
+          type: array
+          items:
+            type: string
+        capability:
+          type: object
+          nullable: true
+          additionalProperties: true
+        evidence:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    GeneratedRecipePreview:
+      type: object
+      required:
+        - eligible_for_automatic_recipe_attempt
+        - requires_explicit_attempt_confirmation
+        - experimental_until_verified
+        - capability
+        - validation_gates
+      properties:
+        eligible_for_automatic_recipe_attempt:
+          type: boolean
+        requires_explicit_attempt_confirmation:
+          type: boolean
+        experimental_until_verified:
+          type: boolean
+        fingerprint:
+          type: string
+          nullable: true
+        compile_error:
+          type: string
+          nullable: true
+        capability:
+          $ref: "#/components/schemas/GeneratedRecipeCapability"
+        recipe:
+          type: object
+          nullable: true
+          additionalProperties: true
+        argument_confidence:
+          type: object
+          nullable: true
+          additionalProperties: true
+        toolchain:
+          type: object
+          additionalProperties: true
+        validation_gates:
+          type: array
+          items:
+            type: string
+        verified_reuse:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    GeneratedRecipePreviewResponse:
+      type: object
+      required:
+        - model_id
+        - task
+        - generated_recipe
+      properties:
+        model_id:
+          type: string
+        revision:
+          type: string
+          nullable: true
+        sha:
+          type: string
+          nullable: true
+        gated:
+          type: boolean
+          nullable: true
+        private:
+          type: boolean
+          nullable: true
+        requires_remote_code:
+          type: boolean
+        task:
+          $ref: "#/components/schemas/CandidateModality"
+        config:
+          type: object
+          nullable: true
+          additionalProperties: true
+        model_type:
+          type: string
+          nullable: true
+        files:
+          type: array
+          items:
+            type: string
+        config_files:
+          type: array
+          items:
+            type: string
+        tokenizer_files:
+          type: array
+          items:
+            type: string
+        foundry_catalog_status:
+          type: string
+        foundry_catalog_matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogMatchAssessment"
+        warnings:
+          type: array
+          items:
+            type: string
+        generated_recipe:
+          $ref: "#/components/schemas/GeneratedRecipePreview"
+
+    GeneratedRecipeAttemptCreateRequest:
+      type: object
+      required:
+        - recipe_fingerprint
+        - confirm_automatic_recipe_attempt
+      properties:
+        recipe_fingerprint:
+          type: string
+          minLength: 64
+          maxLength: 64
+        model_id:
+          type: string
+          nullable: true
+        confirm_automatic_recipe_attempt:
+          type: boolean
+
+    RecipeAttemptGate:
+      type: object
+      required: [sequence, gate, status, evidence_ref, started_utc, finished_utc]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        gate:
+          type: string
+        status:
+          type: string
+          enum: [passed, failed]
+        evidence_ref:
+          type: string
+        metrics_ref:
+          type: string
+          nullable: true
+        started_utc:
+          type: string
+          format: date-time
+        finished_utc:
+          type: string
+          format: date-time
+
+    RecipeAttemptFailure:
+      type: object
+      required: [classification, stage, message, evidence_refs, source_owner, next_action]
+      properties:
+        classification:
+          type: string
+        stage:
+          type: string
+        message:
+          type: string
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        source_owner:
+          type: string
+        next_action:
+          type: string
+
+    RecipeAttempt:
+      type: object
+      required:
+        - attempt_id
+        - recipe_fingerprint
+        - state
+        - gates
+      properties:
+        attempt_id:
+          type: string
+        idempotency_key:
+          type: string
+        request_fingerprint:
+          type: string
+        recipe_fingerprint:
+          type: string
+        model_id:
+          type: string
+        revision_sha:
+          type: string
+        requested_device:
+          type: string
+        requested_precision:
+          type: string
+        compiler_version:
+          type: string
+        capability_fingerprint:
+          type: string
+        toolchain_fingerprint:
+          type: string
+        profile_fingerprint:
+          type: string
+        state:
+          type: string
+          enum: [generated, running, succeeded, failed, cancelled]
+        created_utc:
+          type: string
+          format: date-time
+        finished_utc:
+          type: string
+          format: date-time
+          nullable: true
+        build_job_id:
+          type: string
+          nullable: true
+        gates:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeAttemptGate"
+        failure:
+          oneOf:
+            - $ref: "#/components/schemas/RecipeAttemptFailure"
+            - type: "null"
+
+    GeneratedRecipeAttemptCreateResponse:
+      type: object
+      required: [idempotent_replay, job, attempt]
+      properties:
+        idempotent_replay:
+          type: boolean
+        job:
+          $ref: "#/components/schemas/BuildJob"
+        attempt:
+          $ref: "#/components/schemas/RecipeAttempt"
+
     BuildEventsResponse:
       type: object
       required: [job_id, after, events]
@@ -802,6 +1158,15 @@ components:
           nullable: true
         requires_remote_code:
           type: boolean
+        config:
+          type: object
+          nullable: true
+          additionalProperties: true
+        model_type:
+          type: string
+          nullable: true
+        task:
+          $ref: "#/components/schemas/CandidateModality"
         buildable:
           type: boolean
         build_blockers:
@@ -825,6 +1190,20 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+        files:
+          type: array
+          items:
+            type: string
+        config_files:
+          type: array
+          items:
+            type: string
+        tokenizer_files:
+          type: array
+          items:
+            type: string
+        foundry_catalog_status:
+          type: string
         foundry_catalog_matches:
           type: array
           items:
@@ -855,6 +1234,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SupportedOptimization"
+        generated_recipe:
+          $ref: "#/components/schemas/GeneratedRecipePreview"
 
     CancelBuildRequest:
       type: object

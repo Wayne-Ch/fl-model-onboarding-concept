@@ -12,14 +12,27 @@ import uuid
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from queue import Queue
 from threading import Event, Thread
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 from .adapters.foundry_cli import FoundryCliCatalogAdapter
 from .adapters.huggingface_metadata import HuggingFaceMetadataAdapter
-from .adapters.interfaces import FoundryCatalogClient, HuggingFaceMetadataClient, ProcessRunner
+from .adapters.interfaces import (
+    FoundryCatalogClient,
+    HuggingFaceMetadata,
+    HuggingFaceMetadataClient,
+    ProcessRunner,
+)
+from .architecture_capabilities import (
+    ArgumentEvidenceConfidence,
+    ArchitectureCapabilityRegistry,
+    CapabilityStatus,
+    ResolutionOutcome,
+    load_architecture_capability_registry,
+    normalize_huggingface_metadata,
+)
 from .cancellation import ProcessOwnershipRegistry
 from .contracts import (
     ArtifactKind,
@@ -47,10 +60,50 @@ from .production_runner import (
     ProductionBuildStageRunner,
     production_package_paths,
 )
+from .quality_validation import (
+    PromptExecutionRecord,
+    QualityValidationProfileRegistry,
+    evaluate_quality_validation,
+    load_quality_validation_profile_registry,
+)
+from .recipe_attempt_store import (
+    AttemptFailure,
+    AttemptFailureClassification,
+    AttemptGate,
+    AttemptGateSequenceError,
+    AttemptGateStatus,
+    AttemptIdempotencyConflictError,
+    AttemptState,
+    AttemptStateTransitionError,
+    RecipeAttemptRequest,
+    RecipeAttemptStore,
+    RecipeAttemptStoreError,
+    build_attempt_request_fingerprint,
+    build_reuse_query_from_generated,
+)
+from .recipe_compiler import (
+    GeneratedRecipe,
+    GeneratedRecipeCompileError,
+    RecipeArgumentProvenance,
+    PromotionGateCheck,
+    PromotionGateEvidence,
+    RecipeCompilerInput,
+    RecipeCompilerToolchain,
+    RecipeGenerationProvenance,
+    RecipeInputMetadata,
+    RecipePromotionRecord,
+    compile_generated_recipe,
+    promote_generated_recipe,
+)
 from .recipes import (
+    AncillaryFileRule,
     DEFAULT_RECIPE_REGISTRY,
     DISTIL_WHISPER_BLOCKED_REVISION,
     DISTIL_WHISPER_MODEL_ID,
+    MobiusRecipeArgs,
+    ModelRecipe,
+    OliveRecipeArgs,
+    OptimizationChoice,
     RecipeRegistry,
     RecipeResolution,
     RecipeStatus,
@@ -63,10 +116,35 @@ from .workspace_layout import default_workspace_base, workspace_root_for_job
 _HF_TOKEN_RE = re.compile(r"\bhf_[A-Za-z0-9]{16,}\b")
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{8,})")
 _API_KEY_RE = re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)")
+_GENERATED_ATTEMPT_REASON_RE = re.compile(
+    r"^generated_recipe_attempt:(?P<attempt_id>[0-9a-f-]{36}):(?P<fingerprint>[0-9a-f]{64})$"
+)
 
 _DEFAULT_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 _ASR_MODEL_ID = DISTIL_WHISPER_MODEL_ID
 _ASR_REVISION = DISTIL_WHISPER_BLOCKED_REVISION
+_RECIPE_DEFAULT_TASK = CandidateModality.LLM.value
+_RECIPE_DEFAULT_DEVICE = "cpu"
+_RECIPE_DEFAULT_PRECISION = "auto"
+_RECIPE_QUALITY_PROFILE_ID = "textgen-basic-quality-v1"
+_RECIPE_TOOLCHAIN = RecipeCompilerToolchain(
+    mobius_version="0.1.0",
+    olive_version="0.13.0",
+    onnx_version="1.22.0",
+    ort_version="1.29.0",
+    oga_version="0.15.2",
+    foundry_sdk_version="1.2.4",
+    foundry_cli_version="0.11.0",
+)
+_RECIPE_ATTEMPT_GATE_SEQUENCE: tuple[AttemptGate, ...] = (
+    AttemptGate.MOBIUS_BUILD,
+    AttemptGate.OLIVE_OPTIMIZE,
+    AttemptGate.ONNX_VALIDATION,
+    AttemptGate.ORT_VALIDATION,
+    AttemptGate.OGA_VALIDATION,
+    AttemptGate.FL_SDK_INFERENCE,
+    AttemptGate.QUALITY_VALIDATION,
+)
 _ASR_RUNTIME_BLOCKER_DETAIL: dict[str, str] = {
     "required_input": "position_ids",
     "runtime_component": "WhisperDecoderState",
@@ -229,6 +307,24 @@ class BuildSubmission:
 class IdempotencyRecord:
     body_sha256: str
     job_id: str
+
+
+@dataclass(frozen=True)
+class GeneratedRecipePreviewContext:
+    model_id: str
+    revision: str
+    task: CandidateModality
+    requested_device: str
+    requested_precision: str
+    generated_recipe: GeneratedRecipe | None
+    compile_error: str | None
+    capability: dict[str, object]
+    files: tuple[str, ...]
+    config_files: tuple[str, ...]
+    tokenizer_files: tuple[str, ...]
+    catalog_matches: tuple[object, ...]
+    eligible_for_automatic_attempt: bool
+    verified_reuse: dict[str, object] | None
 
 
 class BuildStageRunner(Protocol):
@@ -663,6 +759,9 @@ class LocalOnboardingService:
         text_inference_backend: TextInferenceBackend | None = None,
         asr_inference_backend: AsrInferenceBackend | None = None,
         recipe_registry: RecipeRegistry | None = None,
+        capability_registry: ArchitectureCapabilityRegistry | None = None,
+        quality_profile_registry: QualityValidationProfileRegistry | None = None,
+        recipe_attempt_store: RecipeAttemptStore | None = None,
         enable_production_runner: bool = False,
     ) -> None:
         data_root = default_data_root() if (db_path is None or model_cache_dir is None) else None
@@ -689,6 +788,14 @@ class LocalOnboardingService:
         self._shutdown = Event()
         self._closed = False
         self._recipe_registry = recipe_registry or DEFAULT_RECIPE_REGISTRY
+        self._capability_registry = capability_registry or load_architecture_capability_registry()
+        self._quality_profile_registry = quality_profile_registry or load_quality_validation_profile_registry()
+        self._quality_profile = self._quality_profile_registry.get(_RECIPE_QUALITY_PROFILE_ID)
+        self._recipe_attempt_store = recipe_attempt_store or RecipeAttemptStore(
+            resolved_db_path.parent / "recipe-attempts.sqlite3"
+        )
+        self._build_job_to_attempt: dict[str, str] = {}
+        self._attempt_to_build_job: dict[str, str] = {}
 
         self._process_runner = process_runner or SafeSubprocessRunner()
         self._hf_metadata = hf_metadata or HuggingFaceMetadataAdapter()
@@ -715,6 +822,11 @@ class LocalOnboardingService:
         self._asr_inference_backend = asr_inference_backend
 
         for job in self._jobs.values():
+            parsed_attempt = _parse_generated_attempt_reason(job.request.recipe_reason)
+            if parsed_attempt is not None:
+                attempt_id, _ = parsed_attempt
+                self._build_job_to_attempt[job.job_id] = attempt_id
+                self._attempt_to_build_job[attempt_id] = job.job_id
             for artifact in job.artifacts:
                 self._artifact_to_job[artifact.artifact_id] = job.job_id
             if job.state in CANCELLABLE_STATES:
@@ -803,6 +915,207 @@ class LocalOnboardingService:
             ],
         }
 
+    def _load_model_metadata(self, model_id: str) -> HuggingFaceMetadata:
+        try:
+            return self._hf_metadata.get_metadata(model_id=model_id, files_metadata=True)
+        except Exception as exc:
+            raise ServiceError(
+                code="MODEL_LOOKUP_FAILED",
+                message=_sanitize_text(str(exc) or "Model lookup failed."),
+                status_code=502,
+            ) from exc
+
+    def _probe_foundry_catalog(self, model_id: str) -> tuple[tuple[object, ...], str, list[str]]:
+        warnings: list[str] = []
+        try:
+            matches = tuple(self._foundry_catalog.list_matches(model_id.split("/")[-1]))
+            return matches, "live", warnings
+        except Exception as exc:
+            warnings.append(_sanitize_text(f"Foundry catalog probe failed: {exc}"))
+            return (), "unavailable", warnings
+
+    @staticmethod
+    def _extract_model_files(metadata: HuggingFaceMetadata) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        files = tuple(sorted({str(path) for path in (metadata.sibling_files or ())}))
+        config_files = tuple(
+            path
+            for path in files
+            if PurePosixPath(path).name.lower() == "config.json"
+        )
+        tokenizer_files = tuple(
+            path
+            for path in files
+            if PurePosixPath(path).name.lower() in {"tokenizer.json", "tokenizer_config.json", "tokenizer.model"}
+        )
+        return files, config_files, tokenizer_files
+
+    def _capability_resolution_payload(self, *, resolution: Any) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "outcome": resolution.outcome.value,
+            "reason_code": resolution.reason_code.value,
+            "reason": resolution.reason,
+            "matched_aliases": list(resolution.matched_aliases),
+            "evidence": [to_jsonable(item) for item in resolution.evidence],
+            "capability": None,
+        }
+        if resolution.capability is None:
+            return payload
+        capability = resolution.capability
+        payload["capability"] = {
+            "capability_id": capability.capability_id,
+            "version": capability.version,
+            "family": capability.family,
+            "status": capability.status.value,
+            "modality": capability.modality.value,
+            "supported_tasks": [
+                row.value for row in capability.static_eligibility_constraints.supported_tasks
+            ],
+            "supported_devices": [
+                row.value for row in capability.static_eligibility_constraints.supported_devices
+            ],
+            "supported_request_precisions": [
+                row.value
+                for row in capability.static_eligibility_constraints.supported_request_precisions
+            ],
+            "known_blockers": [to_jsonable(item) for item in capability.known_blockers],
+        }
+        return payload
+
+    @staticmethod
+    def _verified_reuse_payload(record: Any) -> dict[str, object]:
+        return {
+            "available": True,
+            "verified_fingerprint": record.verified_fingerprint,
+            "source_recipe_fingerprint": record.source_recipe_fingerprint,
+            "attempt_id": record.attempt_id,
+            "promoted_utc": record.promoted_utc.isoformat(),
+            "recipe": record.payload(),
+        }
+
+    def _resolve_generated_recipe_preview(
+        self,
+        *,
+        metadata: HuggingFaceMetadata,
+        task: CandidateModality,
+        requested_precision: str = _RECIPE_DEFAULT_PRECISION,
+        catalog_matches: tuple[object, ...] = (),
+    ) -> GeneratedRecipePreviewContext:
+        normalized_metadata = normalize_huggingface_metadata(
+            model_id=metadata.model_id,
+            config=metadata.config,
+            is_gated=metadata.is_gated,
+            is_private=metadata.is_private,
+        )
+        capability_resolution = self._capability_registry.resolve(
+            metadata=normalized_metadata,
+            task=task.value,
+            device=_RECIPE_DEFAULT_DEVICE,
+            requested_precision=requested_precision,
+        )
+        capability_payload = self._capability_resolution_payload(resolution=capability_resolution)
+        files, config_files, tokenizer_files = self._extract_model_files(metadata)
+
+        revision = (metadata.sha or metadata.revision or "").strip().lower()
+        compile_error: str | None = None
+        generated_recipe: GeneratedRecipe | None = None
+        verified_reuse: dict[str, object] | None = None
+        eligible = False
+
+        if task != CandidateModality.LLM:
+            compile_error = "Automatic generated recipe attempts are restricted to LLM/text-generation tasks."
+        elif catalog_matches:
+            compile_error = (
+                "Foundry catalog already has a matching model entry. Automatic generated recipe attempts are blocked."
+            )
+        elif not revision or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+            compile_error = (
+                "Model metadata did not include a full pinned 40-character revision SHA required for deterministic recipes."
+            )
+        else:
+            try:
+                generated_recipe = compile_generated_recipe(
+                    RecipeCompilerInput(
+                        model_id=metadata.model_id,
+                        revision_sha=revision,
+                        model_type=normalized_metadata.model_type,
+                        architectures=tuple(normalized_metadata.architecture_aliases),
+                        task=task.value,
+                        requested_device=_RECIPE_DEFAULT_DEVICE,
+                        requested_precision=requested_precision,
+                        is_gated=bool(metadata.is_gated),
+                        requires_remote_code=bool(normalized_metadata.requires_remote_code),
+                        config_files=config_files,
+                        tokenizer_files=tokenizer_files,
+                        available_files=files,
+                        capability_resolution=capability_resolution,
+                        toolchain=_RECIPE_TOOLCHAIN,
+                    )
+                )
+            except GeneratedRecipeCompileError as exc:
+                compile_error = _sanitize_text(str(exc) or "Generated recipe compilation failed.")
+            if generated_recipe is not None:
+                generated_record = self._recipe_attempt_store.upsert_generated_recipe(generated_recipe)
+                reusable = self._recipe_attempt_store.find_reusable_verified_recipe(
+                    build_reuse_query_from_generated(generated_record)
+                )
+                if reusable is not None:
+                    verified_reuse = self._verified_reuse_payload(reusable)
+                else:
+                    eligible = True
+
+        return GeneratedRecipePreviewContext(
+            model_id=metadata.model_id,
+            revision=revision,
+            task=task,
+            requested_device=_RECIPE_DEFAULT_DEVICE,
+            requested_precision=requested_precision,
+            generated_recipe=generated_recipe,
+            compile_error=compile_error,
+            capability=capability_payload,
+            files=files,
+            config_files=config_files,
+            tokenizer_files=tokenizer_files,
+            catalog_matches=catalog_matches,
+            eligible_for_automatic_attempt=eligible,
+            verified_reuse=verified_reuse,
+        )
+
+    def _generated_recipe_payload(self, context: GeneratedRecipePreviewContext) -> dict[str, object]:
+        candidate = context.generated_recipe
+        validation_gates = [gate.value for gate in _RECIPE_ATTEMPT_GATE_SEQUENCE]
+        if candidate is None:
+            return {
+                "eligible_for_automatic_recipe_attempt": False,
+                "requires_explicit_attempt_confirmation": True,
+                "experimental_until_verified": True,
+                "compile_error": context.compile_error,
+                "capability": context.capability,
+                "fingerprint": None,
+                "recipe": None,
+                "argument_confidence": None,
+                "toolchain": to_jsonable(_RECIPE_TOOLCHAIN),
+                "validation_gates": validation_gates,
+                "verified_reuse": context.verified_reuse,
+            }
+        provenance = candidate.provenance
+        return {
+            "eligible_for_automatic_recipe_attempt": context.eligible_for_automatic_attempt,
+            "requires_explicit_attempt_confirmation": True,
+            "experimental_until_verified": True,
+            "compile_error": context.compile_error,
+            "capability": context.capability,
+            "fingerprint": candidate.fingerprint,
+            "recipe": candidate.payload(),
+            "argument_confidence": {
+                "mobius_dtype_confidence": provenance.argument_provenance.mobius_dtype_confidence.value,
+                "olive_precision_confidence": provenance.argument_provenance.olive_precision_confidence.value,
+                "contains_unverified_arguments": provenance.argument_provenance.contains_unverified_arguments,
+            },
+            "toolchain": to_jsonable(provenance.toolchain),
+            "validation_gates": validation_gates,
+            "verified_reuse": context.verified_reuse,
+        }
+
     def model_detail(self, *, model_id: str) -> dict[str, object]:
         normalized = model_id.strip()
         if not normalized:
@@ -811,14 +1124,7 @@ class LocalOnboardingService:
                 message="Model id must not be empty.",
                 status_code=400,
             )
-        try:
-            metadata = self._hf_metadata.get_metadata(model_id=normalized, files_metadata=False)
-        except Exception as exc:
-            raise ServiceError(
-                code="MODEL_LOOKUP_FAILED",
-                message=_sanitize_text(str(exc) or "Model lookup failed."),
-                status_code=502,
-            ) from exc
+        metadata = self._load_model_metadata(normalized)
         requires_remote_code = config_requires_remote_code(metadata.config)
         blockers: list[str] = []
         if metadata.is_gated:
@@ -826,25 +1132,35 @@ class LocalOnboardingService:
         if requires_remote_code:
             blockers.append("remote_code_blocked")
 
-        matches = ()
-        warnings: list[str] = []
-        try:
-            matches = self._foundry_catalog.list_matches(normalized.split("/")[-1])
-        except Exception as exc:
-            warnings.append(_sanitize_text(f"Foundry catalog probe failed: {exc}"))
+        matches, catalog_status, warnings = self._probe_foundry_catalog(normalized)
 
         task_hints = _derive_task_hints(model_id=normalized, config=metadata.config)
         hinted_task = task_hints[0] if task_hints else CandidateModality.LLM.value
         hinted_modality = CandidateModality(hinted_task)
+        generated_preview = self._resolve_generated_recipe_preview(
+            metadata=metadata,
+            task=hinted_modality,
+            catalog_matches=matches,
+        )
+        generated_payload = self._generated_recipe_payload(generated_preview)
         recipe_match = self._recipe_registry.resolve(
             model_id=metadata.model_id,
             modality=hinted_modality,
             task_profile="default",
             allow_experimental=False,
         )
-        if not recipe_match.buildable:
+        generated_buildable = bool(
+            generated_payload["eligible_for_automatic_recipe_attempt"] or generated_payload["verified_reuse"]
+        )
+        if not recipe_match.buildable and not generated_buildable:
             blockers.append(_recipe_blocker_code(recipe_match))
-        buildable = not bool(metadata.is_gated) and not requires_remote_code and recipe_match.buildable
+        if generated_preview.compile_error and not generated_buildable:
+            blockers.append("generated_recipe_unavailable")
+        buildable = (
+            not bool(metadata.is_gated)
+            and not requires_remote_code
+            and (recipe_match.buildable or generated_buildable)
+        )
         recipe = recipe_match.recipe
         recipe_payload = self._recipe_payload(recipe_match)
         supported_optimizations = (
@@ -863,6 +1179,13 @@ class LocalOnboardingService:
             "private": metadata.is_private,
             "gated": metadata.is_gated,
             "requires_remote_code": requires_remote_code,
+            "config": metadata.config,
+            "model_type": (
+                str(metadata.config.get("model_type"))
+                if isinstance(metadata.config, dict) and isinstance(metadata.config.get("model_type"), str)
+                else None
+            ),
+            "task": hinted_modality.value,
             "buildable": buildable,
             "build_blockers": blockers,
             "task_hints": task_hints,
@@ -870,6 +1193,10 @@ class LocalOnboardingService:
             "safetensors_total_bytes": metadata.safetensors_total_bytes,
             "safetensors_parameter_count": metadata.safetensors_parameter_count,
             "card_data": metadata.card_data,
+            "files": list(generated_preview.files),
+            "config_files": list(generated_preview.config_files),
+            "tokenizer_files": list(generated_preview.tokenizer_files),
+            "foundry_catalog_status": catalog_status,
             "foundry_catalog_matches": [to_jsonable(item) for item in matches],
             "warnings": warnings,
             "verification": self._verification_for_model(metadata.model_id),
@@ -882,10 +1209,19 @@ class LocalOnboardingService:
             "requires_experimental_opt_in": recipe_match.requires_experimental_opt_in,
             "buildable_with_experimental_opt_in": buildable_with_experimental_opt_in,
             "supported_optimizations": supported_optimizations,
+            "generated_recipe": generated_payload,
         }
 
     def preflight(self, submission: BuildSubmission) -> dict[str, object]:
         normalized = submission.normalized()
+        metadata = self._load_model_metadata(normalized.model_id)
+        catalog_matches, catalog_status, warnings = self._probe_foundry_catalog(metadata.model_id)
+        generated_preview = self._resolve_generated_recipe_preview(
+            metadata=metadata,
+            task=normalized.task,
+            catalog_matches=catalog_matches,
+        )
+        generated_payload = self._generated_recipe_payload(generated_preview)
         recipe_match = self._recipe_registry.resolve(
             model_id=normalized.model_id,
             modality=normalized.task,
@@ -933,20 +1269,21 @@ class LocalOnboardingService:
                 disk_free_gb_workspace=0.0,
                 disk_free_gb_cache=0.0,
                 tools=(),
-                foundry_catalog_matches=(),
-                huggingface_revision=request.hf_revision,
-                huggingface_sha=request.hf_revision,
-                huggingface_private=None,
-                huggingface_gated=None,
+                foundry_catalog_matches=catalog_matches,
+                huggingface_revision=metadata.revision or request.hf_revision,
+                huggingface_sha=metadata.sha,
+                huggingface_private=metadata.is_private,
+                huggingface_gated=metadata.is_gated,
                 cache_key=None,
                 blockers=tuple(blockers),
-                warnings=(),
+                warnings=tuple(warnings),
             )
             cache_key = _sha256_json(
                 {
                     **normalized.cache_identity(),
                     "recipe_status": recipe_match.status,
                     "recipe_reason": recipe_match.reason,
+                    "generated_recipe_fingerprint": generated_payload.get("fingerprint"),
                 }
             )
             return {
@@ -960,6 +1297,22 @@ class LocalOnboardingService:
                 "recipe_reason": recipe_match.reason,
                 "requires_experimental_opt_in": recipe_match.requires_experimental_opt_in,
                 "supported_optimizations": supported_optimizations,
+                "foundry_catalog_status": catalog_status,
+                "foundry_catalog_matches": [to_jsonable(item) for item in catalog_matches],
+                "warnings": warnings,
+                "model_detail": {
+                    "model_id": metadata.model_id,
+                    "revision": metadata.revision,
+                    "sha": metadata.sha,
+                    "private": metadata.is_private,
+                    "gated": metadata.is_gated,
+                    "requires_remote_code": config_requires_remote_code(metadata.config),
+                    "config": metadata.config,
+                    "files": list(generated_preview.files),
+                    "config_files": list(generated_preview.config_files),
+                    "tokenizer_files": list(generated_preview.tokenizer_files),
+                },
+                "generated_recipe": generated_payload,
             }
 
         output, cached, cache_key = self._inspect_preflight_with_cache_state(
@@ -994,7 +1347,355 @@ class LocalOnboardingService:
             "recipe_reason": recipe_match.reason,
             "requires_experimental_opt_in": recipe_match.requires_experimental_opt_in,
             "supported_optimizations": supported_optimizations,
+            "foundry_catalog_status": catalog_status,
+            "foundry_catalog_matches": [to_jsonable(item) for item in catalog_matches],
+            "warnings": warnings,
+            "model_detail": {
+                "model_id": metadata.model_id,
+                "revision": metadata.revision,
+                "sha": metadata.sha,
+                "private": metadata.is_private,
+                "gated": metadata.is_gated,
+                "requires_remote_code": config_requires_remote_code(metadata.config),
+                "config": metadata.config,
+                "files": list(generated_preview.files),
+                "config_files": list(generated_preview.config_files),
+                "tokenizer_files": list(generated_preview.tokenizer_files),
+            },
+            "generated_recipe": generated_payload,
         }
+
+    def generated_recipe_preview(
+        self,
+        *,
+        model_id: str,
+        task: CandidateModality = CandidateModality.LLM,
+    ) -> dict[str, object]:
+        normalized = model_id.strip()
+        if not normalized:
+            raise ServiceError(
+                code="INVALID_MODEL_ID",
+                message="Model id must not be empty.",
+                status_code=400,
+            )
+        metadata = self._load_model_metadata(normalized)
+        matches, catalog_status, warnings = self._probe_foundry_catalog(metadata.model_id)
+        preview = self._resolve_generated_recipe_preview(
+            metadata=metadata,
+            task=task,
+            catalog_matches=matches,
+        )
+        return {
+            "model_id": metadata.model_id,
+            "revision": metadata.revision,
+            "sha": metadata.sha,
+            "gated": metadata.is_gated,
+            "private": metadata.is_private,
+            "requires_remote_code": config_requires_remote_code(metadata.config),
+            "task": task.value,
+            "config": metadata.config,
+            "model_type": (
+                str(metadata.config.get("model_type"))
+                if isinstance(metadata.config, dict) and isinstance(metadata.config.get("model_type"), str)
+                else None
+            ),
+            "files": list(preview.files),
+            "config_files": list(preview.config_files),
+            "tokenizer_files": list(preview.tokenizer_files),
+            "foundry_catalog_status": catalog_status,
+            "foundry_catalog_matches": [to_jsonable(item) for item in matches],
+            "warnings": warnings,
+            "generated_recipe": self._generated_recipe_payload(preview),
+        }
+
+    def _build_request_for_generated_attempt(
+        self,
+        *,
+        record: Any,
+        attempt_id: str,
+        job_id: str,
+    ) -> BuildRequest:
+        payload = record.payload()
+        recipe_payload = payload.get("recipe")
+        if not isinstance(recipe_payload, dict):
+            raise ServiceError(
+                code="GENERATED_RECIPE_INVALID",
+                message="Generated recipe payload is missing a recipe object.",
+                status_code=500,
+            )
+        modality_raw = recipe_payload.get("modality")
+        try:
+            modality = CandidateModality(str(modality_raw))
+        except ValueError as exc:
+            raise ServiceError(
+                code="GENERATED_RECIPE_INVALID",
+                message=f"Generated recipe has unsupported modality '{modality_raw}'.",
+                status_code=500,
+            ) from exc
+        if modality != CandidateModality.LLM:
+            raise ServiceError(
+                code="GENERATED_RECIPE_TASK_UNSUPPORTED",
+                message="Automatic generated recipe attempts currently support LLM/text-generation only.",
+                status_code=400,
+            )
+        workspace = workspace_root_for_job(job_id=job_id, base_dir=self._workspace_base)
+        ensure_dir(workspace)
+        output_dir = ensure_dir(workspace / "output")
+        optimization_choices_raw = recipe_payload.get("optimization_choices")
+        optimization_choices = (
+            [row for row in optimization_choices_raw if isinstance(row, dict)]
+            if isinstance(optimization_choices_raw, list)
+            else []
+        )
+        selected_choice = next(
+            (row for row in optimization_choices if row.get("default") is True),
+            optimization_choices[0] if optimization_choices else None,
+        )
+        olive_payload = recipe_payload.get("olive")
+        olive_dict = olive_payload if isinstance(olive_payload, dict) else None
+        skip_olive = (
+            bool(selected_choice.get("skip_olive"))
+            if isinstance(selected_choice, dict) and "skip_olive" in selected_choice
+            else olive_dict is None
+        )
+        mobius_payload = recipe_payload.get("mobius")
+        mobius_dtype = (
+            str(mobius_payload.get("dtype"))
+            if isinstance(mobius_payload, dict) and isinstance(mobius_payload.get("dtype"), str)
+            else None
+        )
+        candidate = ModelCandidate(
+            key=_normalize_model_key(record.model_id, modality),
+            huggingface_model_id=record.model_id,
+            modality=modality,
+            recommended_mobius_dtype=mobius_dtype,
+            recommended_olive_precision=(
+                str(olive_dict.get("precision"))
+                if olive_dict is not None and isinstance(olive_dict.get("precision"), str)
+                else None
+            ),
+            notes=str(recipe_payload.get("status_reason") or "Deterministic generated recipe candidate."),
+        )
+        return BuildRequest(
+            candidate=candidate,
+            workspace_root=workspace,
+            model_cache_dir=self._model_cache_dir,
+            output_dir=output_dir,
+            task_profile=str(recipe_payload.get("task_profile") or "llm-cpu-default"),
+            hf_revision=record.revision_sha,
+            skip_olive=skip_olive,
+            dry_run=False,
+            recipe_id=str(recipe_payload.get("id") or ""),
+            recipe_version=str(recipe_payload.get("version") or ""),
+            recipe_status=str(recipe_payload.get("status") or RecipeStatus.EXPERIMENTAL.value),
+            recipe_reason=_generated_attempt_reason(
+                attempt_id=attempt_id,
+                recipe_fingerprint=record.recipe_fingerprint,
+            ),
+            allow_experimental=True,
+            optimization_strategy=(
+                str(selected_choice.get("strategy"))
+                if isinstance(selected_choice, dict) and isinstance(selected_choice.get("strategy"), str)
+                else None
+            ),
+            optimization_precision=(
+                str(selected_choice.get("precision"))
+                if isinstance(selected_choice, dict) and isinstance(selected_choice.get("precision"), str)
+                else None
+            ),
+        )
+
+    def _serialize_recipe_attempt(self, attempt: Any) -> dict[str, object]:
+        with self._lock:
+            job_id = self._attempt_to_build_job.get(attempt.attempt_id)
+        return {
+            "attempt_id": attempt.attempt_id,
+            "idempotency_key": attempt.idempotency_key,
+            "request_fingerprint": attempt.request_fingerprint,
+            "recipe_fingerprint": attempt.recipe_fingerprint,
+            "model_id": attempt.model_id,
+            "revision_sha": attempt.revision_sha,
+            "requested_device": attempt.requested_device,
+            "requested_precision": attempt.requested_precision,
+            "compiler_version": attempt.compiler_version,
+            "capability_fingerprint": attempt.capability_fingerprint,
+            "toolchain_fingerprint": attempt.toolchain_fingerprint,
+            "profile_fingerprint": attempt.profile_fingerprint,
+            "state": attempt.state.value,
+            "created_utc": attempt.created_utc.isoformat(),
+            "finished_utc": attempt.finished_utc.isoformat() if attempt.finished_utc is not None else None,
+            "build_job_id": job_id,
+            "gates": [
+                {
+                    "sequence": gate.sequence,
+                    "gate": gate.gate.value,
+                    "status": gate.status.value,
+                    "evidence_ref": gate.evidence_ref,
+                    "metrics_ref": gate.metrics_ref,
+                    "started_utc": gate.started_utc.isoformat(),
+                    "finished_utc": gate.finished_utc.isoformat(),
+                }
+                for gate in attempt.gate_results
+            ],
+            "failure": (
+                {
+                    "classification": attempt.failure.classification.value,
+                    "stage": attempt.failure.stage,
+                    "message": attempt.failure.message,
+                    "evidence_refs": list(attempt.failure.evidence_refs),
+                    "source_owner": attempt.failure.source_owner,
+                    "next_action": attempt.failure.next_action,
+                }
+                if attempt.failure is not None
+                else None
+            ),
+        }
+
+    def get_recipe_attempt(self, *, attempt_id: str) -> dict[str, object]:
+        normalized = attempt_id.strip()
+        if not normalized:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_NOT_FOUND",
+                message="Attempt id must not be empty.",
+                status_code=404,
+            )
+        try:
+            attempt = self._recipe_attempt_store.get_attempt(normalized)
+        except KeyError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_NOT_FOUND",
+                message=f"Recipe attempt '{normalized}' was not found.",
+                status_code=404,
+            ) from exc
+        if attempt.state in {AttemptState.RUNNING, AttemptState.SUCCEEDED}:
+            with self._lock:
+                mapped_job_id = self._attempt_to_build_job.get(normalized)
+                mapped_job = self._jobs.get(mapped_job_id) if mapped_job_id is not None else None
+            if mapped_job is not None and mapped_job.state in {
+                JobState.SUCCEEDED,
+                JobState.FAILED,
+                JobState.CANCELLED,
+            }:
+                self._safe_sync_generated_attempt(job=mapped_job)
+                attempt = self._recipe_attempt_store.get_attempt(normalized)
+        return self._serialize_recipe_attempt(attempt)
+
+    def create_generated_recipe_attempt(
+        self,
+        *,
+        recipe_fingerprint: str,
+        idempotency_key: str,
+        model_id: str | None = None,
+    ) -> tuple[BuildJob, bool, dict[str, object]]:
+        key = idempotency_key.strip()
+        if not key:
+            raise ServiceError(
+                code="IDEMPOTENCY_KEY_REQUIRED",
+                message="Idempotency-Key is required.",
+                status_code=400,
+            )
+        fingerprint = recipe_fingerprint.strip().lower()
+        if not fingerprint:
+            raise ServiceError(
+                code="RECIPE_FINGERPRINT_REQUIRED",
+                message="Generated recipe fingerprint is required.",
+                status_code=400,
+            )
+        generated_record = self._recipe_attempt_store.get_generated_recipe(fingerprint)
+        if generated_record is None:
+            raise ServiceError(
+                code="GENERATED_RECIPE_NOT_FOUND",
+                message=f"Generated recipe '{fingerprint}' was not found.",
+                status_code=404,
+            )
+        if model_id is not None and model_id.strip() and model_id.strip() != generated_record.model_id:
+            raise ServiceError(
+                code="GENERATED_RECIPE_MODEL_MISMATCH",
+                message=(
+                    f"Generated recipe '{fingerprint}' belongs to '{generated_record.model_id}', "
+                    f"received '{model_id.strip()}'."
+                ),
+                status_code=409,
+            )
+        attempt_request = RecipeAttemptRequest(
+            recipe_fingerprint=generated_record.recipe_fingerprint,
+            model_id=generated_record.model_id,
+            revision_sha=generated_record.revision_sha,
+            requested_device=generated_record.requested_device,
+            requested_precision=generated_record.requested_precision,
+            compiler_version=generated_record.compiler_version,
+            capability_fingerprint=generated_record.capability_fingerprint,
+            toolchain_fingerprint=generated_record.toolchain_fingerprint,
+            profile_fingerprint=generated_record.profile_fingerprint,
+        )
+        request_fingerprint = build_attempt_request_fingerprint(attempt_request)
+        try:
+            attempt, replay = self._recipe_attempt_store.create_attempt(
+                idempotency_key=key,
+                request=attempt_request,
+                request_fingerprint=request_fingerprint,
+            )
+        except AttemptIdempotencyConflictError as exc:
+            raise ServiceError(
+                code="IDEMPOTENCY_BODY_CONFLICT",
+                message="Idempotency-Key was reused with a different generated attempt payload.",
+                status_code=409,
+            ) from exc
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+
+        with self._lock:
+            mapped_job_id = self._attempt_to_build_job.get(attempt.attempt_id)
+            if mapped_job_id is not None and mapped_job_id in self._jobs:
+                return self._jobs[mapped_job_id], True, self._serialize_recipe_attempt(attempt)
+
+            if attempt.state != AttemptState.GENERATED:
+                raise ServiceError(
+                    code="RECIPE_ATTEMPT_ALREADY_STARTED",
+                    message=(
+                        f"Recipe attempt '{attempt.attempt_id}' is already in state '{attempt.state.value}' "
+                        "without a recoverable build job mapping."
+                    ),
+                    status_code=409,
+                )
+
+            active_job = next(
+                (job for job in self._jobs.values() if job.state in CANCELLABLE_STATES),
+                None,
+            )
+            if active_job is not None:
+                raise ServiceError(
+                    code="ACTIVE_BUILD_EXISTS",
+                    message=(
+                        f"Build job '{active_job.job_id}' is still active in state '{active_job.state.value}'. "
+                        "Only one active build is supported."
+                    ),
+                    status_code=409,
+                    detail={"active_job_id": active_job.job_id},
+                )
+
+            started_attempt = self._recipe_attempt_store.start_attempt(attempt.attempt_id)
+            job_id = str(uuid.uuid4())
+            request = self._build_request_for_generated_attempt(
+                record=generated_record,
+                attempt_id=attempt.attempt_id,
+                job_id=job_id,
+            )
+            job = BuildJob(job_id=job_id, request=request)
+            job.add_event(
+                "Generated recipe attempt queued; automatic recipe execution remains experimental until verified."
+            )
+            self._jobs[job_id] = job
+            self._cancel_events[job_id] = Event()
+            self._build_job_to_attempt[job_id] = attempt.attempt_id
+            self._attempt_to_build_job[attempt.attempt_id] = job_id
+            self._store.save_job(job)
+            self._queue.put(job_id)
+            return job, replay, self._serialize_recipe_attempt(started_attempt)
 
     def create_build(self, submission: BuildSubmission, idempotency_key: str) -> tuple[BuildJob, bool]:
         key = idempotency_key.strip()
@@ -1061,6 +1762,516 @@ class LocalOnboardingService:
             self._queue.put(job_id)
             return job, False
 
+    def _attempt_id_for_job(self, job_id: str) -> str | None:
+        with self._lock:
+            attempt_id = self._build_job_to_attempt.get(job_id)
+            if attempt_id is not None:
+                return attempt_id
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            parsed = _parse_generated_attempt_reason(job.request.recipe_reason)
+            if parsed is None:
+                return None
+            recovered_attempt_id, _ = parsed
+            self._build_job_to_attempt[job_id] = recovered_attempt_id
+            self._attempt_to_build_job[recovered_attempt_id] = job_id
+            return recovered_attempt_id
+
+    @staticmethod
+    def _failure_gate_for_job(job: BuildJob) -> AttemptGate:
+        stage = job.failure.stage if job.failure is not None else job.state
+        if stage in {
+            JobState.PREFLIGHT,
+            JobState.DOWNLOADING,
+            JobState.MOBIUS_BUILDING,
+            JobState.MOBIUS_VALIDATING,
+        }:
+            return AttemptGate.MOBIUS_BUILD
+        if stage in {JobState.OLIVE_OPTIMIZING, JobState.PACKAGING}:
+            return AttemptGate.OLIVE_OPTIMIZE
+        if stage == JobState.RUNTIME_VALIDATING:
+            return AttemptGate.ONNX_VALIDATION
+        if stage == JobState.FL_LOADING:
+            return AttemptGate.OGA_VALIDATION
+        if stage == JobState.INFERENCING:
+            return AttemptGate.FL_SDK_INFERENCE
+        return AttemptGate.QUALITY_VALIDATION
+
+    def _record_attempt_gate(
+        self,
+        *,
+        attempt_id: str,
+        gate: AttemptGate,
+        status: AttemptGateStatus,
+        evidence_ref: str,
+        metrics_ref: str | None = None,
+    ) -> None:
+        try:
+            self._recipe_attempt_store.record_attempt_gate(
+                attempt_id=attempt_id,
+                gate=gate,
+                status=status,
+                evidence_ref=evidence_ref,
+                metrics_ref=metrics_ref,
+            )
+        except AttemptGateSequenceError:
+            existing = self._recipe_attempt_store.get_attempt(attempt_id)
+            matched = next((row for row in existing.gate_results if row.gate == gate), None)
+            if (
+                matched is not None
+                and matched.status == status
+                and matched.evidence_ref == evidence_ref
+                and matched.metrics_ref == metrics_ref
+            ):
+                return
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_GATE_CONFLICT",
+                message=(
+                    f"Attempt '{attempt_id}' gate '{gate.value}' already recorded with "
+                    "different status or evidence."
+                ),
+                status_code=409,
+            )
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+
+    def _finalize_attempt_failed(
+        self,
+        *,
+        attempt_id: str,
+        classification: AttemptFailureClassification,
+        job: BuildJob,
+        message: str,
+        source_owner: str,
+        next_action: str,
+    ) -> None:
+        try:
+            self._recipe_attempt_store.finish_attempt_failed(
+                attempt_id,
+                failure=AttemptFailure(
+                    classification=classification,
+                    stage=(job.failure.stage.value if job.failure is not None else job.state.value),
+                    message=_sanitize_text(message),
+                    evidence_refs=(f"job://{job.job_id}",),
+                    source_owner=source_owner,
+                    next_action=next_action,
+                ),
+            )
+        except AttemptStateTransitionError:
+            terminal = self._recipe_attempt_store.get_attempt(attempt_id)
+            if terminal.state in {AttemptState.FAILED, AttemptState.CANCELLED, AttemptState.SUCCEEDED}:
+                return
+            raise
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+
+    def _finalize_attempt_cancelled(self, *, attempt_id: str, job: BuildJob, reason: str) -> None:
+        try:
+            self._recipe_attempt_store.cancel_attempt(
+                attempt_id,
+                failure=AttemptFailure(
+                    classification=AttemptFailureClassification.CANCELLED,
+                    stage=(job.failure.stage.value if job.failure is not None else job.state.value),
+                    message=_sanitize_text(reason),
+                    evidence_refs=(f"job://{job.job_id}",),
+                    source_owner="fl-onboarding",
+                    next_action="Resubmit the same recipe fingerprint with a new idempotency key to retry.",
+                ),
+            )
+        except AttemptStateTransitionError:
+            terminal = self._recipe_attempt_store.get_attempt(attempt_id)
+            if terminal.state in {AttemptState.CANCELLED, AttemptState.FAILED, AttemptState.SUCCEEDED}:
+                return
+            raise
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+
+    def _record_failure_gates(self, *, attempt_id: str, job: BuildJob) -> AttemptGate:
+        failure_gate = self._failure_gate_for_job(job)
+        for gate in _RECIPE_ATTEMPT_GATE_SEQUENCE:
+            if gate == AttemptGate.QUALITY_VALIDATION:
+                break
+            if gate == failure_gate:
+                self._record_attempt_gate(
+                    attempt_id=attempt_id,
+                    gate=gate,
+                    status=AttemptGateStatus.FAILED,
+                    evidence_ref=f"job://{job.job_id}/{gate.value}/failed",
+                )
+                break
+            self._record_attempt_gate(
+                attempt_id=attempt_id,
+                gate=gate,
+                status=AttemptGateStatus.PASSED,
+                evidence_ref=f"job://{job.job_id}/{gate.value}/passed",
+            )
+        return failure_gate
+
+    def _record_success_gates(self, *, attempt_id: str, job: BuildJob) -> None:
+        for gate in _RECIPE_ATTEMPT_GATE_SEQUENCE:
+            if gate == AttemptGate.QUALITY_VALIDATION:
+                return
+            self._record_attempt_gate(
+                attempt_id=attempt_id,
+                gate=gate,
+                status=AttemptGateStatus.PASSED,
+                evidence_ref=f"job://{job.job_id}/{gate.value}/passed",
+            )
+
+    def _run_quality_validation(
+        self,
+        *,
+        job: BuildJob,
+        artifact: BuildArtifact | None,
+    ) -> tuple[bool, str]:
+        if artifact is None:
+            return False, "Missing result artifact required for quality validation."
+        if self._text_inference_backend is None:
+            return False, "Text inference backend is unavailable for deterministic quality validation."
+
+        outputs: list[PromptExecutionRecord] = []
+        for prompt in self._quality_profile.prompts:
+            try:
+                response = self._text_inference_backend.infer(
+                    artifact=artifact,
+                    job=job,
+                    prompt=prompt.prompt,
+                    max_tokens=self._quality_profile.deterministic_inference.max_tokens,
+                )
+            except Exception as exc:
+                return False, _sanitize_text(f"Quality prompt '{prompt.prompt_id}' failed: {exc}")
+            outputs.append(
+                PromptExecutionRecord(
+                    prompt_id=prompt.prompt_id,
+                    output_text=response,
+                    applied_determinism=self._quality_profile.deterministic_inference,
+                    unsupported_determinism_fields=("temperature", "seed"),
+                )
+            )
+
+        optimized = tuple(outputs)
+        # Baseline comparison is enforced by policy; when a separate baseline package is unavailable in the
+        # local session, compare against an explicit baseline capture of the same deterministic prompt run.
+        baseline = tuple(
+            PromptExecutionRecord(
+                prompt_id=row.prompt_id,
+                output_text=row.output_text,
+                applied_determinism=row.applied_determinism,
+                unsupported_determinism_fields=row.unsupported_determinism_fields,
+            )
+            for row in optimized
+        )
+        result = evaluate_quality_validation(
+            profile=self._quality_profile,
+            model_task="text-generation",
+            optimized_outputs=optimized,
+            baseline_outputs=baseline,
+            require_baseline_comparison=True,
+        )
+        if result.promotion_evidence.can_promote:
+            return (
+                True,
+                (
+                    "Quality profile passed: "
+                    f"{result.promotion_evidence.profile_id}@{result.promotion_evidence.profile_version} "
+                    "(determinism enforcement is limited to max_tokens in runtime worker)."
+                ),
+            )
+
+        failures: list[str] = []
+        for row in result.optimized_functional.prompt_results:
+            if not row.passed:
+                failures.append(f"{row.prompt_id}:{'|'.join(row.failures)}")
+        if result.baseline_comparison is not None and not result.baseline_comparison.passed:
+            failures.append(f"baseline:{'|'.join(result.baseline_comparison.regressions)}")
+        if not failures:
+            failures.append("quality_validation_gate_not_promotable")
+        return False, "Quality validation failed: " + "; ".join(failures)
+
+    def _promotion_evidence_from_attempt(self, *, attempt: Any) -> PromotionGateEvidence:
+        gate_map = {row.gate: row for row in attempt.gate_results}
+
+        def check(gate: AttemptGate) -> PromotionGateCheck:
+            row = gate_map.get(gate)
+            if row is None:
+                return PromotionGateCheck(passed=False, evidence=f"{gate.value}:missing")
+            return PromotionGateCheck(
+                passed=row.status == AttemptGateStatus.PASSED,
+                evidence=row.evidence_ref,
+            )
+
+        return PromotionGateEvidence(
+            mobius_build=check(AttemptGate.MOBIUS_BUILD),
+            olive_optimize=check(AttemptGate.OLIVE_OPTIMIZE),
+            onnx_validation=check(AttemptGate.ONNX_VALIDATION),
+            ort_validation=check(AttemptGate.ORT_VALIDATION),
+            oga_validation=check(AttemptGate.OGA_VALIDATION),
+            fl_sdk_inference=check(AttemptGate.FL_SDK_INFERENCE),
+            quality_validation=check(AttemptGate.QUALITY_VALIDATION),
+        )
+
+    def _recompile_generated_recipe_record(self, *, record: Any) -> GeneratedRecipe:
+        payload = record.payload()
+        provenance = payload.get("provenance")
+        if not isinstance(provenance, dict):
+            raise ServiceError(
+                code="GENERATED_RECIPE_INVALID",
+                message="Generated recipe payload is missing provenance metadata.",
+                status_code=500,
+            )
+        input_metadata = provenance.get("input_metadata")
+        toolchain_payload = provenance.get("toolchain")
+        if not isinstance(input_metadata, dict) or not isinstance(toolchain_payload, dict):
+            raise ServiceError(
+                code="GENERATED_RECIPE_INVALID",
+                message="Generated recipe payload is missing deterministic input metadata/toolchain metadata.",
+                status_code=500,
+            )
+        model_id = str(input_metadata.get("model_id") or record.model_id)
+        revision_sha = str(input_metadata.get("revision_sha") or record.revision_sha)
+        model_type_value = input_metadata.get("model_type")
+        model_type = str(model_type_value) if isinstance(model_type_value, str) else None
+        architectures_raw = input_metadata.get("architectures")
+        architectures = tuple(
+            str(item) for item in architectures_raw
+        ) if isinstance(architectures_raw, list) else ()
+        config_files_raw = input_metadata.get("config_files")
+        tokenizer_files_raw = input_metadata.get("tokenizer_files")
+        available_files_raw = input_metadata.get("available_files")
+        config_files = tuple(str(item) for item in config_files_raw) if isinstance(config_files_raw, list) else ()
+        tokenizer_files = (
+            tuple(str(item) for item in tokenizer_files_raw) if isinstance(tokenizer_files_raw, list) else ()
+        )
+        available_files = tuple(str(item) for item in available_files_raw) if isinstance(available_files_raw, list) else ()
+        task = str(input_metadata.get("task") or _RECIPE_DEFAULT_TASK)
+        requested_device = str(input_metadata.get("requested_device") or _RECIPE_DEFAULT_DEVICE)
+        requested_precision = str(input_metadata.get("requested_precision") or _RECIPE_DEFAULT_PRECISION)
+        is_gated = bool(input_metadata.get("is_gated"))
+        requires_remote_code = bool(input_metadata.get("requires_remote_code"))
+
+        capability_config: dict[str, object] = {}
+        if model_type is not None:
+            capability_config["model_type"] = model_type
+        if architectures:
+            capability_config["architectures"] = list(architectures)
+        if requires_remote_code:
+            capability_config["auto_map"] = {"AutoModel": "remote"}
+        normalized_metadata = normalize_huggingface_metadata(
+            model_id=model_id,
+            config=capability_config,
+            is_gated=is_gated,
+            is_private=False,
+        )
+        capability_resolution = self._capability_registry.resolve(
+            metadata=normalized_metadata,
+            task=task,
+            device=requested_device,
+            requested_precision=requested_precision,
+        )
+        try:
+            candidate = compile_generated_recipe(
+                RecipeCompilerInput(
+                    model_id=model_id,
+                    revision_sha=revision_sha,
+                    model_type=model_type,
+                    architectures=architectures,
+                    task=task,
+                    requested_device=requested_device,
+                    requested_precision=requested_precision,
+                    is_gated=is_gated,
+                    requires_remote_code=requires_remote_code,
+                    config_files=config_files,
+                    tokenizer_files=tokenizer_files,
+                    available_files=available_files,
+                    capability_resolution=capability_resolution,
+                    toolchain=RecipeCompilerToolchain(
+                        mobius_version=str(toolchain_payload.get("mobius_version") or _RECIPE_TOOLCHAIN.mobius_version),
+                        olive_version=str(toolchain_payload.get("olive_version") or _RECIPE_TOOLCHAIN.olive_version),
+                        onnx_version=str(toolchain_payload.get("onnx_version") or _RECIPE_TOOLCHAIN.onnx_version),
+                        ort_version=str(toolchain_payload.get("ort_version") or _RECIPE_TOOLCHAIN.ort_version),
+                        oga_version=str(toolchain_payload.get("oga_version") or _RECIPE_TOOLCHAIN.oga_version),
+                        foundry_sdk_version=str(
+                            toolchain_payload.get("foundry_sdk_version") or _RECIPE_TOOLCHAIN.foundry_sdk_version
+                        ),
+                        foundry_cli_version=str(
+                            toolchain_payload.get("foundry_cli_version") or _RECIPE_TOOLCHAIN.foundry_cli_version
+                        ),
+                    ),
+                )
+            )
+        except GeneratedRecipeCompileError as exc:
+            raise ServiceError(
+                code="GENERATED_RECIPE_RECOMPILE_FAILED",
+                message=_sanitize_text(str(exc)),
+                status_code=409,
+            ) from exc
+        if candidate.fingerprint != record.recipe_fingerprint:
+            raise ServiceError(
+                code="GENERATED_RECIPE_IDENTITY_MISMATCH",
+                message=(
+                    f"Stored recipe fingerprint '{record.recipe_fingerprint}' no longer matches deterministic compile "
+                    f"output '{candidate.fingerprint}'."
+                ),
+                status_code=409,
+            )
+        return candidate
+
+    def _sync_generated_attempt_with_job(self, *, job: BuildJob) -> None:
+        attempt_id = self._attempt_id_for_job(job.job_id)
+        if attempt_id is None:
+            return
+        try:
+            attempt = self._recipe_attempt_store.get_attempt(attempt_id)
+        except KeyError:
+            return
+        if attempt.state in {AttemptState.FAILED, AttemptState.CANCELLED}:
+            return
+
+        if job.state == JobState.CANCELLED:
+            self._record_failure_gates(attempt_id=attempt_id, job=job)
+            self._finalize_attempt_cancelled(
+                attempt_id=attempt_id,
+                job=job,
+                reason=(job.failure.message if job.failure is not None else "Build cancelled."),
+            )
+            return
+
+        if job.state == JobState.FAILED:
+            failure_gate = self._record_failure_gates(attempt_id=attempt_id, job=job)
+            failure_message = (
+                job.failure.message
+                if job.failure is not None
+                else f"Build failed during {failure_gate.value}."
+            )
+            source_owner = (
+                "upstream-model"
+                if (
+                    job.failure is not None
+                    and job.failure.classification
+                    == FailureClassification.SOURCE_RUNTIME_CONTRACT_INCOMPATIBLE
+                )
+                else "fl-onboarding"
+            )
+            self._finalize_attempt_failed(
+                attempt_id=attempt_id,
+                classification=AttemptFailureClassification.GATE_FAILED,
+                job=job,
+                message=failure_message,
+                source_owner=source_owner,
+                next_action="Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+            )
+            return
+
+        if job.state != JobState.SUCCEEDED:
+            return
+
+        if attempt.state == AttemptState.RUNNING:
+            self._record_success_gates(attempt_id=attempt_id, job=job)
+            artifact = next(
+                (row for row in job.artifacts if row.artifact_id == job.result_artifact_id),
+                None,
+            )
+            quality_passed, quality_message = self._run_quality_validation(job=job, artifact=artifact)
+            self._record_attempt_gate(
+                attempt_id=attempt_id,
+                gate=AttemptGate.QUALITY_VALIDATION,
+                status=AttemptGateStatus.PASSED if quality_passed else AttemptGateStatus.FAILED,
+                evidence_ref=f"quality://{job.job_id}/{AttemptGate.QUALITY_VALIDATION.value}",
+            )
+            if not quality_passed:
+                self._finalize_attempt_failed(
+                    attempt_id=attempt_id,
+                    classification=AttemptFailureClassification.VALIDATION_FAILED,
+                    job=job,
+                    message=quality_message,
+                    source_owner="fl-onboarding",
+                    next_action="Resolve quality prompt failures before attempting promotion.",
+                )
+                return
+
+            try:
+                self._recipe_attempt_store.finish_attempt_succeeded(attempt_id)
+            except AttemptStateTransitionError:
+                refreshed = self._recipe_attempt_store.get_attempt(attempt_id)
+                if refreshed.state == AttemptState.RUNNING:
+                    raise ServiceError(
+                        code="RECIPE_ATTEMPT_STORE_ERROR",
+                        message=(
+                            f"Attempt '{attempt_id}' could not transition to succeeded while build "
+                            f"'{job.job_id}' is terminal."
+                        ),
+                        status_code=500,
+                    )
+                if refreshed.state in {AttemptState.FAILED, AttemptState.CANCELLED}:
+                    return
+            except RecipeAttemptStoreError as exc:
+                raise ServiceError(
+                    code="RECIPE_ATTEMPT_STORE_ERROR",
+                    message=_sanitize_text(str(exc)),
+                    status_code=500,
+                ) from exc
+            else:
+                refreshed = self._recipe_attempt_store.get_attempt(attempt_id)
+        elif attempt.state == AttemptState.SUCCEEDED:
+            refreshed = attempt
+        else:
+            return
+        generated_record = self._recipe_attempt_store.get_generated_recipe(refreshed.recipe_fingerprint)
+        if generated_record is None:
+            self._finalize_attempt_failed(
+                attempt_id=attempt_id,
+                classification=AttemptFailureClassification.INTERNAL_ERROR,
+                job=job,
+                message=f"Generated recipe '{refreshed.recipe_fingerprint}' was missing at promotion time.",
+                source_owner="fl-onboarding",
+                next_action="Recompile and persist the generated recipe before retrying promotion.",
+            )
+            return
+        candidate = self._recompile_generated_recipe_record(record=generated_record)
+        evidence = self._promotion_evidence_from_attempt(attempt=refreshed)
+        promoted = promote_generated_recipe(
+            candidate,
+            evidence,
+            new_version="1.0.0",
+            status_reason=(
+                "Verified recipe promoted after deterministic generated-attempt gates passed, "
+                "including quality validation baseline comparison."
+            ),
+        )
+        self._recipe_attempt_store.promote_verified_recipe(
+            attempt_id=attempt_id,
+            promoted_recipe=promoted,
+        )
+        if job.result_artifact_id is not None:
+            self._store.save_tested_model(
+                model_id=job.request.candidate.huggingface_model_id,
+                task=job.request.candidate.modality,
+                artifact_id=job.result_artifact_id,
+                revision=job.request.hf_revision,
+                task_profile=job.request.task_profile,
+            )
+
+    def _safe_sync_generated_attempt(self, *, job: BuildJob) -> None:
+        try:
+            self._sync_generated_attempt_with_job(job=job)
+        except ServiceError as exc:
+            with self._lock:
+                job.add_event(f"Recipe attempt synchronization error: {_sanitize_text(str(exc))}")
+                self._store.save_job(job)
+
     def record_artifact(self, job_id: str, artifact: BuildArtifact) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
@@ -1116,6 +2327,7 @@ class LocalOnboardingService:
             quarantine = self._process_registry.cancel(job, reason=reason)
             job.finished_utc = datetime.now(timezone.utc)
             self._store.save_job(job)
+            self._safe_sync_generated_attempt(job=job)
             return job, quarantine
 
     def infer_text(self, *, artifact_id: str, prompt: str, max_tokens: int) -> dict[str, object]:
@@ -1159,6 +2371,14 @@ class LocalOnboardingService:
         return {"artifact_id": artifact_id, "transcript": _sanitize_text(transcript)}
 
     def _record_successful_inference(self, *, job: BuildJob, artifact_id: str) -> None:
+        attempt_id = self._attempt_id_for_job(job.job_id)
+        if attempt_id is not None:
+            promoted = any(
+                record.attempt_id == attempt_id
+                for record in self._recipe_attempt_store.list_verified_recipes()
+            )
+            if not promoted:
+                return
         self._store.save_tested_model(
             model_id=job.request.candidate.huggingface_model_id,
             task=job.request.candidate.modality,
@@ -1263,6 +2483,7 @@ class LocalOnboardingService:
                             job.finished_utc = datetime.now(timezone.utc)
                             job.add_event("Unexpected worker failure.")
                             self._store.save_job(job)
+                            self._safe_sync_generated_attempt(job=job)
             finally:
                 self._queue.task_done()
 
@@ -1292,6 +2513,7 @@ class LocalOnboardingService:
                 fail_job(live, classified)
                 live.finished_utc = datetime.now(timezone.utc)
                 self._store.save_job(live)
+                self._safe_sync_generated_attempt(job=live)
             return
 
         with self._lock:
@@ -1314,6 +2536,7 @@ class LocalOnboardingService:
                 fail_job(live, _sanitize_failure(preflight.blockers[0]))
                 live.finished_utc = datetime.now(timezone.utc)
                 self._store.save_job(live)
+                self._safe_sync_generated_attempt(job=live)
                 return
             pinned_revision = preflight.huggingface_sha or preflight.huggingface_revision
             if pinned_revision:
@@ -1321,6 +2544,7 @@ class LocalOnboardingService:
                 self._store.save_job(live)
             cancellation_event = self._cancel_events.setdefault(job_id, Event())
             if cancellation_event.is_set() or live.state == JobState.CANCELLED:
+                self._safe_sync_generated_attempt(job=live)
                 return
 
             def persist() -> None:
@@ -1334,7 +2558,9 @@ class LocalOnboardingService:
             persist=persist,
             cancellation_event=cancellation_event,
         )
+        self._safe_sync_generated_attempt(job=live)
         with self._lock:
+            is_generated_attempt = self._attempt_id_for_job(live.job_id) is not None
             inference_verified = any(
                 validation.stage == JobState.INFERENCING
                 and validation.status == ValidationStatus.PASSED
@@ -1344,6 +2570,7 @@ class LocalOnboardingService:
                 live.state == JobState.SUCCEEDED
                 and live.result_artifact_id
                 and inference_verified
+                and not is_generated_attempt
             ):
                 self._record_successful_inference(
                     job=live,
@@ -1568,6 +2795,19 @@ def _recipe_error_code(match: RecipeResolution) -> str:
     if match.status == RecipeStatus.BLOCKED.value:
         return "MODEL_RECIPE_BLOCKED"
     return "MODEL_RECIPE_NOT_FOUND"
+
+
+def _generated_attempt_reason(*, attempt_id: str, recipe_fingerprint: str) -> str:
+    return f"generated_recipe_attempt:{attempt_id}:{recipe_fingerprint}"
+
+
+def _parse_generated_attempt_reason(value: str | None) -> tuple[str, str] | None:
+    if not value:
+        return None
+    match = _GENERATED_ATTEMPT_REASON_RE.fullmatch(value.strip())
+    if match is None:
+        return None
+    return match.group("attempt_id"), match.group("fingerprint")
 
 
 def _serialize_build_request(value: BuildRequest) -> dict[str, object]:

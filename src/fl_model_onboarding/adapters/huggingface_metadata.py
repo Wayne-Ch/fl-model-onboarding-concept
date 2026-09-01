@@ -43,6 +43,15 @@ class HuggingFaceMetadataAdapter:
         api = HfApi()
         info = api.model_info(repo_id=model_id, revision=revision, files_metadata=files_metadata)
         siblings = getattr(info, "siblings", None)
+        sibling_files = tuple(
+            sorted(
+                {
+                    str(row.rfilename)
+                    for row in (siblings or [])
+                    if getattr(row, "rfilename", None)
+                }
+            )
+        ) or None
         safetensors = to_dict(getattr(info, "safetensors", None))
         return HuggingFaceMetadata(
             model_id=info.id,
@@ -58,6 +67,7 @@ class HuggingFaceMetadataAdapter:
             safetensors_parameter_count=derive_parameter_count(safetensors),
             card_data=to_dict(getattr(info, "cardData", None) or getattr(info, "card_data", None)),
             sibling_count=len(siblings) if siblings is not None else None,
+            sibling_files=sibling_files,
         )
 
 

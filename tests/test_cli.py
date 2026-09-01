@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 
 import pytest
@@ -145,3 +147,57 @@ def test_build_create_requires_idempotency_key() -> None:
             ]
         )
     assert exc.value.code == 2
+
+
+def test_recipe_agent_frozen_commands(capsys) -> None:  # type: ignore[no-untyped-def]
+    manifest = Path("evaluation") / "recipe-agent-v1" / "models.json"
+
+    list_code = main(["recipe-agent", "frozen-list", "--path", str(manifest)])
+    assert list_code == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["count"] == 5
+    assert len(listed["models"]) == 5
+
+    validate_code = main(["recipe-agent", "frozen-validate", "--path", str(manifest)])
+    assert validate_code == 0
+    validated = json.loads(capsys.readouterr().out)
+    assert validated["valid"] is True
+    assert validated["model_count"] == 5
+
+    dry_run_code = main(["recipe-agent", "frozen-dry-run", "--path", str(manifest)])
+    assert dry_run_code == 0
+    dry_run = json.loads(capsys.readouterr().out)
+    assert dry_run["valid"] is True
+    assert dry_run["tool_execution"] == "disabled"
+    assert dry_run["summary"]["total_models"] == 5
+    assert dry_run["summary"]["compiled_models"] == 5
+    assert all(row["status"] == "compiled" for row in dry_run["outcomes"])
+
+
+def test_recipe_agent_frozen_validate_rejects_invalid_manifest(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    invalid_manifest = tmp_path / "invalid-frozen.json"
+    invalid_manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "selection_timestamp": "2026-01-01T00:00:00Z",
+                "models": [
+                    {
+                        "index": 1,
+                        "model_id": "owner/only-one-model",
+                        "sha": "1234567890abcdef1234567890abcdef12345678",
+                        "model_type": "llama",
+                        "architectures": ["LlamaForCausalLM"],
+                        "catalog_match": {"matched": False, "confidence": "none", "reason": "none", "matched_entry": None},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    code = main(["recipe-agent", "frozen-validate", "--path", str(invalid_manifest)])
+    assert code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["valid"] is False
+    assert any("exactly five entries" in message for message in payload["errors"])

@@ -2,7 +2,20 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { OnboardingShell } from "./App";
-import type { ApiClient, AsrInferenceResult, BuildStatus, CandidateOutcome, HealthSnapshot, JobEvent, ModelDetail, ModelPreflight, ModelSummary, TextInferenceResult } from "./api/types";
+import type {
+  ApiClient,
+  AsrInferenceResult,
+  BuildStatus,
+  CandidateOutcome,
+  GeneratedRecipePreview,
+  HealthSnapshot,
+  JobEvent,
+  ModelDetail,
+  ModelPreflight,
+  ModelSummary,
+  RecipeAttemptStatus,
+  TextInferenceResult
+} from "./api/types";
 
 const llmModel: ModelSummary = {
   id: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
@@ -39,6 +52,14 @@ const gatedModel: ModelSummary = {
 const experimentalModel: ModelSummary = {
   id: "contoso/experimental-llm-2b-instruct",
   displayName: "Experimental LLM 2B",
+  task: "llm",
+  testedStatus: "not_verified",
+  gated: false
+};
+
+const generatedEligibleModel: ModelSummary = {
+  id: "owner/unregistered-eligible",
+  displayName: "Unregistered eligible model",
   task: "llm",
   testedStatus: "not_verified",
   gated: false
@@ -83,6 +104,7 @@ function detailFor(model: ModelSummary): ModelDetail {
   const isExperimental = model.id === experimentalModel.id;
   const isGranite = model.id === graniteModel.id;
   const isAsr = model.task === "asr";
+  const isGeneratedEligible = model.id === generatedEligibleModel.id;
   return {
     id: model.id,
     displayName: model.displayName,
@@ -94,28 +116,38 @@ function detailFor(model: ModelSummary): ModelDetail {
     requiresRemoteCode: false,
     estimatedSizeMb: 1200,
     likelyCatalogMatch: model.id,
-    mobiusSupport: isExperimental ? "experimental (opt-in required)" : isAsr ? "blocked" : "verified",
+    mobiusSupport: isGeneratedEligible
+      ? "not registered"
+      : isExperimental
+        ? "experimental (opt-in required)"
+        : isAsr
+          ? "blocked"
+          : "verified",
     mobiusRisk: "low",
     testedStatus: model.testedStatus,
-    recipeStatus: isExperimental ? "experimental" : isAsr ? "blocked" : "verified",
-    recipeReason: isExperimental
+    recipeStatus: isGeneratedEligible ? "unregistered" : isExperimental ? "experimental" : isAsr ? "blocked" : "verified",
+    recipeReason: isGeneratedEligible
+      ? "No recipe is registered for this model profile."
+      : isExperimental
       ? "Recipe requires explicit experimental opt-in."
       : isAsr
         ? asrBlockedOutcome.errorSummary
         : isGranite
           ? "Verified direct Mobius->Olive->runtime->Foundry Local SDK chat inference path for granite-3.3-2b pinned revision 707f574c62054322f6b5b04b6d075f0a8f05e0f0."
           : "Verified Mobius->Olive->runtime->Foundry Local SDK chat path for the pinned SmolLM2 revision.",
-    recipeId: isExperimental
+    recipeId: isGeneratedEligible
+      ? undefined
+      : isExperimental
       ? "experimental-llm-2b-cpu-int4"
       : isAsr
         ? "distil-whisper-cpu-fp16"
         : isGranite
           ? "granite-3.3-2b-cpu-int4"
           : "smollm2-1.7b-cpu-int4",
-    recipeVersion: "1.0.0",
+    recipeVersion: isGeneratedEligible ? undefined : "1.0.0",
     requiresExperimentalOptIn: isExperimental,
     buildableWithExperimentalOptIn: isExperimental,
-    supportedOptimizations: isAsr
+    supportedOptimizations: isAsr || isGeneratedEligible
       ? []
       : [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
   };
@@ -123,6 +155,7 @@ function detailFor(model: ModelSummary): ModelDetail {
 
 function preflightFor(model: ModelSummary): ModelPreflight {
   const isExperimental = model.id === experimentalModel.id;
+  const isGeneratedEligible = model.id === generatedEligibleModel.id;
   if (model.task === "asr") {
     return {
       modelId: model.id,
@@ -150,21 +183,66 @@ function preflightFor(model: ModelSummary): ModelPreflight {
     modelId: model.id,
     task: "llm",
     target: "cpu",
-    buildable: !model.gated && !isExperimental,
-    blockedReason: model.gated ? "Gated model access is rejected in this POC." : undefined,
-    strategies: ["mobius-olive"],
-    precisions: ["int4"],
+    buildable: !model.gated && !isExperimental && !isGeneratedEligible,
+    blockedReason: model.gated
+      ? "Gated model access is rejected in this POC."
+      : isGeneratedEligible
+        ? "No recipe is registered for this model profile."
+        : undefined,
+    strategies: isGeneratedEligible ? [] : ["mobius-olive"],
+    precisions: isGeneratedEligible ? [] : ["int4"],
     verifiedAudioFormats: [],
-    defaultStrategy: "mobius-olive",
-    defaultPrecision: "int4",
-    recipeStatus: isExperimental ? "experimental" : "verified",
-    recipeReason: isExperimental ? "Recipe requires explicit experimental opt-in." : "Verified recipe.",
-    recipeId: isExperimental ? "experimental-llm-2b-cpu-int4" : model.id === graniteModel.id ? "granite-3.3-2b-cpu-int4" : "smollm2-1.7b-cpu-int4",
-    recipeVersion: "1.0.0",
+    defaultStrategy: isGeneratedEligible ? undefined : "mobius-olive",
+    defaultPrecision: isGeneratedEligible ? undefined : "int4",
+    recipeStatus: isGeneratedEligible ? "unregistered" : isExperimental ? "experimental" : "verified",
+    recipeReason: isGeneratedEligible
+      ? "No recipe is registered for this model profile."
+      : isExperimental
+        ? "Recipe requires explicit experimental opt-in."
+        : "Verified recipe.",
+    recipeId: isGeneratedEligible
+      ? undefined
+      : isExperimental
+        ? "experimental-llm-2b-cpu-int4"
+        : model.id === graniteModel.id
+          ? "granite-3.3-2b-cpu-int4"
+          : "smollm2-1.7b-cpu-int4",
+    recipeVersion: isGeneratedEligible ? undefined : "1.0.0",
     requiresExperimentalOptIn: isExperimental,
-    supportedOptimizations: isExperimental
+    supportedOptimizations: isGeneratedEligible
+      ? []
+      : isExperimental
       ? [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
       : [{ strategy: "mobius-olive", precision: "int4", taskProfile: "llm-cpu-int4", skipOlive: false, default: true }]
+  };
+}
+
+function generatedFor(model: ModelSummary): GeneratedRecipePreview {
+  const eligible = model.id === "owner/unregistered-eligible";
+  return {
+    eligibleForAutomaticRecipeAttempt: eligible,
+    requiresExplicitAttemptConfirmation: true,
+    experimentalUntilVerified: true,
+    fingerprint: eligible
+      ? "2222222222222222222222222222222222222222222222222222222222222222"
+      : undefined,
+    compileError: eligible ? undefined : "Generated recipe unavailable.",
+    capability: {
+      outcome: eligible ? "exact" : "not-eligible",
+      reasonCode: eligible ? "resolved" : "unsupported-task",
+      reason: eligible ? "Resolved." : "Unavailable.",
+      matchedAliases: [model.id]
+    },
+    validationGates: [
+      "mobius_build",
+      "olive_optimize",
+      "onnx_validation",
+      "ort_validation",
+      "oga_validation",
+      "fl_sdk_inference",
+      "quality_validation"
+    ],
+    verifiedReuse: undefined
   };
 }
 
@@ -203,6 +281,9 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
     if (modelId === experimentalModel.id) {
       return detailFor(experimentalModel);
     }
+    if (modelId === generatedEligibleModel.id) {
+      return detailFor(generatedEligibleModel);
+    }
     return detailFor(llmModel);
   });
 
@@ -227,17 +308,51 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
             : "Recipe requires explicit experimental opt-in."
         };
       }
+      if (modelId === generatedEligibleModel.id) {
+        return preflightFor(generatedEligibleModel);
+      }
       return preflightFor(llmModel);
     }
   );
+  const getGeneratedRecipePreview = vi.fn(async (modelId: string) => {
+    const model =
+      [llmModel, graniteModel, asrModel, gatedModel, experimentalModel, generatedEligibleModel].find(
+        (row) => row.id === modelId
+      ) ??
+      llmModel;
+    return generatedFor(model);
+  });
+  const startGeneratedRecipeAttempt = vi.fn(
+    async ({ modelId }: { modelId: string }): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+      idempotentReplay: false,
+      build: statusFor({ ...llmModel, id: modelId }, "queued"),
+      attempt: {
+        attemptId: "attempt-1",
+        recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+        state: "running",
+        buildJobId: "job-1",
+        gates: []
+      }
+    })
+  );
+  const getGeneratedRecipeAttempt = vi.fn(async (): Promise<RecipeAttemptStatus> => ({
+    attemptId: "attempt-1",
+    recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+    state: "running",
+    buildJobId: "job-1",
+    gates: []
+  }));
 
   const base: ApiClient = {
     config: { baseUrl: "http://127.0.0.1:8080", fixtureMode: false },
     getHealth: vi.fn(async () => health),
-    searchModels: vi.fn(async () => [asrModel, gatedModel, experimentalModel]),
+    searchModels: vi.fn(async () => [asrModel, gatedModel, experimentalModel, generatedEligibleModel]),
     getModelDetail,
+    getGeneratedRecipePreview,
     preflightModel,
     startBuild: vi.fn(async () => statusFor(llmModel, "queued")),
+    startGeneratedRecipeAttempt,
+    getGeneratedRecipeAttempt,
     getBuildStatus: vi.fn(async () => statusFor(llmModel, "succeeded", { artifactId: "artifact-1" })),
     getBuildEvents: vi.fn(async () => eventsAt({ sequence: 1, stage: "succeeded", message: "done" })),
     cancelBuild: vi.fn(async () => statusFor(llmModel, "cancelled")),
@@ -324,6 +439,44 @@ describe("OnboardingShell", () => {
       )
     );
     await waitFor(() => expect(screen.getByRole("button", { name: "Build for CPU" })).not.toBeDisabled());
+  });
+
+  it("requires explicit confirmation before automatic recipe attempt", async () => {
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: {
+          attemptId: "attempt-1",
+          recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+          state: "running",
+          buildJobId: "job-1",
+          gates: []
+        }
+      })
+    );
+    const client = createClient({ startGeneratedRecipeAttempt });
+    const user = userEvent.setup();
+    render(<OnboardingShell client={client} />);
+
+    await screen.findByText(/Connected/);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.selectOptions(screen.getByLabelText("Model"), generatedEligibleModel.id);
+
+    const runAttemptButton = await screen.findByRole("button", { name: "Run automatic recipe attempt" });
+    expect(runAttemptButton).toBeDisabled();
+    expect(screen.getByText("Automatic recipe attempts require explicit confirmation.")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByLabelText(
+        "Confirm automatic recipe attempt for fingerprint 2222222222222222222222222222222222222222222222222222222222222222"
+      )
+    );
+    await waitFor(() => expect(runAttemptButton).not.toBeDisabled());
+
+    await user.click(runAttemptButton);
+    await waitFor(() => expect(startGeneratedRecipeAttempt).toHaveBeenCalledTimes(1));
+    expect(client.startBuild).not.toHaveBeenCalled();
   });
 
   it("keeps the verified ASR blocker visible and out of tested success", async () => {

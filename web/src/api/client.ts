@@ -10,12 +10,14 @@ import type {
   BuildStatus,
   CandidateGateOutcome,
   CandidateOutcome,
+  GeneratedRecipePreview,
   HealthSnapshot,
   JobEvent,
   ModelDetail,
   ModelPreflight,
   ModelSummary,
   ModelTask,
+  RecipeAttemptStatus,
   RecipeStatus,
   SupportedOptimization,
   TestedStatus,
@@ -225,7 +227,8 @@ function parseModelDetail(input: unknown): ModelDetail {
     requiresExperimentalOptIn,
     buildableWithExperimentalOptIn,
     supportedOptimizations,
-    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"]))
+    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"])),
+    generatedRecipe: parseGeneratedRecipePreview(readUnknown(record, ["generated_recipe"]))
   };
 }
 
@@ -267,6 +270,111 @@ function parseCandidateOutcome(input: unknown): CandidateOutcome | undefined {
     evidenceReference: readString(record, ["evidence_reference"]),
     capabilityOwner: readString(record, ["capability_owner"]),
     nextAction: readString(record, ["next_action"])
+  };
+}
+
+function parseGeneratedRecipePreview(input: unknown): GeneratedRecipePreview | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const record = asRecord(input, "generated recipe preview");
+  const capabilityRecord = readRecord(record, ["capability"]) ?? {};
+  const nestedCapability = readRecord(capabilityRecord, ["capability"]) ?? {};
+  const argument = readRecord(record, ["argument_confidence"]) ?? {};
+  const verifiedReuse = readRecord(record, ["verified_reuse"]);
+  const validationGates = readStringArray(record, ["validation_gates"]);
+  const capabilityId =
+    readOptionalString(nestedCapability, ["capability_id"]) ??
+    readOptionalString(capabilityRecord, ["capability_id"]);
+  const capabilityStatus =
+    readOptionalString(nestedCapability, ["status"]) ??
+    readOptionalString(capabilityRecord, ["status"]);
+  return {
+    eligibleForAutomaticRecipeAttempt: readBoolean(
+      record,
+      ["eligible_for_automatic_recipe_attempt"],
+      false
+    ),
+    requiresExplicitAttemptConfirmation: readBoolean(
+      record,
+      ["requires_explicit_attempt_confirmation"],
+      true
+    ),
+    experimentalUntilVerified: readBoolean(record, ["experimental_until_verified"], true),
+    fingerprint: readOptionalString(record, ["fingerprint"]),
+    compileError: readOptionalString(record, ["compile_error"]),
+    capability: {
+      outcome: readString(capabilityRecord, ["outcome"], "not-eligible"),
+      reasonCode: readString(capabilityRecord, ["reason_code"], "unknown"),
+      reason: readString(capabilityRecord, ["reason"], ""),
+      matchedAliases: readStringArray(capabilityRecord, ["matched_aliases"]),
+      capabilityId: capabilityId ?? undefined,
+      status: capabilityStatus ?? undefined
+    },
+    argumentConfidence: Object.keys(argument).length > 0
+      ? {
+          mobiusDtypeConfidence:
+            readString(argument, ["mobius_dtype_confidence"], "candidate-unverified"),
+          olivePrecisionConfidence:
+            readString(argument, ["olive_precision_confidence"], "candidate-unverified"),
+          containsUnverifiedArguments: readBoolean(
+            argument,
+            ["contains_unverified_arguments"],
+            true
+          )
+        }
+      : undefined,
+    validationGates,
+    verifiedReuse: verifiedReuse
+      ? {
+          available: readBoolean(verifiedReuse, ["available"], false),
+          verifiedFingerprint: readString(verifiedReuse, ["verified_fingerprint"]),
+          sourceRecipeFingerprint: readString(verifiedReuse, ["source_recipe_fingerprint"]),
+          attemptId: readString(verifiedReuse, ["attempt_id"]),
+          promotedUtc: readString(verifiedReuse, ["promoted_utc"]),
+          recipe: readRecord(verifiedReuse, ["recipe"]) ?? undefined
+        }
+      : undefined
+  };
+}
+
+function parseRecipeAttempt(input: unknown): RecipeAttemptStatus {
+  const record = asRecord(input, "recipe attempt");
+  const gatesRaw = readUnknown(record, ["gates"]);
+  const gates = Array.isArray(gatesRaw)
+    ? gatesRaw.map((row): RecipeAttemptStatus["gates"][number] => {
+        const gate = asRecord(row, "recipe attempt gate");
+        const status = readString(gate, ["status"], "failed");
+        const gateStatus: "passed" | "failed" = status === "passed" ? "passed" : "failed";
+        const sequence = readNumber(gate, ["sequence"]);
+        return {
+          sequence: sequence ?? 0,
+          gate: readString(gate, ["gate"]),
+          status: gateStatus,
+          evidenceRef: readString(gate, ["evidence_ref"]),
+          metricsRef: readOptionalString(gate, ["metrics_ref"]) ?? undefined,
+          startedUtc: readString(gate, ["started_utc"]),
+          finishedUtc: readString(gate, ["finished_utc"])
+        };
+      })
+    : [];
+  const failureRecord = readRecord(record, ["failure"]);
+  return {
+    attemptId: readString(record, ["attempt_id"]),
+    recipeFingerprint: readString(record, ["recipe_fingerprint"]),
+    state: readString(record, ["state"]) as RecipeAttemptStatus["state"],
+    buildJobId: readOptionalString(record, ["build_job_id"]) ?? undefined,
+    gates,
+    failure: failureRecord
+      ? {
+          classification: readString(failureRecord, ["classification"]),
+          stage: readString(failureRecord, ["stage"]),
+          message: readString(failureRecord, ["message"]),
+          evidenceRefs: readStringArray(failureRecord, ["evidence_refs"]),
+          sourceOwner: readString(failureRecord, ["source_owner"]),
+          nextAction: readString(failureRecord, ["next_action"])
+        }
+      : undefined
   };
 }
 
@@ -329,7 +437,8 @@ function parsePreflight(input: unknown): ModelPreflight {
     recipeVersion: readOptionalString(recipe, ["version"]),
     requiresExperimentalOptIn,
     supportedOptimizations,
-    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"]))
+    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"])),
+    generatedRecipe: parseGeneratedRecipePreview(readUnknown(record, ["generated_recipe"]))
   };
 }
 
@@ -575,6 +684,24 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
       const { data } = await parseResponse(transport, `/api/models/detail?id=${encodedId}`, undefined, parseModelDetail);
       return data;
     },
+    async getGeneratedRecipePreview(modelId: string, task: "llm" | "asr"): Promise<GeneratedRecipePreview> {
+      const encodedId = encodeURIComponent(modelId);
+      const { data } = await parseResponse(
+        transport,
+        `/api/recipes/generated/preview?id=${encodedId}&task=${encodeURIComponent(task)}`,
+        undefined,
+        (input) => {
+          const record = asRecord(input, "generated recipe preview response");
+          const nested = readUnknown(record, ["generated_recipe"]);
+          const parsed = parseGeneratedRecipePreview(nested ?? input);
+          if (!parsed) {
+            throw new ApiParseError("Generated recipe preview payload is missing.");
+          }
+          return parsed;
+        }
+      );
+      return data;
+    },
     async preflightModel(request: {
       modelId: string;
       task: "llm" | "asr";
@@ -619,6 +746,49 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
           })
         },
         parseBuildStatus
+      );
+      return data;
+    },
+    async startGeneratedRecipeAttempt(
+      request: { modelId: string; recipeFingerprint: string; confirmAutomaticRecipeAttempt: boolean },
+      idempotencyKey: string
+    ): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> {
+      const { data } = await parseResponse(
+        transport,
+        "/api/recipes/generated/attempts",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "Idempotency-Key": idempotencyKey
+          },
+          body: JSON.stringify({
+            recipe_fingerprint: request.recipeFingerprint,
+            model_id: request.modelId,
+            confirm_automatic_recipe_attempt: request.confirmAutomaticRecipeAttempt
+          })
+        },
+        (input) => {
+          const record = asRecord(input, "generated recipe attempt response");
+          const job = parseBuildStatus(readUnknown(record, ["job"]) ?? record);
+          const attemptRaw = readUnknown(record, ["attempt"]);
+          const attempt = parseRecipeAttempt(attemptRaw);
+          return {
+            idempotentReplay: readBoolean(record, ["idempotent_replay"], false),
+            build: job,
+            attempt
+          };
+        }
+      );
+      return data;
+    },
+    async getGeneratedRecipeAttempt(attemptId: string): Promise<RecipeAttemptStatus> {
+      const encoded = encodeURIComponent(attemptId);
+      const { data } = await parseResponse(
+        transport,
+        `/api/recipes/generated/attempts/${encoded}`,
+        undefined,
+        parseRecipeAttempt
       );
       return data;
     },

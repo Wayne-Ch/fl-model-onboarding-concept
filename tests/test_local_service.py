@@ -48,6 +48,52 @@ _TOOLS = (
 )
 
 
+class FakeHFMetadata:
+    def search_models(self, query: str, limit: int = 20, sort: str = "downloads"):  # noqa: ANN001
+        from fl_model_onboarding.adapters.interfaces import HuggingFaceSearchResult
+
+        return (
+            HuggingFaceSearchResult(
+                model_id=f"{query}-one",
+                downloads=100,
+                likes=20,
+                last_modified="2026-01-01T00:00:00Z",
+            ),
+            HuggingFaceSearchResult(
+                model_id=f"{query}-two",
+                downloads=50,
+                likes=10,
+                last_modified="2026-01-02T00:00:00Z",
+            ),
+        )[:limit]
+
+    def get_metadata(self, model_id: str, revision: str | None = None, files_metadata: bool = False):  # noqa: ANN001
+        from fl_model_onboarding.adapters.interfaces import HuggingFaceMetadata
+
+        config: dict[str, object] = {"model_type": "llama"}
+        if "whisper" in model_id:
+            config = {"model_type": "whisper"}
+        return HuggingFaceMetadata(
+            model_id=model_id,
+            revision=revision or "rev-1",
+            sha="1234567890abcdef1234567890abcdef12345678",
+            is_private=False,
+            is_gated=False,
+            last_modified="2026-01-01T00:00:00Z",
+            config=config,
+            safetensors_total_bytes=1024,
+            safetensors_parameter_count=256,
+            card_data={"license": "apache-2.0"},
+            sibling_count=3,
+            sibling_files=("config.json", "tokenizer.json", "model.safetensors"),
+        )
+
+
+class FakeFoundryCatalog:
+    def list_matches(self, search_query: str):  # noqa: ARG002
+        return ()
+
+
 class PassingPreflightInspector:
     def inspect(self, request: BuildRequest) -> PreflightResult:
         return PreflightResult(
@@ -145,6 +191,23 @@ class SlowCancellableRunner:
             time.sleep(0.02)
 
 
+class EchoTextBackend:
+    _QUALITY_RESPONSES = {
+        "What is 17 + 28? Reply using only digits.": "45",
+        "Which planet is known as the Red Planet? Reply with one word.": "Mars",
+        "Output exactly two words: blue river": "blue river",
+        "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.": (
+            '{"answer":12,"unit":"cm"}'
+        ),
+    }
+
+    def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        quality_response = self._QUALITY_RESPONSES.get(prompt)
+        if quality_response is not None:
+            return quality_response
+        return f"{artifact.artifact_id}:{job.job_id}:{prompt}:{max_tokens}"
+
+
 def _submission(model_id: str = "HuggingFaceTB/SmolLM2-1.7B-Instruct") -> BuildSubmission:
     return BuildSubmission(
         model_id=model_id,
@@ -158,14 +221,20 @@ def _service(
     *,
     preflight_inspector=None,
     build_stage_runner=None,
+    text_backend=None,
     recipe_registry: RecipeRegistry | None = None,
+    hf_metadata=None,
+    foundry_catalog=None,
 ) -> LocalOnboardingService:
     return LocalOnboardingService(
         db_path=tmp_path / "state.sqlite3",
         workspace_base=tmp_path / "w",
         model_cache_dir=tmp_path / "cache",
+        hf_metadata=hf_metadata or FakeHFMetadata(),  # type: ignore[arg-type]
+        foundry_catalog=foundry_catalog or FakeFoundryCatalog(),  # type: ignore[arg-type]
         preflight_inspector=preflight_inspector or PassingPreflightInspector(),  # type: ignore[arg-type]
         build_stage_runner=build_stage_runner,  # type: ignore[arg-type]
+        text_inference_backend=text_backend,  # type: ignore[arg-type]
         recipe_registry=recipe_registry,
     )
 
@@ -298,6 +367,87 @@ def test_experimental_recipe_requires_explicit_opt_in(tmp_path: Path) -> None:
             idempotency_key="granite-with-opt-in",
         )
         assert replay is False
+    finally:
+        service.close()
+
+
+def test_generated_recipe_preview_and_attempt_failure_sync(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        generated = preview["generated_recipe"]
+        assert generated["eligible_for_automatic_recipe_attempt"] is True
+        fingerprint = generated["fingerprint"]
+        assert isinstance(fingerprint, str) and len(fingerprint) == 64
+
+        job, replay, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-failure-1",
+            model_id="owner/unregistered-model",
+        )
+        assert replay is False
+        assert attempt["state"] == "running"
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.FAILED
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        assert attempt_status["build_job_id"] == job.job_id
+        assert attempt_status["failure"]["classification"] == "gate_failed"
+        assert any(row["status"] == "failed" for row in attempt_status["gates"])
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_success_promotes_and_enables_verified_reuse(tmp_path: Path) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        text_backend=EchoTextBackend(),
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        generated = preview["generated_recipe"]
+        fingerprint = str(generated["fingerprint"])
+        assert generated["eligible_for_automatic_recipe_attempt"] is True
+
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-success-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "succeeded"
+        assert [row["gate"] for row in attempt_status["gates"]] == [
+            "mobius_build",
+            "olive_optimize",
+            "onnx_validation",
+            "ort_validation",
+            "oga_validation",
+            "fl_sdk_inference",
+            "quality_validation",
+        ]
+        assert all(row["status"] == "passed" for row in attempt_status["gates"])
+
+        reused = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )["generated_recipe"]
+        assert reused["eligible_for_automatic_recipe_attempt"] is False
+        assert reused["verified_reuse"]["available"] is True
+        assert reused["verified_reuse"]["source_recipe_fingerprint"] == fingerprint
+        assert reused["verified_reuse"]["attempt_id"] == attempt["attempt_id"]
+
+        tested = service.health()["compatibility_index"]
+        assert any(row["model_id"] == "owner/unregistered-model" for row in tested)  # type: ignore[index]
     finally:
         service.close()
 

@@ -41,6 +41,66 @@ export interface CandidateOutcome {
   nextAction: string;
 }
 
+export interface GeneratedRecipeCapability {
+  outcome: string;
+  reasonCode: string;
+  reason: string;
+  matchedAliases: string[];
+  capabilityId?: string;
+  status?: string;
+}
+
+export interface GeneratedRecipeVerifiedReuse {
+  available: boolean;
+  verifiedFingerprint: string;
+  sourceRecipeFingerprint: string;
+  attemptId: string;
+  promotedUtc: string;
+  recipe?: Record<string, unknown>;
+}
+
+export interface GeneratedRecipePreview {
+  eligibleForAutomaticRecipeAttempt: boolean;
+  requiresExplicitAttemptConfirmation: boolean;
+  experimentalUntilVerified: boolean;
+  fingerprint?: string;
+  compileError?: string;
+  capability: GeneratedRecipeCapability;
+  argumentConfidence?: {
+    mobiusDtypeConfidence: string;
+    olivePrecisionConfidence: string;
+    containsUnverifiedArguments: boolean;
+  };
+  validationGates: string[];
+  verifiedReuse?: GeneratedRecipeVerifiedReuse;
+}
+
+export interface RecipeAttemptGate {
+  sequence: number;
+  gate: string;
+  status: "passed" | "failed";
+  evidenceRef: string;
+  metricsRef?: string;
+  startedUtc: string;
+  finishedUtc: string;
+}
+
+export interface RecipeAttemptStatus {
+  attemptId: string;
+  recipeFingerprint: string;
+  state: "generated" | "running" | "succeeded" | "failed" | "cancelled";
+  buildJobId?: string;
+  gates: RecipeAttemptGate[];
+  failure?: {
+    classification: string;
+    stage: string;
+    message: string;
+    evidenceRefs: string[];
+    sourceOwner: string;
+    nextAction: string;
+  };
+}
+
 export interface HealthSnapshot {
   status: string;
   service: string;
@@ -70,6 +130,7 @@ export interface ModelDetail {
   buildableWithExperimentalOptIn: boolean;
   supportedOptimizations: SupportedOptimization[];
   candidateOutcome?: CandidateOutcome;
+  generatedRecipe?: GeneratedRecipePreview;
 }
 
 export interface ModelPreflight {
@@ -91,6 +152,7 @@ export interface ModelPreflight {
   requiresExperimentalOptIn: boolean;
   supportedOptimizations: SupportedOptimization[];
   candidateOutcome?: CandidateOutcome;
+  generatedRecipe?: GeneratedRecipePreview;
 }
 
 export interface BuildRequest {
@@ -167,6 +229,7 @@ export interface ApiClient {
   getHealth(): Promise<HealthSnapshot>;
   searchModels(query: string, limit?: number): Promise<ModelSummary[]>;
   getModelDetail(modelId: string): Promise<ModelDetail>;
+  getGeneratedRecipePreview(modelId: string, task: Exclude<ModelTask, "unknown">): Promise<GeneratedRecipePreview>;
   preflightModel(request: {
     modelId: string;
     task: Exclude<ModelTask, "unknown">;
@@ -174,6 +237,11 @@ export interface ApiClient {
     allowExperimental?: boolean;
   }): Promise<ModelPreflight>;
   startBuild(request: BuildRequest, idempotencyKey: string): Promise<BuildStatus>;
+  startGeneratedRecipeAttempt(
+    request: { modelId: string; recipeFingerprint: string; confirmAutomaticRecipeAttempt: boolean },
+    idempotencyKey: string
+  ): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }>;
+  getGeneratedRecipeAttempt(attemptId: string): Promise<RecipeAttemptStatus>;
   getBuildStatus(jobId: string): Promise<BuildStatus>;
   getBuildEvents(jobId: string, afterSequence: number): Promise<JobEvent[]>;
   cancelBuild(jobId: string): Promise<BuildStatus>;

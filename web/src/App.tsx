@@ -5,8 +5,10 @@ import type {
   BuildRequest,
   BuildStatus,
   CandidateOutcome,
+  GeneratedRecipePreview,
   JobEvent,
   ModelPreflight,
+  RecipeAttemptStatus,
   ModelSummary
 } from "./api/types";
 
@@ -34,6 +36,7 @@ interface LoadedModel {
     requiresExperimentalOptIn: boolean;
     buildableWithExperimentalOptIn: boolean;
     candidateOutcome?: CandidateOutcome;
+    generatedRecipe?: GeneratedRecipePreview;
   };
 }
 
@@ -161,10 +164,12 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
   const [precision, setPrecision] = useState<string>("");
   const [audioFormat, setAudioFormat] = useState<string>("");
   const [allowExperimentalOptIn, setAllowExperimentalOptIn] = useState<boolean>(false);
+  const [confirmAutomaticRecipeAttempt, setConfirmAutomaticRecipeAttempt] = useState<boolean>(false);
 
   const [startingBuild, setStartingBuild] = useState<boolean>(false);
   const [buildError, setBuildError] = useState<string | undefined>();
   const [currentJob, setCurrentJob] = useState<BuildStatus | undefined>();
+  const [currentAttempt, setCurrentAttempt] = useState<RecipeAttemptStatus | undefined>();
   const [events, setEvents] = useState<JobEvent[]>([]);
 
   const [textPrompt, setTextPrompt] = useState<string>("Write a concise product value statement.");
@@ -185,6 +190,11 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     return modelCache[selectedModelId];
   }, [modelCache, selectedModelId]);
 
+  const generatedRecipe = useMemo(
+    () => selectedModel?.metadata.generatedRecipe ?? selectedModel?.preflight.generatedRecipe,
+    [selectedModel]
+  );
+
   const blockedReason = useMemo(() => {
     if (!selectedModel) {
       return undefined;
@@ -192,14 +202,27 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     if (selectedModel.summary.gated) {
       return "Gated model access is rejected in this POC.";
     }
+    if (generatedRecipe?.verifiedReuse?.available) {
+      return undefined;
+    }
+    if (generatedRecipe?.eligibleForAutomaticRecipeAttempt) {
+      if (!confirmAutomaticRecipeAttempt) {
+        return "Automatic recipe attempts require explicit confirmation.";
+      }
+      return undefined;
+    }
     if (selectedModel.preflight.requiresExperimentalOptIn && !selectedModel.experimentalOptedIn) {
       return selectedModel.preflight.recipeReason;
     }
     if (!selectedModel.preflight.buildable) {
-      return selectedModel.preflight.blockedReason ?? "Backend marked this model as not buildable.";
+      return (
+        selectedModel.preflight.blockedReason ??
+        generatedRecipe?.compileError ??
+        "Backend marked this model as not buildable."
+      );
     }
     return undefined;
-  }, [selectedModel]);
+  }, [confirmAutomaticRecipeAttempt, generatedRecipe, selectedModel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,12 +282,16 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
 
       try {
         const detail = await client.getModelDetail(model.id);
-        const preflight = await client.preflightModel({
-          modelId: model.id,
-          task: detail.task === "asr" ? "asr" : "llm",
-          target: "cpu",
-          allowExperimental: experimentalOptIn
-        });
+        const task = detail.task === "asr" ? "asr" : "llm";
+        const [preflight, generatedPreview] = await Promise.all([
+          client.preflightModel({
+            modelId: model.id,
+            task,
+            target: "cpu",
+            allowExperimental: experimentalOptIn
+          }),
+          client.getGeneratedRecipePreview(model.id, task)
+        ]);
         if (selectionTokenRef.current !== token) {
           return;
         }
@@ -303,11 +330,16 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             recipeVersion: preflight.recipeVersion || detail.recipeVersion,
             requiresExperimentalOptIn: preflight.requiresExperimentalOptIn,
             buildableWithExperimentalOptIn: detail.buildableWithExperimentalOptIn,
-            candidateOutcome: detail.candidateOutcome ?? preflight.candidateOutcome
+            candidateOutcome: detail.candidateOutcome ?? preflight.candidateOutcome,
+            generatedRecipe:
+              generatedPreview ??
+              preflight.generatedRecipe ??
+              detail.generatedRecipe
           }
         };
 
         setModelCache((current) => ({ ...current, [model.id]: loaded }));
+        setConfirmAutomaticRecipeAttempt(false);
         applyPreflightDefaults(resolvedPreflight);
       } catch (error) {
         if (selectionTokenRef.current !== token) {
@@ -342,14 +374,18 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
   );
 
   const refreshJob = useCallback(
-    async (jobId: string) => {
+    async (jobId: string, attemptId?: string) => {
       const afterSequence = eventCursorRef.current[jobId] ?? 0;
-      const [status, incrementalEvents] = await Promise.all([
+      const [status, incrementalEvents, latestAttempt] = await Promise.all([
         client.getBuildStatus(jobId),
-        client.getBuildEvents(jobId, afterSequence)
+        client.getBuildEvents(jobId, afterSequence),
+        attemptId ? client.getGeneratedRecipeAttempt(attemptId) : Promise.resolve(undefined)
       ]);
 
       setCurrentJob(status);
+      if (latestAttempt) {
+        setCurrentAttempt(latestAttempt);
+      }
       if (incrementalEvents.length > 0) {
         setEvents((current) => mergeEvents(current, incrementalEvents));
         eventCursorRef.current[jobId] = incrementalEvents[incrementalEvents.length - 1].sequence;
@@ -373,12 +409,12 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
       return;
     }
     const timer = window.setInterval(() => {
-      void refreshJob(currentJob.jobId).catch((error) => {
+      void refreshJob(currentJob.jobId, currentAttempt?.attemptId).catch((error) => {
         setBuildError(asMessage(error));
       });
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [currentJob, refreshJob]);
+  }, [currentAttempt?.attemptId, currentJob, refreshJob]);
 
   const onStartBuild = useCallback(async () => {
     if (!selectedModel) {
@@ -387,7 +423,18 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     if (blockedReason) {
       return;
     }
-    if (!strategy || !precision) {
+    const generatedEligible = Boolean(
+      generatedRecipe?.eligibleForAutomaticRecipeAttempt && generatedRecipe.fingerprint
+    );
+    if (
+      generatedEligible &&
+      generatedRecipe?.requiresExplicitAttemptConfirmation &&
+      !confirmAutomaticRecipeAttempt
+    ) {
+      setBuildError("Confirm the automatic recipe attempt before continuing.");
+      return;
+    }
+    if (!generatedEligible && (!strategy || !precision)) {
       setBuildError("Select strategy and precision before starting build.");
       return;
     }
@@ -412,18 +459,46 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     setTextOutput("");
     setAsrOutput("");
     try {
-      const started = await client.startBuild(request, key);
+      if (generatedEligible && generatedRecipe?.fingerprint) {
+        const started = await client.startGeneratedRecipeAttempt(
+          {
+            modelId: selectedModel.summary.id,
+            recipeFingerprint: generatedRecipe.fingerprint,
+            confirmAutomaticRecipeAttempt: true
+          },
+          key
+        );
+        setCurrentAttempt(started.attempt);
+        eventCursorRef.current[started.build.jobId] = 0;
+        setEvents([]);
+        setCurrentJob(started.build);
+        await refreshJob(started.build.jobId, started.attempt.attemptId);
+      } else {
+        const started = await client.startBuild(request, key);
+        setCurrentAttempt(undefined);
+        eventCursorRef.current[started.jobId] = 0;
+        setEvents([]);
+        setCurrentJob(started);
+        await refreshJob(started.jobId);
+      }
       idempotencyRef.current = undefined;
-      eventCursorRef.current[started.jobId] = 0;
-      setEvents([]);
-      setCurrentJob(started);
-      await refreshJob(started.jobId);
     } catch (error) {
       setBuildError(asMessage(error));
     } finally {
       setStartingBuild(false);
     }
-  }, [allowExperimentalOptIn, audioFormat, blockedReason, client, refreshJob, selectedModel, strategy, precision]);
+  }, [
+    allowExperimentalOptIn,
+    audioFormat,
+    blockedReason,
+    client,
+    confirmAutomaticRecipeAttempt,
+    generatedRecipe,
+    precision,
+    refreshJob,
+    selectedModel,
+    strategy
+  ]);
 
   const onCancelBuild = useCallback(async () => {
     if (!currentJob || isTerminalStage(currentJob.stage) || !currentJob.cancellable) {
@@ -433,11 +508,11 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     try {
       const cancelled = await client.cancelBuild(currentJob.jobId);
       setCurrentJob(cancelled);
-      await refreshJob(currentJob.jobId);
+      await refreshJob(currentJob.jobId, currentAttempt?.attemptId);
     } catch (error) {
       setBuildError(asMessage(error));
     }
-  }, [client, currentJob, refreshJob]);
+  }, [client, currentAttempt?.attemptId, currentJob, refreshJob]);
 
   const onRunTextInference = useCallback(async () => {
     if (!currentJob?.artifactId) {
@@ -476,7 +551,15 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     return byId;
   }, [searchResults, testedModels]);
 
-  const canStartBuild = healthState === "ready" && Boolean(selectedModel) && !blockedReason && !startingBuild;
+  const canStartBuild =
+    healthState === "ready" &&
+    Boolean(selectedModel) &&
+    !blockedReason &&
+    !startingBuild &&
+    !generatedRecipe?.verifiedReuse?.available;
+  const buildActionLabel = generatedRecipe?.eligibleForAutomaticRecipeAttempt
+    ? "Run automatic recipe attempt"
+    : "Build for CPU";
 
   return (
     <div className="app-shell">
@@ -538,7 +621,9 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
               const nextId = event.target.value;
               setSelectedModelId(nextId);
               setAllowExperimentalOptIn(false);
+              setConfirmAutomaticRecipeAttempt(false);
               setCurrentJob(undefined);
+              setCurrentAttempt(undefined);
               setEvents([]);
               setBuildError(undefined);
               setTextOutput("");
@@ -649,9 +734,40 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
                 <dt>Recipe reason</dt>
                 <dd>{selectedModel.metadata.recipeReason}</dd>
               </div>
+              <div>
+                <dt>Automatic recipe attempt</dt>
+                <dd>
+                  {generatedRecipe?.eligibleForAutomaticRecipeAttempt
+                    ? "Eligible for automatic recipe attempt"
+                    : "Not currently eligible"}
+                </dd>
+              </div>
+              <div>
+                <dt>Generated fingerprint</dt>
+                <dd>{generatedRecipe?.fingerprint ?? "Unavailable"}</dd>
+              </div>
+              <div>
+                <dt>Generated status</dt>
+                <dd>{generatedRecipe ? "Experimental until verified" : "Not generated"}</dd>
+              </div>
             </dl>
             {selectedModel.metadata.candidateOutcome ? (
               <CandidateOutcomeDetails outcome={selectedModel.metadata.candidateOutcome} />
+            ) : null}
+            {generatedRecipe?.compileError ? (
+              <p className="warning" role="alert">
+                {generatedRecipe.compileError}
+              </p>
+            ) : null}
+            {generatedRecipe?.verifiedReuse?.available ? (
+              <p className="muted">
+                Verified recipe reuse is available for this exact identity ({generatedRecipe.verifiedReuse.verifiedFingerprint}).
+              </p>
+            ) : null}
+            {generatedRecipe?.validationGates?.length ? (
+              <p className="muted">
+                Gate sequence: {generatedRecipe.validationGates.join(" -> ")}
+              </p>
             ) : null}
             {selectedModel.metadata.recipeStatus === "experimental" ? (
               <div>
@@ -670,6 +786,19 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
                     }}
                   />{" "}
                   Enable experimental recipe opt-in for this model
+                </label>
+              </div>
+            ) : null}
+            {generatedRecipe?.eligibleForAutomaticRecipeAttempt ? (
+              <div>
+                <label htmlFor="automatic-recipe-confirmation">
+                  <input
+                    id="automatic-recipe-confirmation"
+                    type="checkbox"
+                    checked={confirmAutomaticRecipeAttempt}
+                    onChange={(event) => setConfirmAutomaticRecipeAttempt(event.target.checked)}
+                  />{" "}
+                  Confirm automatic recipe attempt for fingerprint {generatedRecipe.fingerprint}
                 </label>
               </div>
             ) : null}
@@ -742,7 +871,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             <h2>4. Build execution</h2>
             <div className="button-row">
               <button type="button" onClick={() => void onStartBuild()} disabled={!canStartBuild}>
-                {startingBuild ? "Submitting..." : "Build for CPU"}
+                {startingBuild ? "Submitting..." : buildActionLabel}
               </button>
               <button
                 type="button"
@@ -814,6 +943,61 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             ) : (
               <p className="muted">No events received yet.</p>
             )}
+          </section>
+        ) : null}
+
+        {currentAttempt ? (
+          <section className="panel">
+            <h2>Recipe attempt gates</h2>
+            <p>
+              <strong>Attempt:</strong> {currentAttempt.attemptId}
+            </p>
+            <p>
+              <strong>State:</strong> {currentAttempt.state}
+            </p>
+            <p>
+              <strong>Recipe fingerprint:</strong> {currentAttempt.recipeFingerprint}
+            </p>
+            {currentAttempt.gates.length > 0 ? (
+              <table className="event-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Seq</th>
+                    <th scope="col">Gate</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Evidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentAttempt.gates.map((gate) => (
+                    <tr key={`${gate.sequence}-${gate.gate}`}>
+                      <td>{gate.sequence}</td>
+                      <td>{gate.gate}</td>
+                      <td>{gate.status}</td>
+                      <td>{gate.evidenceRef}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="muted">No gate evidence recorded yet.</p>
+            )}
+            {currentAttempt.failure ? (
+              <>
+                <p>
+                  <strong>Failure:</strong> {currentAttempt.failure.classification} ({currentAttempt.failure.stage})
+                </p>
+                <p>
+                  <strong>Source owner:</strong> {currentAttempt.failure.sourceOwner}
+                </p>
+                <p>
+                  <strong>Message:</strong> {currentAttempt.failure.message}
+                </p>
+                <p>
+                  <strong>Next action:</strong> {currentAttempt.failure.nextAction}
+                </p>
+              </>
+            ) : null}
           </section>
         ) : null}
 
