@@ -256,6 +256,11 @@ class ProductionBuildStageRunner:
             cancellation_event,
             "Mobius build",
         )
+        baseline_model_name = f"{recipe.model_name_prefix}-{job.job_id[:12]}-mobius-baseline:1"
+        (mobius_dir / "inference_model.json").write_text(
+            json.dumps({"Name": baseline_model_name}, indent=2),
+            encoding="utf-8",
+        )
 
         transition(job, JobState.MOBIUS_VALIDATING, "Mobius output created; ONNX validation follows Olive.")
         persist()

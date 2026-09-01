@@ -290,4 +290,87 @@ describe("api client", () => {
     expect(preflight.strategies).toEqual([]);
     expect(preflight.precisions).toEqual([]);
   });
+
+  it("preserves generated attempt gate statuses for baseline evidence integrity", async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === "/api/recipes/generated/attempts") {
+        return new Response(
+          JSON.stringify({
+            idempotent_replay: false,
+            job: {
+              job_id: "job-1",
+              state: "queued",
+              request: {
+                candidate: {
+                  huggingface_model_id: "owner/model",
+                  modality: "llm"
+                }
+              }
+            },
+            attempt: {
+              attempt_id: "attempt-1",
+              recipe_fingerprint: "2".repeat(64),
+              state: "failed",
+              build_job_id: "job-1",
+              gates: [
+                {
+                  sequence: 1,
+                  gate: "mobius_build",
+                  status: "passed",
+                  evidence_ref: "job://job-1/mobius_build/passed",
+                  metrics_ref: null,
+                  started_utc: "2026-01-01T00:00:00Z",
+                  finished_utc: "2026-01-01T00:00:01Z"
+                },
+                {
+                  sequence: 2,
+                  gate: "quality_validation",
+                  status: "unavailable",
+                  evidence_ref: "quality://job-1/quality_validation/baseline-unavailable",
+                  metrics_ref: null,
+                  started_utc: "2026-01-01T00:00:02Z",
+                  finished_utc: "2026-01-01T00:00:03Z"
+                },
+                {
+                  sequence: 3,
+                  gate: "ort_validation",
+                  status: "not_run",
+                  evidence_ref: "quality://job-1/quality_validation/baseline-not-run",
+                  metrics_ref: null,
+                  started_utc: "2026-01-01T00:00:04Z",
+                  finished_utc: "2026-01-01T00:00:05Z"
+                }
+              ],
+              failure: {
+                classification: "validation_failed",
+                stage: "succeeded",
+                message: "Quality baseline unavailable.",
+                evidence_refs: ["job://job-1"],
+                source_owner: "fl-onboarding",
+                next_action: "Provide a baseline package."
+              }
+            }
+          })
+        );
+      }
+      return new Response(JSON.stringify({}));
+    });
+    const client = createApiClient({
+      transport: { request },
+      baseUrl: "http://127.0.0.1:8080"
+    });
+
+    const response = await client.startGeneratedRecipeAttempt(
+      {
+        modelId: "owner/model",
+        recipeFingerprint: "2".repeat(64),
+        confirmAutomaticRecipeAttempt: true
+      },
+      "idem-generated-1"
+    );
+
+    expect(response.attempt.gates[1].status).toBe("unavailable");
+    expect(response.attempt.gates[2].status).toBe("not_run");
+    expect(response.attempt.failure?.sourceOwner).toBe("fl-onboarding");
+  });
 });

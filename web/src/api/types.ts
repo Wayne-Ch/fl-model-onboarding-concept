@@ -78,7 +78,7 @@ export interface GeneratedRecipePreview {
 export interface RecipeAttemptGate {
   sequence: number;
   gate: string;
-  status: "passed" | "failed";
+  status: "passed" | "failed" | "not_run" | "unavailable";
   evidenceRef: string;
   metricsRef?: string;
   startedUtc: string;

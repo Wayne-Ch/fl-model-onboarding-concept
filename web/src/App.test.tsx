@@ -479,6 +479,131 @@ describe("OnboardingShell", () => {
     expect(client.startBuild).not.toHaveBeenCalled();
   });
 
+  it("shows baseline-unavailable recipe gate status from generated attempts", async () => {
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: {
+          attemptId: "attempt-1",
+          recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+          state: "running",
+          buildJobId: "job-1",
+          gates: []
+        }
+      })
+    );
+    const getGeneratedRecipeAttempt = vi.fn(async (): Promise<RecipeAttemptStatus> => ({
+      attemptId: "attempt-1",
+      recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+      state: "failed",
+      buildJobId: "job-1",
+      gates: [
+        {
+          sequence: 1,
+          gate: "mobius_build",
+          status: "passed",
+          evidenceRef: "job://job-1/mobius_build/passed",
+          startedUtc: "2026-01-01T00:00:00Z",
+          finishedUtc: "2026-01-01T00:00:01Z"
+        },
+        {
+          sequence: 2,
+          gate: "quality_validation",
+          status: "unavailable",
+          evidenceRef: "quality://job-1/quality_validation/baseline-unavailable",
+          startedUtc: "2026-01-01T00:00:02Z",
+          finishedUtc: "2026-01-01T00:00:03Z"
+        }
+      ],
+      failure: {
+        classification: "validation_failed",
+        stage: "succeeded",
+        message: "Quality baseline unavailable.",
+        evidenceRefs: ["job://job-1"],
+        sourceOwner: "fl-onboarding",
+        nextAction: "Produce a baseline package."
+      }
+    }));
+    const client = createClient({
+      startGeneratedRecipeAttempt,
+      getGeneratedRecipeAttempt,
+      getBuildStatus: vi.fn(async () => statusFor(generatedEligibleModel, "succeeded", { artifactId: "artifact-1" })),
+      getBuildEvents: vi.fn(async () => eventsAt({ sequence: 1, stage: "succeeded", message: "done" }))
+    });
+    const user = userEvent.setup();
+    render(<OnboardingShell client={client} />);
+
+    await screen.findByText(/Connected/);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.selectOptions(screen.getByLabelText("Model"), generatedEligibleModel.id);
+    await user.click(
+      screen.getByLabelText(
+        "Confirm automatic recipe attempt for fingerprint 2222222222222222222222222222222222222222222222222222222222222222"
+      )
+    );
+    await user.click(await screen.findByRole("button", { name: "Run automatic recipe attempt" }));
+
+    await screen.findByText("Recipe attempt gates");
+    expect(screen.getByText("quality_validation")).toBeInTheDocument();
+    expect(screen.getByText("unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/Quality baseline unavailable/)).toBeInTheDocument();
+  });
+
+  it("shows baseline-passed recipe gate status from generated attempts", async () => {
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: {
+          attemptId: "attempt-1",
+          recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+          state: "running",
+          buildJobId: "job-1",
+          gates: []
+        }
+      })
+    );
+    const getGeneratedRecipeAttempt = vi.fn(async (): Promise<RecipeAttemptStatus> => ({
+      attemptId: "attempt-1",
+      recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+      state: "succeeded",
+      buildJobId: "job-1",
+      gates: [
+        {
+          sequence: 1,
+          gate: "quality_validation",
+          status: "passed",
+          evidenceRef: "quality://job-1/quality_validation/baseline-passed",
+          startedUtc: "2026-01-01T00:00:02Z",
+          finishedUtc: "2026-01-01T00:00:03Z"
+        }
+      ]
+    }));
+    const client = createClient({
+      startGeneratedRecipeAttempt,
+      getGeneratedRecipeAttempt,
+      getBuildStatus: vi.fn(async () => statusFor(generatedEligibleModel, "succeeded", { artifactId: "artifact-1" })),
+      getBuildEvents: vi.fn(async () => eventsAt({ sequence: 1, stage: "succeeded", message: "done" }))
+    });
+    const user = userEvent.setup();
+    render(<OnboardingShell client={client} />);
+
+    await screen.findByText(/Connected/);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.selectOptions(screen.getByLabelText("Model"), generatedEligibleModel.id);
+    await user.click(
+      screen.getByLabelText(
+        "Confirm automatic recipe attempt for fingerprint 2222222222222222222222222222222222222222222222222222222222222222"
+      )
+    );
+    await user.click(await screen.findByRole("button", { name: "Run automatic recipe attempt" }));
+
+    await screen.findByText("Recipe attempt gates");
+    expect(screen.getByText("quality://job-1/quality_validation/baseline-passed")).toBeInTheDocument();
+    expect(screen.getByText("passed")).toBeInTheDocument();
+  });
+
   it("keeps the verified ASR blocker visible and out of tested success", async () => {
     const blockedAsr = { ...asrModel, id: asrBlockedOutcome.modelId };
     const client = createClient({

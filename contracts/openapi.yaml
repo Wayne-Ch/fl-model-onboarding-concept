@@ -942,7 +942,7 @@ components:
           type: string
         status:
           type: string
-          enum: [passed, failed]
+          enum: [passed, failed, not_run, unavailable]
         evidence_ref:
           type: string
         metrics_ref:

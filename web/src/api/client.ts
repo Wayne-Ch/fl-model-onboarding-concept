@@ -345,10 +345,13 @@ function parseRecipeAttempt(input: unknown): RecipeAttemptStatus {
     ? gatesRaw.map((row): RecipeAttemptStatus["gates"][number] => {
         const gate = asRecord(row, "recipe attempt gate");
         const status = readString(gate, ["status"], "failed");
-        const gateStatus: "passed" | "failed" = status === "passed" ? "passed" : "failed";
-        const sequence = readNumber(gate, ["sequence"]);
-        return {
-          sequence: sequence ?? 0,
+      const gateStatus: RecipeAttemptStatus["gates"][number]["status"] =
+        status === "passed" || status === "failed" || status === "not_run" || status === "unavailable"
+          ? status
+          : "failed";
+      const sequence = readNumber(gate, ["sequence"]);
+      return {
+        sequence: sequence ?? 0,
           gate: readString(gate, ["gate"]),
           status: gateStatus,
           evidenceRef: readString(gate, ["evidence_ref"]),

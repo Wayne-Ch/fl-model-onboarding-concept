@@ -34,6 +34,8 @@ def test_openapi_contains_required_paths() -> None:
     assert "tool_unavailable" in failure_classification
     assert "source_runtime_contract_incompatible" in failure_classification
     assert "oga_runtime_contract_incompatible" in failure_classification
+    attempt_gate_status = spec["components"]["schemas"]["RecipeAttemptGate"]["properties"]["status"]["enum"]
+    assert attempt_gate_status == ["passed", "failed", "not_run", "unavailable"]
 
 
 def test_state_machine_contract_contains_cancellable_flags() -> None:
@@ -69,4 +71,10 @@ def test_recipe_attempt_schema_contains_core_record_definitions() -> None:
         "succeeded",
         "failed",
         "cancelled",
+    ]
+    assert defs["attempt_gate_status"]["enum"] == [
+        "passed",
+        "failed",
+        "not_run",
+        "unavailable",
     ]

@@ -61,7 +61,7 @@ interface FixtureJob {
 interface FixtureAttemptGate {
   sequence: number;
   gate: string;
-  status: "passed" | "failed";
+  status: "passed" | "failed" | "not_run" | "unavailable";
   evidence_ref: string;
   started_utc: string;
   finished_utc: string;

@@ -61,6 +61,7 @@ from .production_runner import (
     production_package_paths,
 )
 from .quality_validation import (
+    GateState,
     PromptExecutionRecord,
     QualityValidationProfileRegistry,
     evaluate_quality_validation,
@@ -325,6 +326,14 @@ class GeneratedRecipePreviewContext:
     catalog_matches: tuple[object, ...]
     eligible_for_automatic_attempt: bool
     verified_reuse: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class QualityValidationOutcome:
+    passed: bool
+    gate_status: AttemptGateStatus
+    message: str
+    evidence_ref: str
 
 
 class BuildStageRunner(Protocol):
@@ -1936,44 +1945,63 @@ class LocalOnboardingService:
         *,
         job: BuildJob,
         artifact: BuildArtifact | None,
-    ) -> tuple[bool, str]:
+    ) -> QualityValidationOutcome:
+        evidence_prefix = f"quality://{job.job_id}/{AttemptGate.QUALITY_VALIDATION.value}"
         if artifact is None:
-            return False, "Missing result artifact required for quality validation."
+            return QualityValidationOutcome(
+                passed=False,
+                gate_status=AttemptGateStatus.FAILED,
+                message="Missing result artifact required for quality validation.",
+                evidence_ref=f"{evidence_prefix}/optimized-artifact-missing",
+            )
         if self._text_inference_backend is None:
-            return False, "Text inference backend is unavailable for deterministic quality validation."
-
-        outputs: list[PromptExecutionRecord] = []
-        for prompt in self._quality_profile.prompts:
-            try:
-                response = self._text_inference_backend.infer(
-                    artifact=artifact,
-                    job=job,
-                    prompt=prompt.prompt,
-                    max_tokens=self._quality_profile.deterministic_inference.max_tokens,
-                )
-            except Exception as exc:
-                return False, _sanitize_text(f"Quality prompt '{prompt.prompt_id}' failed: {exc}")
-            outputs.append(
-                PromptExecutionRecord(
-                    prompt_id=prompt.prompt_id,
-                    output_text=response,
-                    applied_determinism=self._quality_profile.deterministic_inference,
-                    unsupported_determinism_fields=("temperature", "seed"),
-                )
+            return QualityValidationOutcome(
+                passed=False,
+                gate_status=AttemptGateStatus.UNAVAILABLE,
+                message="Text inference backend is unavailable for deterministic quality validation.",
+                evidence_ref=f"{evidence_prefix}/runtime-unavailable",
             )
 
-        optimized = tuple(outputs)
-        # Baseline comparison is enforced by policy; when a separate baseline package is unavailable in the
-        # local session, compare against an explicit baseline capture of the same deterministic prompt run.
-        baseline = tuple(
-            PromptExecutionRecord(
-                prompt_id=row.prompt_id,
-                output_text=row.output_text,
-                applied_determinism=row.applied_determinism,
-                unsupported_determinism_fields=row.unsupported_determinism_fields,
-            )
-            for row in optimized
+        baseline_artifact, baseline_resolution = self._resolve_quality_baseline_artifact(
+            job=job,
+            optimized_artifact=artifact,
         )
+        if baseline_resolution is not None:
+            return baseline_resolution
+        if baseline_artifact is None:
+            return QualityValidationOutcome(
+                passed=False,
+                gate_status=AttemptGateStatus.NOT_RUN,
+                message="Quality baseline not run for this generated attempt.",
+                evidence_ref=f"{evidence_prefix}/baseline-not-run",
+            )
+        try:
+            baseline = self._execute_quality_prompts(
+                job=job,
+                artifact=baseline_artifact,
+                execution_label="Baseline",
+            )
+        except RuntimeError as exc:
+            return QualityValidationOutcome(
+                passed=False,
+                gate_status=AttemptGateStatus.UNAVAILABLE,
+                message=str(exc),
+                evidence_ref=f"{evidence_prefix}/baseline-unavailable",
+            )
+        try:
+            optimized = self._execute_quality_prompts(
+                job=job,
+                artifact=artifact,
+                execution_label="Optimized",
+            )
+        except RuntimeError as exc:
+            return QualityValidationOutcome(
+                passed=False,
+                gate_status=AttemptGateStatus.FAILED,
+                message=str(exc),
+                evidence_ref=f"{evidence_prefix}/optimized-execution-failed",
+            )
+
         result = evaluate_quality_validation(
             profile=self._quality_profile,
             model_task="text-generation",
@@ -1981,14 +2009,31 @@ class LocalOnboardingService:
             baseline_outputs=baseline,
             require_baseline_comparison=True,
         )
+        baseline_gate = result.promotion_evidence.baseline_comparison_gate
+        if baseline_gate == GateState.MISSING:
+            return QualityValidationOutcome(
+                passed=False,
+                gate_status=AttemptGateStatus.NOT_RUN,
+                message="Quality baseline comparison was not recorded for this attempt.",
+                evidence_ref=f"{evidence_prefix}/baseline-not-run",
+            )
+        if baseline_gate == GateState.UNAVAILABLE:
+            return QualityValidationOutcome(
+                passed=False,
+                gate_status=AttemptGateStatus.UNAVAILABLE,
+                message="Quality baseline comparison was unavailable for this attempt.",
+                evidence_ref=f"{evidence_prefix}/baseline-unavailable",
+            )
         if result.promotion_evidence.can_promote:
-            return (
-                True,
-                (
+            return QualityValidationOutcome(
+                passed=True,
+                gate_status=AttemptGateStatus.PASSED,
+                message=(
                     "Quality profile passed: "
                     f"{result.promotion_evidence.profile_id}@{result.promotion_evidence.profile_version} "
                     "(determinism enforcement is limited to max_tokens in runtime worker)."
                 ),
+                evidence_ref=f"{evidence_prefix}/baseline-passed",
             )
 
         failures: list[str] = []
@@ -1999,7 +2044,113 @@ class LocalOnboardingService:
             failures.append(f"baseline:{'|'.join(result.baseline_comparison.regressions)}")
         if not failures:
             failures.append("quality_validation_gate_not_promotable")
-        return False, "Quality validation failed: " + "; ".join(failures)
+        if baseline_gate == GateState.FAILED:
+            evidence_ref = f"{evidence_prefix}/baseline-regression"
+        else:
+            evidence_ref = f"{evidence_prefix}/optimized-validation-failed"
+        return QualityValidationOutcome(
+            passed=False,
+            gate_status=AttemptGateStatus.FAILED,
+            message="Quality validation failed: " + "; ".join(failures),
+            evidence_ref=evidence_ref,
+        )
+
+    def _resolve_quality_baseline_artifact(
+        self,
+        *,
+        job: BuildJob,
+        optimized_artifact: BuildArtifact,
+    ) -> tuple[BuildArtifact | None, QualityValidationOutcome | None]:
+        evidence_prefix = f"quality://{job.job_id}/{AttemptGate.QUALITY_VALIDATION.value}"
+        baseline_path = job.request.workspace_root / "mobius"
+        if not baseline_path.is_dir():
+            return (
+                None,
+                QualityValidationOutcome(
+                    passed=False,
+                    gate_status=AttemptGateStatus.NOT_RUN,
+                    message=(
+                        "Quality baseline not run: pre-Olive Mobius baseline package was not produced "
+                        "for this attempt."
+                    ),
+                    evidence_ref=f"{evidence_prefix}/baseline-not-run-mobius-missing",
+                ),
+            )
+        try:
+            baseline_resolved = baseline_path.resolve()
+            optimized_resolved = optimized_artifact.path.resolve()
+        except OSError:
+            baseline_resolved = baseline_path
+            optimized_resolved = optimized_artifact.path
+        if baseline_resolved == optimized_resolved:
+            return (
+                None,
+                QualityValidationOutcome(
+                    passed=False,
+                    gate_status=AttemptGateStatus.NOT_RUN,
+                    message=(
+                        "Quality baseline not run: baseline and optimized artifacts resolved to the "
+                        "same package identity."
+                    ),
+                    evidence_ref=f"{evidence_prefix}/baseline-not-run-self-comparison",
+                ),
+            )
+        descriptor_path = baseline_path / "inference_model.json"
+        if not descriptor_path.is_file():
+            return (
+                None,
+                QualityValidationOutcome(
+                    passed=False,
+                    gate_status=AttemptGateStatus.UNAVAILABLE,
+                    message=(
+                        "Quality baseline unavailable: pre-Olive Mobius package is missing "
+                        "inference_model.json."
+                    ),
+                    evidence_ref=f"{evidence_prefix}/baseline-unavailable-descriptor-missing",
+                ),
+            )
+        return (
+            BuildArtifact(
+                artifact_id=f"baseline-{job.job_id}",
+                kind=ArtifactKind.MODEL,
+                path=baseline_path,
+                description="Pre-Olive Mobius baseline package",
+            ),
+            None,
+        )
+
+    def _execute_quality_prompts(
+        self,
+        *,
+        job: BuildJob,
+        artifact: BuildArtifact,
+        execution_label: str,
+    ) -> tuple[PromptExecutionRecord, ...]:
+        backend = self._text_inference_backend
+        if backend is None:
+            raise RuntimeError("Text inference backend is unavailable for quality validation.")
+        outputs: list[PromptExecutionRecord] = []
+        for prompt in self._quality_profile.prompts:
+            try:
+                response = backend.infer(
+                    artifact=artifact,
+                    job=job,
+                    prompt=prompt.prompt,
+                    max_tokens=self._quality_profile.deterministic_inference.max_tokens,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"{execution_label} quality prompt '{prompt.prompt_id}' failed: {exc}"
+                ) from exc
+            outputs.append(
+                PromptExecutionRecord(
+                    prompt_id=prompt.prompt_id,
+                    output_text=response,
+                    applied_determinism=self._quality_profile.deterministic_inference,
+                    unsupported_determinism_fields=("temperature", "seed"),
+                )
+            )
+        return tuple(outputs)
 
     def _promotion_evidence_from_attempt(self, *, attempt: Any) -> PromotionGateEvidence:
         gate_map = {row.gate: row for row in attempt.gate_results}
@@ -2184,21 +2335,30 @@ class LocalOnboardingService:
                 (row for row in job.artifacts if row.artifact_id == job.result_artifact_id),
                 None,
             )
-            quality_passed, quality_message = self._run_quality_validation(job=job, artifact=artifact)
+            quality_outcome = self._run_quality_validation(job=job, artifact=artifact)
             self._record_attempt_gate(
                 attempt_id=attempt_id,
                 gate=AttemptGate.QUALITY_VALIDATION,
-                status=AttemptGateStatus.PASSED if quality_passed else AttemptGateStatus.FAILED,
-                evidence_ref=f"quality://{job.job_id}/{AttemptGate.QUALITY_VALIDATION.value}",
+                status=quality_outcome.gate_status,
+                evidence_ref=quality_outcome.evidence_ref,
             )
-            if not quality_passed:
+            if not quality_outcome.passed:
+                next_action = "Resolve quality prompt failures before attempting promotion."
+                if quality_outcome.gate_status in {
+                    AttemptGateStatus.NOT_RUN,
+                    AttemptGateStatus.UNAVAILABLE,
+                }:
+                    next_action = (
+                        "Ensure a pre-Olive Mobius baseline package can run deterministic prompt "
+                        "validation before retrying promotion."
+                    )
                 self._finalize_attempt_failed(
                     attempt_id=attempt_id,
                     classification=AttemptFailureClassification.VALIDATION_FAILED,
                     job=job,
-                    message=quality_message,
+                    message=quality_outcome.message,
                     source_owner="fl-onboarding",
-                    next_action="Resolve quality prompt failures before attempting promotion.",
+                    next_action=next_action,
                 )
                 return
 

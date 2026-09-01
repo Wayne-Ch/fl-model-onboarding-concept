@@ -172,6 +172,7 @@ def test_recipe_agent_frozen_commands(capsys) -> None:  # type: ignore[no-untype
     assert dry_run["summary"]["total_models"] == 5
     assert dry_run["summary"]["compiled_models"] == 5
     assert all(row["status"] == "compiled" for row in dry_run["outcomes"])
+    assert all("quality_validation" not in row for row in dry_run["outcomes"])
 
 
 def test_recipe_agent_frozen_validate_rejects_invalid_manifest(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]

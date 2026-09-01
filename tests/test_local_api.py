@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 from dataclasses import replace
@@ -160,15 +161,66 @@ class DeterministicSuccessRunner:
             persist()
             if cancellation_event.is_set():
                 return
-        artifact_path = job.request.output_dir / "artifact.bin"
-        artifact_path.write_bytes(b"artifact")
+        baseline_dir = job.request.workspace_root / "mobius"
+        baseline_dir.mkdir(parents=True, exist_ok=False)
+        (baseline_dir / "model.onnx").write_text("baseline", encoding="utf-8")
+        (baseline_dir / "inference_model.json").write_text(
+            json.dumps({"Name": f"baseline-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
+        artifact_path = job.request.output_dir / "optimized-package"
+        artifact_path.mkdir(parents=True, exist_ok=False)
+        (artifact_path / "model.onnx").write_text("optimized", encoding="utf-8")
+        (artifact_path / "inference_model.json").write_text(
+            json.dumps({"Name": f"optimized-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
         job.register_artifact(
             BuildArtifact(
                 artifact_id=f"artifact-{job.job_id}",
                 kind=ArtifactKind.MODEL,
                 path=artifact_path,
                 description="runtime artifact",
-                size_bytes=artifact_path.stat().st_size,
+                size_bytes=(artifact_path / "model.onnx").stat().st_size,
+            )
+        )
+        transition(job, JobState.SUCCEEDED, "Build succeeded.")
+        job.finished_utc = datetime.now(timezone.utc)
+        persist()
+
+
+class MissingBaselineSuccessRunner:
+    def run(self, job: BuildJob, *, persist, cancellation_event):  # noqa: ANN001
+        if cancellation_event.is_set():
+            return
+        for stage in (
+            JobState.DOWNLOADING,
+            JobState.MOBIUS_BUILDING,
+            JobState.MOBIUS_VALIDATING,
+            JobState.OLIVE_OPTIMIZING,
+            JobState.PACKAGING,
+            JobState.RUNTIME_VALIDATING,
+            JobState.FL_LOADING,
+            JobState.INFERENCING,
+        ):
+            transition(job, stage, f"Reached '{stage.value}'")
+            persist()
+            if cancellation_event.is_set():
+                return
+        artifact_path = job.request.output_dir / "optimized-package"
+        artifact_path.mkdir(parents=True, exist_ok=False)
+        (artifact_path / "model.onnx").write_text("optimized", encoding="utf-8")
+        (artifact_path / "inference_model.json").write_text(
+            json.dumps({"Name": f"optimized-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
+        job.register_artifact(
+            BuildArtifact(
+                artifact_id=f"artifact-{job.job_id}",
+                kind=ArtifactKind.MODEL,
+                path=artifact_path,
+                description="runtime artifact",
+                size_bytes=(artifact_path / "model.onnx").stat().st_size,
             )
         )
         transition(job, JobState.SUCCEEDED, "Build succeeded.")
@@ -542,6 +594,8 @@ def test_generated_recipe_preview_and_attempt_endpoints(tmp_path: Path) -> None:
             "quality_validation",
         ]
         assert all(row["status"] == "passed" for row in attempt_body["gates"])
+        quality_gate = next(row for row in attempt_body["gates"] if row["gate"] == "quality_validation")
+        assert "baseline-passed" in quality_gate["evidence_ref"]
 
         reuse_preview = client.get(
             "/api/recipes/generated/preview",
@@ -552,6 +606,50 @@ def test_generated_recipe_preview_and_attempt_endpoints(tmp_path: Path) -> None:
         assert reuse["eligible_for_automatic_recipe_attempt"] is False
         assert reuse["verified_reuse"]["available"] is True
         assert reuse["verified_reuse"]["source_recipe_fingerprint"] == fingerprint
+
+
+def test_generated_recipe_attempt_api_reports_baseline_not_run_gate(tmp_path: Path) -> None:
+    app = create_app(
+        service=_service(
+            tmp_path,
+            stage_runner=MissingBaselineSuccessRunner(),
+            text_backend=EchoTextBackend(),
+            foundry_catalog=EmptyFoundryCatalog(),
+        )
+    )
+    with TestClient(app) as client:
+        preview = client.get(
+            "/api/recipes/generated/preview",
+            params={"id": "owner/unregistered-model", "task": "llm"},
+        )
+        assert preview.status_code == 200
+        fingerprint = preview.json()["generated_recipe"]["fingerprint"]
+
+        created = client.post(
+            "/api/recipes/generated/attempts",
+            headers={"Idempotency-Key": "generated-api-baseline-missing"},
+            json={
+                "model_id": "owner/unregistered-model",
+                "recipe_fingerprint": fingerprint,
+                "confirm_automatic_recipe_attempt": True,
+            },
+        )
+        assert created.status_code == 200
+        attempt_id = created.json()["attempt"]["attempt_id"]
+        job_id = created.json()["job"]["job_id"]
+
+        terminal = _wait_for_terminal(client, job_id)
+        assert terminal["state"] == "succeeded"
+
+        attempt = client.get(f"/api/recipes/generated/attempts/{attempt_id}")
+        assert attempt.status_code == 200
+        attempt_body = attempt.json()
+        assert attempt_body["state"] == "failed"
+        quality_gate = next(row for row in attempt_body["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "not_run"
+        assert "baseline-not-run" in quality_gate["evidence_ref"]
+        assert attempt_body["failure"]["classification"] == "validation_failed"
+        assert "Quality baseline not run" in attempt_body["failure"]["message"]
 
 
 def test_asr_preflight_is_a_structured_unsupported_blocker(tmp_path: Path) -> None:

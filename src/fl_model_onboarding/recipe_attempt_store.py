@@ -115,6 +115,8 @@ ATTEMPT_GATE_ORDER: tuple[AttemptGate, ...] = (
 class AttemptGateStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
+    NOT_RUN = "not_run"
+    UNAVAILABLE = "unavailable"
 
 
 class AttemptFailureClassification(StrEnum):
