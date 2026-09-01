@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from pathlib import Path
 
 from fl_model_onboarding.adapters.interfaces import CommandResult, CommandSpec, HuggingFaceMetadata
@@ -7,6 +9,24 @@ from fl_model_onboarding.candidates import PHASE0_CANDIDATES
 from fl_model_onboarding.contracts import CatalogMatchAssessment, MatchConfidence
 from fl_model_onboarding.contracts import BuildRequest, FailureClassification, JobState
 from fl_model_onboarding.preflight import PreflightInspector
+
+
+def _is_python_probe(spec: CommandSpec) -> bool:
+    command = Path(spec.argv[0]).name.lower()
+    return command.startswith("python") and len(spec.argv) >= 3 and spec.argv[1] == "-c"
+
+
+def _package_probe_response(spec: CommandSpec) -> CommandResult:
+    source = spec.argv[2]
+    for pkg, version in (
+        ("onnxruntime", "1.29.0"),
+        ("onnxruntime-genai", "0.15.2"),
+        ("foundry-local-sdk", "1.2.4"),
+        ("huggingface_hub", "1.22.0"),
+    ):
+        if f"version('{pkg}')" in source:
+            return CommandResult(spec=spec, exit_code=0, stdout=f"{version}\n", stderr="")
+    raise RuntimeError(f"Unhandled fake python probe: {spec.argv}")
 
 
 class FakeRunner:
@@ -18,16 +38,8 @@ class FakeRunner:
             raise FileNotFoundError("mobius not found")
         if cmd == "olive":
             return CommandResult(spec=spec, exit_code=0, stdout="olive help\n", stderr="")
-        if cmd == "python":
-            source = spec.argv[2]
-            if "version('onnxruntime')" in source:
-                return CommandResult(spec=spec, exit_code=0, stdout="1.29.0\n", stderr="")
-            if "version('onnxruntime-genai')" in source:
-                return CommandResult(spec=spec, exit_code=0, stdout="0.15.2\n", stderr="")
-            if "version('foundry-local-sdk')" in source:
-                return CommandResult(spec=spec, exit_code=0, stdout="1.2.4\n", stderr="")
-            if "version('huggingface_hub')" in source:
-                return CommandResult(spec=spec, exit_code=0, stdout="1.22.0\n", stderr="")
+        if _is_python_probe(spec):
+            return _package_probe_response(spec)
         raise RuntimeError(f"Unhandled fake command: {spec.argv}")
 
 
@@ -183,3 +195,159 @@ def test_preflight_rejects_remote_code_models(tmp_path: Path) -> None:
     inspector = PreflightInspector(FakeRunner(), FakeFoundry(), AutoMapHF())
     result = inspector.inspect(request)
     assert any("requires remote code" in blocker.message for blocker in result.blockers)
+
+
+def test_preflight_mobius_help_success_with_unsupported_version_still_available(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            argv = spec.argv
+            if argv[:2] == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="0.11.0\n", stderr="")
+            if argv[:2] == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius help\n", stderr="")
+            if argv[:2] == ("mobius", "--version"):
+                return CommandResult(spec=spec, exit_code=2, stdout="", stderr="unknown option --version\n")
+            if argv[:2] == ("olive", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive help\n", stderr="")
+            if argv[:2] == ("olive", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0\n", stderr="")
+            if _is_python_probe(spec):
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    request = _request(tmp_path, tmp_path / "out")
+    result = PreflightInspector(Runner(), FakeFoundry(), FakeHF()).inspect(request)
+    mobius = next(tool for tool in result.tools if tool.name == "mobius")
+    assert mobius.available is True
+    assert not any(
+        blocker.stage == JobState.MOBIUS_BUILDING and blocker.classification == FailureClassification.MISSING_DEPENDENCY
+        for blocker in result.blockers
+    )
+    assert result.ok
+
+
+def test_preflight_olive_help_success_with_unsupported_version_still_available(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            argv = spec.argv
+            if argv[:2] == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="0.11.0\n", stderr="")
+            if argv[:2] == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0 help\n", stderr="")
+            if argv[:2] == ("mobius", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0\n", stderr="")
+            if argv[:2] == ("olive", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive help\n", stderr="")
+            if argv[:2] == ("olive", "--version"):
+                return CommandResult(spec=spec, exit_code=2, stdout="", stderr="unrecognized arguments: --version\n")
+            if _is_python_probe(spec):
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    request = _request(tmp_path, tmp_path / "out")
+    result = PreflightInspector(Runner(), FakeFoundry(), FakeHF()).inspect(request)
+    olive = next(tool for tool in result.tools if tool.name == "olive")
+    assert olive.available is True
+    assert not any(
+        blocker.stage == JobState.OLIVE_OPTIMIZING
+        and blocker.classification == FailureClassification.MISSING_DEPENDENCY
+        for blocker in result.blockers
+    )
+    assert result.ok
+
+
+def test_preflight_package_probe_uses_current_sys_executable(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def __init__(self) -> None:
+            self.python_commands: list[str] = []
+
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            argv = spec.argv
+            if argv[:2] == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="0.11.0\n", stderr="")
+            if argv[:2] == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0 help\n", stderr="")
+            if argv[:2] == ("mobius", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0\n", stderr="")
+            if argv[:2] == ("olive", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0 help\n", stderr="")
+            if argv[:2] == ("olive", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0\n", stderr="")
+            if _is_python_probe(spec):
+                self.python_commands.append(spec.argv[0])
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    runner = Runner()
+    request = _request(tmp_path, tmp_path / "out")
+    result = PreflightInspector(runner, FakeFoundry(), FakeHF()).inspect(request)
+    assert result.ok
+    assert runner.python_commands
+    expected = Path(sys.executable).resolve()
+    assert all(Path(command).resolve() == expected for command in runner.python_commands)
+
+
+def test_preflight_probe_failure_is_not_reported_as_missing_dependency(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            argv = spec.argv
+            if argv[:2] == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="0.11.0\n", stderr="")
+            if argv[:2] == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=2, stdout="", stderr="unable to load config\n")
+            if argv[:2] == ("olive", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0 help\n", stderr="")
+            if argv[:2] == ("olive", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0\n", stderr="")
+            if _is_python_probe(spec):
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    request = _request(tmp_path, tmp_path / "out")
+    result = PreflightInspector(Runner(), FakeFoundry(), FakeHF()).inspect(request)
+    mobius_blocker = next(
+        blocker for blocker in result.blockers if blocker.stage == JobState.MOBIUS_BUILDING
+    )
+    assert mobius_blocker.classification == FailureClassification.TOOL_UNAVAILABLE
+    assert mobius_blocker.detail["tool"] == "mobius"
+    assert "probe-failed" in mobius_blocker.detail["probe_detail"]
+
+
+def test_preflight_smollm_installed_tool_fixture_is_buildable_with_expected_versions(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            argv = spec.argv
+            if argv[:2] == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="foundry 0.11.0\n", stderr="")
+            if argv[:2] == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius help\n", stderr="")
+            if argv[:2] == ("mobius", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0\n", stderr="")
+            if argv[:2] == ("olive", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive help\n", stderr="")
+            if argv[:2] == ("olive", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0\n", stderr="")
+            if _is_python_probe(spec):
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    request = _request(tmp_path, tmp_path / "out")
+    result = PreflightInspector(Runner(), FakeFoundry(), FakeHF()).inspect(request)
+    versions = {tool.name: tool.version for tool in result.tools}
+    assert result.ok
+    assert versions["mobius"] == "0.1.0"
+    assert versions["olive"] == "0.13.0"
+    assert versions["foundry"] == "0.11.0"
+    assert versions["onnxruntime"] == "1.29.0"
+    assert versions["onnxruntime-genai"] == "0.15.2"
+    assert versions["foundry-local-sdk"] == "1.2.4"

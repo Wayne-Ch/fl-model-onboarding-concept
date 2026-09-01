@@ -93,5 +93,7 @@ Notes:
   then OGA/Foundry transcription fails with `Missing Input: position_ids` because Whisper decoder
   state does not bind/update `position_ids`.
 - Upstream source-triage evidence is documented in `docs/asr-upstream-triage.md`.
+- If you install or update Mobius/Olive/Foundry/Python packages while the local service is running,
+  stop it (`Ctrl+C`) and rerun `.\scripts\run-local-ui.ps1` so preflight probes the updated toolchain.
 - The original repository-root `index.html` remains the standalone concept mock. The service serves
   the separately built React UI from the Python package.
