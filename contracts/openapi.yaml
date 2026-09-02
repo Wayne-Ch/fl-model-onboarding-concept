@@ -703,6 +703,16 @@ components:
         recipe_reason:
           type: string
           nullable: true
+        generated_recipe_attempt:
+          oneOf:
+            - $ref: "#/components/schemas/GeneratedRecipeAttemptBinding"
+            - type: "null"
+        recipe_artifact_cache_prefix:
+          type: string
+          nullable: true
+        recipe_model_name_prefix:
+          type: string
+          nullable: true
         allow_experimental:
           type: boolean
         optimization_strategy:
@@ -711,6 +721,19 @@ components:
         optimization_precision:
           type: string
           nullable: true
+
+    GeneratedRecipeAttemptBinding:
+      type: object
+      required: [attempt_id, recipe_fingerprint, confirmed, confirmation_provenance]
+      properties:
+        attempt_id:
+          type: string
+        recipe_fingerprint:
+          type: string
+        confirmed:
+          type: boolean
+        confirmation_provenance:
+          type: string
 
     BuildJob:
       type: object

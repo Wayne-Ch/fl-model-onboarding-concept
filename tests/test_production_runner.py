@@ -3,16 +3,23 @@ from __future__ import annotations
 import json
 import time
 
+from datetime import datetime, timezone
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
 from fl_model_onboarding.adapters.interfaces import CommandResult, CommandSpec
+from fl_model_onboarding.architecture_capabilities import (
+    load_architecture_capability_registry,
+    normalize_huggingface_metadata,
+)
 from fl_model_onboarding.candidates import PHASE0_CANDIDATES
 from fl_model_onboarding.contracts import (
     BuildJob,
     BuildRequest,
     CandidateModality,
+    FailureClassification,
+    GeneratedRecipeAttemptBinding,
     JobState,
     ModelCandidate,
     PreflightResult,
@@ -25,7 +32,25 @@ from fl_model_onboarding.production_runner import (
     SMOLLM2_REVISION,
     production_package_paths,
 )
-from fl_model_onboarding.recipes import DISTIL_WHISPER_MODEL_ID
+from fl_model_onboarding.recipe_attempt_store import (
+    AttemptState,
+    GeneratedRecipeRecord,
+    RecipeAttempt,
+    build_capability_fingerprint,
+    build_profile_fingerprint,
+    build_toolchain_fingerprint,
+)
+from fl_model_onboarding.recipe_compiler import (
+    RecipeCompilerInput,
+    RecipeCompilerToolchain,
+    compile_generated_recipe,
+)
+from fl_model_onboarding.recipes import (
+    DEFAULT_MODEL_RECIPES,
+    DISTIL_WHISPER_MODEL_ID,
+    RecipeRegistry,
+    RecipeStatus,
+)
 from fl_model_onboarding.state_machine import transition
 
 
@@ -78,6 +103,173 @@ class PinnedSnapshot:
         local_dir.mkdir(parents=True)
         (local_dir / "config.json").write_text("{}", encoding="utf-8")
         return local_dir
+
+
+class GenericSnapshot:
+    def acquire_snapshot(
+        self,
+        model_id: str,  # noqa: ARG002
+        local_dir: Path,
+        revision: str | None = None,  # noqa: ARG002
+        allow_patterns=None,  # noqa: ANN001, ARG002
+    ) -> Path:
+        local_dir.mkdir(parents=True)
+        (local_dir / "config.json").write_text("{}", encoding="utf-8")
+        return local_dir
+
+
+class InMemoryAttemptStore:
+    def __init__(
+        self,
+        *,
+        attempt: RecipeAttempt | None,
+        generated: GeneratedRecipeRecord | None,
+    ) -> None:
+        self._attempt = attempt
+        self._generated = generated
+
+    def get_attempt(self, attempt_id: str) -> RecipeAttempt:
+        if self._attempt is None or self._attempt.attempt_id != attempt_id:
+            raise KeyError(attempt_id)
+        return self._attempt
+
+    def get_generated_recipe(self, recipe_fingerprint: str) -> GeneratedRecipeRecord | None:
+        if self._generated is None:
+            return None
+        if self._generated.recipe_fingerprint != recipe_fingerprint:
+            return None
+        return self._generated
+
+
+_GENERATED_TOOLCHAIN = RecipeCompilerToolchain(
+    mobius_version="0.1.0",
+    olive_version="0.13.0",
+    onnx_version="1.22.0",
+    ort_version="1.29.0",
+    oga_version="0.15.2",
+    foundry_sdk_version="1.2.4",
+    foundry_cli_version="0.11.0",
+)
+
+
+def _compile_generated_candidate(model_id: str, revision_sha: str):
+    capability_registry = load_architecture_capability_registry()
+    normalized_metadata = normalize_huggingface_metadata(
+        model_id=model_id,
+        config={"model_type": "llama", "architectures": ["LlamaForCausalLM"]},
+        is_gated=False,
+        is_private=False,
+    )
+    resolution = capability_registry.resolve(
+        metadata=normalized_metadata,
+        task="llm",
+        device="cpu",
+        requested_precision="auto",
+    )
+    return compile_generated_recipe(
+        RecipeCompilerInput(
+            model_id=model_id,
+            revision_sha=revision_sha,
+            model_type="llama",
+            architectures=("LlamaForCausalLM",),
+            task="llm",
+            requested_device="cpu",
+            requested_precision="auto",
+            is_gated=False,
+            requires_remote_code=False,
+            config_files=("config.json",),
+            tokenizer_files=("tokenizer.json",),
+            available_files=("config.json", "tokenizer.json"),
+            capability_resolution=resolution,
+            toolchain=_GENERATED_TOOLCHAIN,
+        )
+    )
+
+
+def _generated_record_for(candidate) -> GeneratedRecipeRecord:
+    return GeneratedRecipeRecord(
+        recipe_fingerprint=candidate.fingerprint,
+        schema_version=str(candidate.payload()["schema_version"]),
+        recipe_status=candidate.recipe.status,
+        model_id=candidate.recipe.huggingface_model_id,
+        revision_sha=candidate.pinned_revision,
+        requested_device=candidate.provenance.input_metadata.requested_device,
+        requested_precision=candidate.provenance.input_metadata.requested_precision,
+        compiler_version=candidate.provenance.compiler_version,
+        capability_fingerprint=build_capability_fingerprint(candidate.provenance),
+        toolchain_fingerprint=build_toolchain_fingerprint(candidate.provenance.toolchain),
+        profile_fingerprint=build_profile_fingerprint(
+            candidate.recipe,
+            candidate.provenance.input_metadata,
+        ),
+        canonical_json=candidate.canonical_json,
+        created_utc=datetime.now(timezone.utc),
+    )
+
+
+def _attempt_for_generated(
+    *,
+    attempt_id: str,
+    record: GeneratedRecipeRecord,
+    state: AttemptState = AttemptState.RUNNING,
+) -> RecipeAttempt:
+    finished = None if state == AttemptState.RUNNING else datetime.now(timezone.utc)
+    return RecipeAttempt(
+        attempt_id=attempt_id,
+        idempotency_key="generated-attempt-test",
+        request_fingerprint="f" * 64,
+        recipe_fingerprint=record.recipe_fingerprint,
+        model_id=record.model_id,
+        revision_sha=record.revision_sha,
+        requested_device=record.requested_device,
+        requested_precision=record.requested_precision,
+        compiler_version=record.compiler_version,
+        capability_fingerprint=record.capability_fingerprint,
+        toolchain_fingerprint=record.toolchain_fingerprint,
+        profile_fingerprint=record.profile_fingerprint,
+        created_utc=datetime.now(timezone.utc),
+        finished_utc=finished,
+        state=state,
+        gate_results=(),
+        failure=None,
+    )
+
+
+def _generated_request(tmp_path: Path, candidate, *, attempt_id: str) -> BuildRequest:
+    selected = candidate.recipe.default_optimization()
+    assert selected is not None
+    return BuildRequest(
+        candidate=ModelCandidate(
+            key=candidate.recipe.id,
+            huggingface_model_id=candidate.recipe.huggingface_model_id,
+            modality=candidate.recipe.modality,
+            recommended_mobius_dtype=candidate.recipe.mobius.dtype,
+            recommended_olive_precision=(None if selected.skip_olive else selected.precision),
+            notes="generated attempt",
+        ),
+        workspace_root=tmp_path / "w-generated",
+        model_cache_dir=tmp_path / "cache-generated",
+        output_dir=tmp_path / "w-generated" / "output",
+        task_profile=selected.task_profile,
+        hf_revision=candidate.pinned_revision,
+        skip_olive=selected.skip_olive,
+        dry_run=False,
+        recipe_id=candidate.recipe.id,
+        recipe_version=candidate.recipe.version,
+        recipe_status=candidate.recipe.status.value,
+        recipe_reason="generated-attempt-confirmed",
+        generated_recipe_attempt=GeneratedRecipeAttemptBinding(
+            attempt_id=attempt_id,
+            recipe_fingerprint=candidate.fingerprint,
+            confirmed=True,
+            confirmation_provenance="api.confirm_automatic_recipe_attempt",
+        ),
+        recipe_artifact_cache_prefix=candidate.recipe.artifact_cache_prefix,
+        recipe_model_name_prefix=candidate.recipe.model_name_prefix,
+        allow_experimental=True,
+        optimization_strategy=selected.strategy,
+        optimization_precision=selected.precision,
+    )
 
 
 class PinnedPreflight:
@@ -248,6 +440,300 @@ def test_production_runner_rejects_non_verified_recipe_without_running_tools(tmp
     assert job.failure is not None
     assert "verified" in job.failure.message
     assert process_runner.specs == []
+
+
+def test_production_runner_executes_generated_attempt_from_persisted_record(tmp_path: Path) -> None:
+    generated_candidate = _compile_generated_candidate(
+        "owner/unregistered-model",
+        "1234567890abcdef1234567890abcdef12345678",
+    )
+    generated_record = _generated_record_for(generated_candidate)
+    attempt_id = "11111111-1111-1111-1111-111111111111"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.RUNNING,
+    )
+    request = _generated_request(tmp_path, generated_candidate, attempt_id=attempt_id)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-success", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.SUCCEEDED
+    assert process_runner.specs
+    assert process_runner.specs[0].argv[:2] == ("mobius", "build")
+
+
+def test_production_runner_rejects_generated_attempt_revision_mismatch_before_tools(tmp_path: Path) -> None:
+    generated_candidate = _compile_generated_candidate(
+        "owner/unregistered-model",
+        "1234567890abcdef1234567890abcdef12345678",
+    )
+    generated_record = _generated_record_for(generated_candidate)
+    attempt_id = "22222222-2222-2222-2222-222222222222"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.RUNNING,
+    )
+    request = replace(
+        _generated_request(tmp_path, generated_candidate, attempt_id=attempt_id),
+        hf_revision="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-revision-mismatch", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert job.failure is not None
+    assert job.failure.classification == FailureClassification.INVALID_REQUEST
+    assert process_runner.specs == []
+
+
+def test_production_runner_rejects_missing_generated_attempt_before_tools(tmp_path: Path) -> None:
+    generated_candidate = _compile_generated_candidate(
+        "owner/unregistered-model",
+        "1234567890abcdef1234567890abcdef12345678",
+    )
+    generated_record = _generated_record_for(generated_candidate)
+    request = _generated_request(
+        tmp_path,
+        generated_candidate,
+        attempt_id="missing-attempt-id",
+    )
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-missing-attempt", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=None,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert job.failure is not None
+    assert job.failure.classification == FailureClassification.INVALID_REQUEST
+    assert process_runner.specs == []
+
+
+def test_production_runner_rejects_generated_fingerprint_mismatch_before_tools(tmp_path: Path) -> None:
+    generated_candidate = _compile_generated_candidate(
+        "owner/unregistered-model",
+        "1234567890abcdef1234567890abcdef12345678",
+    )
+    generated_record = _generated_record_for(generated_candidate)
+    attempt_id = "66666666-6666-6666-6666-666666666666"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.RUNNING,
+    )
+    request = replace(
+        _generated_request(tmp_path, generated_candidate, attempt_id=attempt_id),
+        generated_recipe_attempt=GeneratedRecipeAttemptBinding(
+            attempt_id=attempt_id,
+            recipe_fingerprint="0" * 64,
+            confirmed=True,
+            confirmation_provenance="api.confirm_automatic_recipe_attempt",
+        ),
+    )
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-fingerprint-mismatch", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert job.failure is not None
+    assert job.failure.classification == FailureClassification.INVALID_REQUEST
+    assert process_runner.specs == []
+
+
+def test_production_runner_rejects_generated_attempt_client_injected_optimization_before_tools(
+    tmp_path: Path,
+) -> None:
+    generated_candidate = _compile_generated_candidate(
+        "owner/unregistered-model",
+        "1234567890abcdef1234567890abcdef12345678",
+    )
+    generated_record = _generated_record_for(generated_candidate)
+    attempt_id = "33333333-3333-3333-3333-333333333333"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.RUNNING,
+    )
+    request = replace(
+        _generated_request(tmp_path, generated_candidate, attempt_id=attempt_id),
+        optimization_precision="fp32",
+    )
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-client-override", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert job.failure is not None
+    assert job.failure.classification == FailureClassification.INVALID_REQUEST
+    assert process_runner.specs == []
+
+
+def test_production_runner_rejects_cancelled_generated_attempt_before_tools(tmp_path: Path) -> None:
+    generated_candidate = _compile_generated_candidate(
+        "owner/unregistered-model",
+        "1234567890abcdef1234567890abcdef12345678",
+    )
+    generated_record = _generated_record_for(generated_candidate)
+    attempt_id = "44444444-4444-4444-4444-444444444444"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.CANCELLED,
+    )
+    request = _generated_request(tmp_path, generated_candidate, attempt_id=attempt_id)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-cancelled", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert job.failure is not None
+    assert job.failure.classification == FailureClassification.INVALID_REQUEST
+    assert process_runner.specs == []
+
+
+def test_production_runner_rejects_experimental_static_recipe_without_running_tools(tmp_path: Path) -> None:
+    experimental = PHASE0_CANDIDATES["smollm2-1.7b-instruct"]
+    request = BuildRequest(
+        candidate=experimental,
+        workspace_root=tmp_path / "w-static-experimental",
+        model_cache_dir=tmp_path / "cache-static-experimental",
+        output_dir=tmp_path / "w-static-experimental" / "output",
+        task_profile="llm-cpu-int4",
+        hf_revision=SMOLLM2_REVISION,
+        recipe_id="smollm2-1.7b-cpu-int4",
+        recipe_version="1.0.0",
+        recipe_status=RecipeStatus.EXPERIMENTAL.value,
+        allow_experimental=True,
+    )
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="static-experimental", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    base_recipe = next(recipe for recipe in DEFAULT_MODEL_RECIPES if recipe.id == "smollm2-1.7b-cpu-int4")
+    experimental_recipe = replace(
+        base_recipe,
+        status=RecipeStatus.EXPERIMENTAL,
+        status_reason="Recipe remains experimental.",
+    )
+    recipe_registry = RecipeRegistry(
+        tuple(
+            experimental_recipe if recipe.id == experimental_recipe.id else recipe
+            for recipe in DEFAULT_MODEL_RECIPES
+        )
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        recipe_registry=recipe_registry,
+        model_acquisition=PinnedSnapshot(),  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert job.failure is not None
+    assert job.failure.classification == FailureClassification.NOT_VERIFIED
+    assert "verified" in job.failure.message
+    assert process_runner.specs == []
+
+
+def test_production_package_paths_prefer_resolved_generated_recipe_prefix(tmp_path: Path) -> None:
+    generated_candidate = _compile_generated_candidate(
+        "owner/unregistered-model",
+        "1234567890abcdef1234567890abcdef12345678",
+    )
+    request = replace(
+        _generated_request(
+            tmp_path,
+            generated_candidate,
+            attempt_id="55555555-5555-5555-5555-555555555555",
+        ),
+        recipe_artifact_cache_prefix="tampered-prefix",
+    )
+    job = BuildJob(job_id="generated-path-prefix", request=request)
+    staging, package = production_package_paths(
+        job,
+        recipe_registry=RecipeRegistry(()),
+        resolved_recipe=generated_candidate.recipe,
+    )
+
+    assert "tampered-prefix" not in staging.name
+    assert "tampered-prefix" not in package.name
+    assert generated_candidate.recipe.artifact_cache_prefix in staging.name
+    assert generated_candidate.recipe.artifact_cache_prefix in package.name
 
 
 def test_package_collision_does_not_delete_existing_immutable_artifact(tmp_path: Path) -> None:

@@ -42,6 +42,7 @@ from .contracts import (
     CandidateModality,
     FailureClassification,
     FailureInfo,
+    GeneratedRecipeAttemptBinding,
     JobEvent,
     JobState,
     MatchConfidence,
@@ -117,9 +118,6 @@ from .workspace_layout import default_workspace_base, workspace_root_for_job
 _HF_TOKEN_RE = re.compile(r"\bhf_[A-Za-z0-9]{16,}\b")
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{8,})")
 _API_KEY_RE = re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)")
-_GENERATED_ATTEMPT_REASON_RE = re.compile(
-    r"^generated_recipe_attempt:(?P<attempt_id>[0-9a-f-]{36}):(?P<fingerprint>[0-9a-f]{64})$"
-)
 
 _DEFAULT_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 _ASR_MODEL_ID = DISTIL_WHISPER_MODEL_ID
@@ -128,6 +126,8 @@ _RECIPE_DEFAULT_TASK = CandidateModality.LLM.value
 _RECIPE_DEFAULT_DEVICE = "cpu"
 _RECIPE_DEFAULT_PRECISION = "auto"
 _RECIPE_QUALITY_PROFILE_ID = "textgen-basic-quality-v1"
+_AUTOMATIC_RECIPE_ATTEMPT_CONFIRMATION_PROVENANCE = "api.confirm_automatic_recipe_attempt"
+_ATTEMPT_FAILURE_MESSAGE_MAX = 2048
 _RECIPE_TOOLCHAIN = RecipeCompilerToolchain(
     mobius_version="0.1.0",
     olive_version="0.13.0",
@@ -819,6 +819,7 @@ class LocalOnboardingService:
             ProductionBuildStageRunner(
                 self._process_runner,
                 recipe_registry=self._recipe_registry,
+                recipe_attempt_store=self._recipe_attempt_store,
             )
             if enable_production_runner
             else UnverifiedBuildStageRunner()
@@ -831,11 +832,12 @@ class LocalOnboardingService:
         self._asr_inference_backend = asr_inference_backend
 
         for job in self._jobs.values():
-            parsed_attempt = _parse_generated_attempt_reason(job.request.recipe_reason)
-            if parsed_attempt is not None:
-                attempt_id, _ = parsed_attempt
-                self._build_job_to_attempt[job.job_id] = attempt_id
-                self._attempt_to_build_job[attempt_id] = job.job_id
+            generated_attempt = job.request.generated_recipe_attempt
+            if generated_attempt is not None:
+                attempt_id = generated_attempt.attempt_id.strip()
+                if attempt_id:
+                    self._build_job_to_attempt[job.job_id] = attempt_id
+                    self._attempt_to_build_job[attempt_id] = job.job_id
             for artifact in job.artifacts:
                 self._artifact_to_job[artifact.artifact_id] = job.job_id
             if job.state in CANCELLABLE_STATES:
@@ -1497,9 +1499,25 @@ class LocalOnboardingService:
             recipe_id=str(recipe_payload.get("id") or ""),
             recipe_version=str(recipe_payload.get("version") or ""),
             recipe_status=str(recipe_payload.get("status") or RecipeStatus.EXPERIMENTAL.value),
-            recipe_reason=_generated_attempt_reason(
+            recipe_reason=(
+                "Generated recipe attempt execution confirmed via explicit "
+                "confirm_automatic_recipe_attempt signal."
+            ),
+            generated_recipe_attempt=GeneratedRecipeAttemptBinding(
                 attempt_id=attempt_id,
                 recipe_fingerprint=record.recipe_fingerprint,
+                confirmed=True,
+                confirmation_provenance=_AUTOMATIC_RECIPE_ATTEMPT_CONFIRMATION_PROVENANCE,
+            ),
+            recipe_artifact_cache_prefix=(
+                str(recipe_payload.get("artifact_cache_prefix"))
+                if isinstance(recipe_payload.get("artifact_cache_prefix"), str)
+                else None
+            ),
+            recipe_model_name_prefix=(
+                str(recipe_payload.get("model_name_prefix"))
+                if isinstance(recipe_payload.get("model_name_prefix"), str)
+                else None
             ),
             allow_experimental=True,
             optimization_strategy=(
@@ -1779,33 +1797,38 @@ class LocalOnboardingService:
             job = self._jobs.get(job_id)
             if job is None:
                 return None
-            parsed = _parse_generated_attempt_reason(job.request.recipe_reason)
-            if parsed is None:
+            generated_attempt = job.request.generated_recipe_attempt
+            if generated_attempt is None:
                 return None
-            recovered_attempt_id, _ = parsed
+            recovered_attempt_id = generated_attempt.attempt_id.strip()
+            if not recovered_attempt_id:
+                return None
             self._build_job_to_attempt[job_id] = recovered_attempt_id
             self._attempt_to_build_job[recovered_attempt_id] = job_id
             return recovered_attempt_id
 
     @staticmethod
-    def _failure_gate_for_job(job: BuildJob) -> AttemptGate:
+    def _failure_gate_for_job(job: BuildJob) -> tuple[AttemptGate, AttemptGateStatus]:
         stage = job.failure.stage if job.failure is not None else job.state
         if stage in {
             JobState.PREFLIGHT,
             JobState.DOWNLOADING,
+        }:
+            return AttemptGate.MOBIUS_BUILD, AttemptGateStatus.NOT_RUN
+        if stage in {
             JobState.MOBIUS_BUILDING,
             JobState.MOBIUS_VALIDATING,
         }:
-            return AttemptGate.MOBIUS_BUILD
+            return AttemptGate.MOBIUS_BUILD, AttemptGateStatus.FAILED
         if stage in {JobState.OLIVE_OPTIMIZING, JobState.PACKAGING}:
-            return AttemptGate.OLIVE_OPTIMIZE
+            return AttemptGate.OLIVE_OPTIMIZE, AttemptGateStatus.FAILED
         if stage == JobState.RUNTIME_VALIDATING:
-            return AttemptGate.ONNX_VALIDATION
+            return AttemptGate.ONNX_VALIDATION, AttemptGateStatus.FAILED
         if stage == JobState.FL_LOADING:
-            return AttemptGate.OGA_VALIDATION
+            return AttemptGate.OGA_VALIDATION, AttemptGateStatus.FAILED
         if stage == JobState.INFERENCING:
-            return AttemptGate.FL_SDK_INFERENCE
-        return AttemptGate.QUALITY_VALIDATION
+            return AttemptGate.FL_SDK_INFERENCE, AttemptGateStatus.FAILED
+        return AttemptGate.QUALITY_VALIDATION, AttemptGateStatus.FAILED
 
     def _record_attempt_gate(
         self,
@@ -1824,6 +1847,19 @@ class LocalOnboardingService:
                 evidence_ref=evidence_ref,
                 metrics_ref=metrics_ref,
             )
+        except AttemptStateTransitionError:
+            existing = self._recipe_attempt_store.get_attempt(attempt_id)
+            if existing.state not in {AttemptState.SUCCEEDED, AttemptState.FAILED, AttemptState.CANCELLED}:
+                raise
+            matched = next((row for row in existing.gate_results if row.gate == gate), None)
+            if (
+                matched is not None
+                and matched.status == status
+                and matched.evidence_ref == evidence_ref
+                and matched.metrics_ref == metrics_ref
+            ):
+                return
+            return
         except AttemptGateSequenceError:
             existing = self._recipe_attempt_store.get_attempt(attempt_id)
             matched = next((row for row in existing.gate_results if row.gate == gate), None)
@@ -1865,7 +1901,7 @@ class LocalOnboardingService:
                 failure=AttemptFailure(
                     classification=classification,
                     stage=(job.failure.stage.value if job.failure is not None else job.state.value),
-                    message=_sanitize_text(message),
+                    message=_sanitize_attempt_failure_message(message),
                     evidence_refs=(f"job://{job.job_id}",),
                     source_owner=source_owner,
                     next_action=next_action,
@@ -1890,7 +1926,7 @@ class LocalOnboardingService:
                 failure=AttemptFailure(
                     classification=AttemptFailureClassification.CANCELLED,
                     stage=(job.failure.stage.value if job.failure is not None else job.state.value),
-                    message=_sanitize_text(reason),
+                    message=_sanitize_attempt_failure_message(reason),
                     evidence_refs=(f"job://{job.job_id}",),
                     source_owner="fl-onboarding",
                     next_action="Resubmit the same recipe fingerprint with a new idempotency key to retry.",
@@ -1909,7 +1945,8 @@ class LocalOnboardingService:
             ) from exc
 
     def _record_failure_gates(self, *, attempt_id: str, job: BuildJob) -> AttemptGate:
-        failure_gate = self._failure_gate_for_job(job)
+        failure_gate, failure_gate_status = self._failure_gate_for_job(job)
+        failure_status_suffix = "failed" if failure_gate_status == AttemptGateStatus.FAILED else "not-run"
         for gate in _RECIPE_ATTEMPT_GATE_SEQUENCE:
             if gate == AttemptGate.QUALITY_VALIDATION:
                 break
@@ -1917,8 +1954,8 @@ class LocalOnboardingService:
                 self._record_attempt_gate(
                     attempt_id=attempt_id,
                     gate=gate,
-                    status=AttemptGateStatus.FAILED,
-                    evidence_ref=f"job://{job.job_id}/{gate.value}/failed",
+                    status=failure_gate_status,
+                    evidence_ref=f"job://{job.job_id}/{gate.value}/{failure_status_suffix}",
                 )
                 break
             self._record_attempt_gate(
@@ -2316,13 +2353,25 @@ class LocalOnboardingService:
                 )
                 else "fl-onboarding"
             )
+            classification = AttemptFailureClassification.GATE_FAILED
+            next_action = "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key."
+            if job.failure is not None and (
+                job.failure.classification == FailureClassification.INVALID_REQUEST
+                or job.failure.stage in {JobState.PREFLIGHT, JobState.DOWNLOADING}
+            ):
+                classification = AttemptFailureClassification.VALIDATION_FAILED
+                source_owner = "fl-onboarding"
+                next_action = (
+                    "Resolve generated-attempt identity/preflight mismatch and rerun with a fresh "
+                    "generated-attempt idempotency key."
+                )
             self._finalize_attempt_failed(
                 attempt_id=attempt_id,
-                classification=AttemptFailureClassification.GATE_FAILED,
+                classification=classification,
                 job=job,
                 message=failure_message,
                 source_owner=source_owner,
-                next_action="Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+                next_action=next_action,
             )
             return
 
@@ -2892,6 +2941,8 @@ class LocalOnboardingService:
                 recipe_version=recipe.version,
                 recipe_status=recipe.status.value,
                 recipe_reason=resolved.reason,
+                recipe_artifact_cache_prefix=recipe.artifact_cache_prefix,
+                recipe_model_name_prefix=recipe.model_name_prefix,
                 allow_experimental=submission.allow_experimental,
                 optimization_strategy=selected.strategy if selected else submission.optimization_strategy,
                 optimization_precision=selected.precision if selected else submission.optimization_precision,
@@ -2918,6 +2969,8 @@ class LocalOnboardingService:
             recipe_version=None,
             recipe_status=resolved.status,
             recipe_reason=resolved.reason,
+            recipe_artifact_cache_prefix=None,
+            recipe_model_name_prefix=None,
             allow_experimental=submission.allow_experimental,
             optimization_strategy=submission.optimization_strategy,
             optimization_precision=submission.optimization_precision,
@@ -2957,17 +3010,40 @@ def _recipe_error_code(match: RecipeResolution) -> str:
     return "MODEL_RECIPE_NOT_FOUND"
 
 
-def _generated_attempt_reason(*, attempt_id: str, recipe_fingerprint: str) -> str:
-    return f"generated_recipe_attempt:{attempt_id}:{recipe_fingerprint}"
+def _serialize_generated_recipe_attempt_binding(
+    value: GeneratedRecipeAttemptBinding | None,
+) -> dict[str, object] | None:
+    if value is None:
+        return None
+    return {
+        "attempt_id": value.attempt_id,
+        "recipe_fingerprint": value.recipe_fingerprint,
+        "confirmed": value.confirmed,
+        "confirmation_provenance": value.confirmation_provenance,
+    }
 
 
-def _parse_generated_attempt_reason(value: str | None) -> tuple[str, str] | None:
-    if not value:
+def _deserialize_generated_recipe_attempt_binding(
+    value: object,
+) -> GeneratedRecipeAttemptBinding | None:
+    if value is None:
         return None
-    match = _GENERATED_ATTEMPT_REASON_RE.fullmatch(value.strip())
-    if match is None:
-        return None
-    return match.group("attempt_id"), match.group("fingerprint")
+    if not isinstance(value, dict):
+        raise ValueError("Invalid build request payload: generated_recipe_attempt must be an object.")
+    attempt_id = _optional_str(value.get("attempt_id"))
+    recipe_fingerprint = _optional_str(value.get("recipe_fingerprint"))
+    confirmation_provenance = _optional_str(value.get("confirmation_provenance"))
+    if not attempt_id or not recipe_fingerprint or confirmation_provenance is None:
+        raise ValueError(
+            "Invalid build request payload: generated_recipe_attempt requires attempt_id, "
+            "recipe_fingerprint, and confirmation_provenance."
+        )
+    return GeneratedRecipeAttemptBinding(
+        attempt_id=attempt_id,
+        recipe_fingerprint=recipe_fingerprint.lower(),
+        confirmed=bool(value.get("confirmed")),
+        confirmation_provenance=confirmation_provenance,
+    )
 
 
 def _serialize_build_request(value: BuildRequest) -> dict[str, object]:
@@ -2995,6 +3071,11 @@ def _serialize_build_request(value: BuildRequest) -> dict[str, object]:
         "recipe_version": value.recipe_version,
         "recipe_status": value.recipe_status,
         "recipe_reason": value.recipe_reason,
+        "generated_recipe_attempt": _serialize_generated_recipe_attempt_binding(
+            value.generated_recipe_attempt
+        ),
+        "recipe_artifact_cache_prefix": value.recipe_artifact_cache_prefix,
+        "recipe_model_name_prefix": value.recipe_model_name_prefix,
         "allow_experimental": value.allow_experimental,
         "optimization_strategy": value.optimization_strategy,
         "optimization_precision": value.optimization_precision,
@@ -3030,6 +3111,11 @@ def _deserialize_build_request(value: dict[str, object]) -> BuildRequest:
         recipe_version=_optional_str(value.get("recipe_version")),
         recipe_status=_optional_str(value.get("recipe_status")),
         recipe_reason=_optional_str(value.get("recipe_reason")),
+        generated_recipe_attempt=_deserialize_generated_recipe_attempt_binding(
+            value.get("generated_recipe_attempt")
+        ),
+        recipe_artifact_cache_prefix=_optional_str(value.get("recipe_artifact_cache_prefix")),
+        recipe_model_name_prefix=_optional_str(value.get("recipe_model_name_prefix")),
         allow_experimental=bool(value.get("allow_experimental", False)),
         optimization_strategy=_optional_str(value.get("optimization_strategy")),
         optimization_precision=_optional_str(value.get("optimization_precision")),
@@ -3272,3 +3358,12 @@ def _sanitize_text(text: str) -> str:
     cleaned = _API_KEY_RE.sub(r"\1[REDACTED]", cleaned)
     escaped = html.escape(cleaned, quote=False)
     return escaped[:4000]
+
+
+def _sanitize_attempt_failure_message(text: str) -> str:
+    compact = re.sub(r"\s+", " ", _sanitize_text(text)).strip()
+    if not compact:
+        return "Attempt failed without a detailed message; see job evidence reference."
+    if len(compact) <= _ATTEMPT_FAILURE_MESSAGE_MAX:
+        return compact
+    return compact[: _ATTEMPT_FAILURE_MESSAGE_MAX - 3].rstrip() + "..."

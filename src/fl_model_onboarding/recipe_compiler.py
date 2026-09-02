@@ -170,6 +170,14 @@ def generated_recipe_schema_path() -> Path:
     return Path(__file__).resolve().parents[2] / "contracts" / "generated-recipe.schema.json"
 
 
+def validate_generated_recipe_payload(
+    payload: dict[str, object],
+    *,
+    schema_path: Path | None = None,
+) -> None:
+    _validate_generated_recipe_payload(payload, schema_path=schema_path)
+
+
 def compile_generated_recipe(
     request: RecipeCompilerInput,
     *,
@@ -1124,4 +1132,5 @@ __all__ = [
     "compile_generated_recipe",
     "generated_recipe_schema_path",
     "promote_generated_recipe",
+    "validate_generated_recipe_payload",
 ]

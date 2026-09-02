@@ -86,6 +86,14 @@ class ModelCandidate:
 
 
 @dataclass(frozen=True)
+class GeneratedRecipeAttemptBinding:
+    attempt_id: str
+    recipe_fingerprint: str
+    confirmed: bool
+    confirmation_provenance: str
+
+
+@dataclass(frozen=True)
 class BuildRequest:
     candidate: ModelCandidate
     workspace_root: Path
@@ -103,6 +111,9 @@ class BuildRequest:
     recipe_version: str | None = None
     recipe_status: str | None = None
     recipe_reason: str | None = None
+    generated_recipe_attempt: GeneratedRecipeAttemptBinding | None = None
+    recipe_artifact_cache_prefix: str | None = None
+    recipe_model_name_prefix: str | None = None
     allow_experimental: bool = False
     optimization_strategy: str | None = None
     optimization_precision: str | None = None

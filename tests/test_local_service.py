@@ -36,7 +36,7 @@ from fl_model_onboarding.recipes import (
     RecipeRegistry,
     RecipeStatus,
 )
-from fl_model_onboarding.state_machine import transition
+from fl_model_onboarding.state_machine import fail_job, transition
 
 _TOOLS = (
     ToolAvailability("foundry", "command", True, "0.11.0"),
@@ -282,6 +282,28 @@ class SlowCancellableRunner:
             time.sleep(0.02)
 
 
+class OversizedFailureRunner:
+    def run(self, job: BuildJob, *, persist, cancellation_event):  # noqa: ANN001
+        if cancellation_event.is_set():
+            return
+        transition(job, JobState.DOWNLOADING, "Downloading model data.")
+        persist()
+        if cancellation_event.is_set():
+            return
+        transition(job, JobState.MOBIUS_BUILDING, "Running oversized failure runner.")
+        persist()
+        fail_job(
+            job,
+            FailureInfo(
+                stage=JobState.MOBIUS_BUILDING,
+                classification=FailureClassification.PROCESS_FAILED,
+                message="x" * 10000,
+            ),
+        )
+        job.finished_utc = datetime.now(timezone.utc)
+        persist()
+
+
 class EchoTextBackend:
     _QUALITY_RESPONSES = {
         "What is 17 + 28? Reply using only digits.": "45",
@@ -506,6 +528,34 @@ def test_generated_recipe_preview_and_attempt_failure_sync(tmp_path: Path) -> No
         assert attempt_status["build_job_id"] == job.job_id
         assert attempt_status["failure"]["classification"] == "gate_failed"
         assert any(row["status"] == "failed" for row in attempt_status["gates"])
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_sync_truncates_oversized_failure_messages(tmp_path: Path) -> None:
+    service = _service(tmp_path, build_stage_runner=OversizedFailureRunner())
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-oversized-failure-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.FAILED
+        assert all(
+            "Recipe attempt synchronization error" not in event.message
+            for event in completed.events
+        )
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        assert attempt_status["failure"]["classification"] == "gate_failed"
+        assert len(str(attempt_status["failure"]["message"])) <= 2048
     finally:
         service.close()
 

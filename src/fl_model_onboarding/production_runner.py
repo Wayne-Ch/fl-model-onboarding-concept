@@ -7,28 +7,38 @@ import shutil
 import sys
 import uuid
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
-from typing import Callable
+from typing import Any, Callable
 
 from .adapters.interfaces import CommandResult, CommandSpec, ProcessRunner
 from .adapters.huggingface_acquisition import HuggingFaceAcquisitionAdapter
 from .adapters.interfaces import HuggingFaceAcquisitionClient
+from .architecture_capabilities import CapabilityStatus, ResolutionOutcome
 from .contracts import (
     ArtifactKind,
     BuildArtifact,
     BuildJob,
+    BuildRequest,
     CandidateModality,
     FailureClassification,
     FailureInfo,
+    GeneratedRecipeAttemptBinding,
     JobState,
     ValidationResult,
     ValidationStatus,
 )
+from .recipe_attempt_store import AttemptState, RecipeAttempt, RecipeAttemptStore
+from .recipe_compiler import GeneratedRecipeCompileError, validate_generated_recipe_payload
 from .state_machine import fail_job, transition
 from .recipes import (
+    AncillaryFileRule,
     DEFAULT_RECIPE_REGISTRY,
+    MobiusRecipeArgs,
+    OliveRecipeArgs,
+    OptimizationChoice,
     SMOLLM2_MODEL_ID as VERIFIED_SMOLLM2_MODEL_ID,
     SMOLLM2_VERIFIED_REVISION,
     ModelRecipe,
@@ -38,6 +48,9 @@ from .recipes import (
 
 SMOLLM2_MODEL_ID = VERIFIED_SMOLLM2_MODEL_ID
 SMOLLM2_REVISION = SMOLLM2_VERIFIED_REVISION
+_HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
+_HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+_MAX_COMMAND_FAILURE_DETAIL_CHARS = 1200
 
 
 def _result_payload(result: CommandResult) -> dict[str, object]:
@@ -50,6 +63,506 @@ def _result_payload(result: CommandResult) -> dict[str, object]:
         if isinstance(parsed, dict):
             return parsed
     return {"ok": False, "error": result.stderr or "Command returned no JSON result."}
+
+
+def _compact_failure_detail(value: str) -> str:
+    compact = " ".join(value.split())
+    if not compact:
+        return "process returned no diagnostic output."
+    traceback_index = compact.lower().rfind("traceback")
+    if traceback_index >= 0:
+        compact = compact[traceback_index:]
+    if len(compact) <= _MAX_COMMAND_FAILURE_DETAIL_CHARS:
+        return compact
+    return "..." + compact[-(_MAX_COMMAND_FAILURE_DETAIL_CHARS - 3) :].lstrip()
+
+
+@dataclass(frozen=True)
+class RecipeExecutionPlan:
+    recipe: ModelRecipe
+    pinned_revision: str
+    source: str
+
+
+class RecipeExecutionResolutionError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        classification: FailureClassification = FailureClassification.INVALID_REQUEST,
+    ) -> None:
+        super().__init__(message)
+        self.classification = classification
+
+
+class RecipeExecutionResolver:
+    def __init__(
+        self,
+        *,
+        recipe_registry: RecipeRegistry = DEFAULT_RECIPE_REGISTRY,
+        recipe_attempt_store: RecipeAttemptStore | None = None,
+    ) -> None:
+        self._recipe_registry = recipe_registry
+        self._recipe_attempt_store = recipe_attempt_store
+
+    def resolve(self, request: BuildRequest) -> RecipeExecutionPlan:
+        generated_binding = request.generated_recipe_attempt
+        if generated_binding is None:
+            return self._resolve_static_recipe(request)
+        return self._resolve_generated_recipe(request, generated_binding)
+
+    def _resolve_static_recipe(self, request: BuildRequest) -> RecipeExecutionPlan:
+        recipe_match = self._recipe_registry.resolve(
+            model_id=request.candidate.huggingface_model_id,
+            modality=request.candidate.modality,
+            task_profile=request.task_profile,
+            allow_experimental=True,
+        )
+        recipe = recipe_match.recipe
+        if recipe is None:
+            raise RecipeExecutionResolutionError(
+                recipe_match.reason,
+                classification=FailureClassification.NOT_VERIFIED,
+            )
+        if recipe.status != RecipeStatus.VERIFIED:
+            raise RecipeExecutionResolutionError(
+                f"Production execution is verified only for recipe status 'verified'; "
+                f"received '{recipe.id}' ({recipe.status.value}).",
+                classification=FailureClassification.NOT_VERIFIED,
+            )
+        if recipe.verified_revision is None:
+            raise RecipeExecutionResolutionError(
+                f"Verified recipe '{recipe.id}' is missing a pinned verified revision.",
+                classification=FailureClassification.NOT_VERIFIED,
+            )
+        if request.hf_revision != recipe.verified_revision:
+            raise RecipeExecutionResolutionError(
+                f"Production execution requires pinned revision {recipe.verified_revision}; "
+                f"received {request.hf_revision or 'none'}.",
+                classification=FailureClassification.NOT_VERIFIED,
+            )
+        return RecipeExecutionPlan(
+            recipe=recipe,
+            pinned_revision=recipe.verified_revision,
+            source="static_verified_recipe_registry",
+        )
+
+    def _resolve_generated_recipe(
+        self,
+        request: BuildRequest,
+        binding: GeneratedRecipeAttemptBinding,
+    ) -> RecipeExecutionPlan:
+        if self._recipe_attempt_store is None:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe execution requires a recipe-attempt store.",
+            )
+        attempt_id = binding.attempt_id.strip()
+        fingerprint = binding.recipe_fingerprint.strip().lower()
+        if not attempt_id:
+            raise RecipeExecutionResolutionError("Generated recipe attempt id is missing.")
+        if not _HEX64_RE.fullmatch(fingerprint):
+            raise RecipeExecutionResolutionError(
+                "Generated recipe fingerprint must be a lowercase 64-character hex value.",
+            )
+        if not binding.confirmed:
+            raise RecipeExecutionResolutionError(
+                "Automatic generated recipe attempts require explicit confirmation.",
+            )
+        if not binding.confirmation_provenance.strip():
+            raise RecipeExecutionResolutionError(
+                "Automatic generated recipe attempts require explicit confirmation provenance.",
+            )
+        if not request.allow_experimental:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe execution requires allow_experimental=true.",
+            )
+        try:
+            attempt = self._recipe_attempt_store.get_attempt(attempt_id)
+        except KeyError as exc:
+            raise RecipeExecutionResolutionError(
+                f"Recipe attempt '{attempt_id}' was not found for generated execution.",
+            ) from exc
+        if attempt.recipe_fingerprint != fingerprint:
+            raise RecipeExecutionResolutionError(
+                f"Recipe attempt '{attempt_id}' fingerprint mismatch: expected {fingerprint}, "
+                f"store has {attempt.recipe_fingerprint}.",
+            )
+        if attempt.state != AttemptState.RUNNING:
+            raise RecipeExecutionResolutionError(
+                f"Recipe attempt '{attempt_id}' is in state '{attempt.state.value}' and cannot execute.",
+            )
+        generated_record = self._recipe_attempt_store.get_generated_recipe(fingerprint)
+        if generated_record is None:
+            raise RecipeExecutionResolutionError(
+                f"Generated recipe record '{fingerprint}' was not found.",
+            )
+        if generated_record.recipe_status != RecipeStatus.EXPERIMENTAL:
+            raise RecipeExecutionResolutionError(
+                f"Generated recipe '{fingerprint}' must remain experimental before promotion; "
+                f"found '{generated_record.recipe_status.value}'.",
+            )
+        self._assert_attempt_identity_matches_generated(attempt=attempt, generated=generated_record)
+        recipe, pinned_revision, resolution_outcome, capability_status = _load_generated_recipe_execution_plan(
+            generated_record.payload()
+        )
+        if recipe.status != RecipeStatus.EXPERIMENTAL:
+            raise RecipeExecutionResolutionError(
+                f"Generated execution requires experimental recipe status; got '{recipe.status.value}'.",
+            )
+        if resolution_outcome != ResolutionOutcome.EXACT.value:
+            raise RecipeExecutionResolutionError(
+                f"Generated recipe capability resolution must be '{ResolutionOutcome.EXACT.value}', "
+                f"got '{resolution_outcome}'.",
+            )
+        if capability_status == CapabilityStatus.SOURCE_CHANGE_REQUIRED.value:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe capability is source-change-required and cannot run tooling.",
+            )
+        if capability_status not in {
+            CapabilityStatus.VERIFIED.value,
+            CapabilityStatus.TOOL_SUPPORTED_UNVERIFIED.value,
+        }:
+            raise RecipeExecutionResolutionError(
+                f"Unsupported generated capability status '{capability_status}'.",
+            )
+
+        request_revision = _normalize_revision_sha(
+            request.hf_revision,
+            field_name="request.hf_revision",
+        )
+        if request_revision != pinned_revision:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request revision mismatch against persisted pinned revision.",
+            )
+        if request.candidate.huggingface_model_id != attempt.model_id:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request model id does not match persisted attempt identity.",
+            )
+        if request.candidate.huggingface_model_id != recipe.huggingface_model_id:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe payload model id does not match request candidate.",
+            )
+        if request.candidate.modality != recipe.modality:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request modality does not match persisted recipe modality.",
+            )
+        if request.task_profile != recipe.task_profile:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request task profile does not match persisted recipe profile.",
+            )
+        if request.recipe_id is not None and request.recipe_id != recipe.id:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request recipe_id does not match persisted recipe id.",
+            )
+        if request.recipe_version is not None and request.recipe_version != recipe.version:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request recipe_version does not match persisted recipe version.",
+            )
+        if request.recipe_status is not None and request.recipe_status.strip().lower() != recipe.status.value:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request recipe_status does not match persisted recipe status.",
+            )
+        if (
+            request.recipe_artifact_cache_prefix is not None
+            and request.recipe_artifact_cache_prefix != recipe.artifact_cache_prefix
+        ):
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request artifact cache prefix does not match persisted recipe.",
+            )
+        if (
+            request.recipe_model_name_prefix is not None
+            and request.recipe_model_name_prefix != recipe.model_name_prefix
+        ):
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request model name prefix does not match persisted recipe.",
+            )
+        selected = recipe.choice_for_profile(request.task_profile, request.skip_olive)
+        if selected is None:
+            supported = ", ".join(
+                f"{choice.task_profile}/skip_olive={choice.skip_olive}"
+                for choice in recipe.optimization_choices
+            )
+            raise RecipeExecutionResolutionError(
+                f"Generated recipe '{recipe.id}' does not support task_profile={request.task_profile} "
+                f"with skip_olive={request.skip_olive}. Supported: {supported or 'none'}.",
+            )
+        if (
+            request.optimization_strategy is not None
+            and request.optimization_strategy.lower() != selected.strategy.lower()
+        ):
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request optimization strategy does not match persisted recipe choice.",
+            )
+        if (
+            request.optimization_precision is not None
+            and request.optimization_precision.lower() != selected.precision.lower()
+        ):
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request optimization precision does not match persisted recipe choice.",
+            )
+        expected_mobius_dtype = recipe.mobius.dtype
+        if request.candidate.recommended_mobius_dtype != expected_mobius_dtype:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request candidate Mobius dtype does not match persisted recipe.",
+            )
+        expected_olive_precision = None if selected.skip_olive else selected.precision
+        if request.candidate.recommended_olive_precision != expected_olive_precision:
+            raise RecipeExecutionResolutionError(
+                "Generated recipe request candidate Olive precision does not match persisted recipe.",
+            )
+        return RecipeExecutionPlan(
+            recipe=recipe,
+            pinned_revision=pinned_revision,
+            source="generated_recipe_attempt_store",
+        )
+
+    @staticmethod
+    def _assert_attempt_identity_matches_generated(
+        *,
+        attempt: RecipeAttempt,
+        generated: Any,
+    ) -> None:
+        mismatches: list[str] = []
+        for field_name in (
+            "model_id",
+            "revision_sha",
+            "requested_device",
+            "requested_precision",
+            "compiler_version",
+            "capability_fingerprint",
+            "toolchain_fingerprint",
+            "profile_fingerprint",
+        ):
+            if getattr(attempt, field_name) != getattr(generated, field_name):
+                mismatches.append(field_name)
+        if mismatches:
+            raise RecipeExecutionResolutionError(
+                "Recipe attempt identity mismatch against generated record for field(s): "
+                + ", ".join(mismatches)
+                + ".",
+            )
+
+
+def _load_generated_recipe_execution_plan(
+    payload: dict[str, object],
+) -> tuple[ModelRecipe, str, str, str]:
+    try:
+        validate_generated_recipe_payload(payload)
+    except GeneratedRecipeCompileError as exc:
+        raise RecipeExecutionResolutionError(
+            f"Generated recipe payload failed schema validation: {exc}",
+        ) from exc
+
+    recipe_payload = _require_mapping(payload.get("recipe"), field_name="generated.recipe")
+    recipe = _recipe_from_payload(recipe_payload)
+    pinned_revision = _normalize_revision_sha(
+        payload.get("pinned_revision"),
+        field_name="generated.pinned_revision",
+    )
+    provenance_payload = _require_mapping(payload.get("provenance"), field_name="generated.provenance")
+    resolution_outcome = _require_string(
+        provenance_payload.get("resolution_outcome"),
+        field_name="generated.provenance.resolution_outcome",
+    ).lower()
+    capability_status = _require_string(
+        provenance_payload.get("capability_status"),
+        field_name="generated.provenance.capability_status",
+    ).lower()
+    return recipe, pinned_revision, resolution_outcome, capability_status
+
+
+def _recipe_from_payload(payload: dict[str, object]) -> ModelRecipe:
+    mobius_payload = _require_mapping(payload.get("mobius"), field_name="generated.recipe.mobius")
+    olive_raw = payload.get("olive")
+    olive_payload = _require_mapping(olive_raw, field_name="generated.recipe.olive") if olive_raw is not None else None
+
+    ancillary_rows = _require_array(payload.get("ancillary_files"), field_name="generated.recipe.ancillary_files")
+    ancillary_files: list[AncillaryFileRule] = []
+    for index, row in enumerate(ancillary_rows, start=1):
+        item = _require_mapping(row, field_name=f"generated.recipe.ancillary_files[{index}]")
+        ancillary_files.append(
+            AncillaryFileRule(
+                relative_path=_require_string(
+                    item.get("relative_path"),
+                    field_name=f"generated.recipe.ancillary_files[{index}].relative_path",
+                ),
+                required=_require_bool(
+                    item.get("required"),
+                    field_name=f"generated.recipe.ancillary_files[{index}].required",
+                ),
+                source=_require_string(
+                    item.get("source"),
+                    field_name=f"generated.recipe.ancillary_files[{index}].source",
+                ),
+            )
+        )
+
+    optimization_rows = _require_array(
+        payload.get("optimization_choices"),
+        field_name="generated.recipe.optimization_choices",
+    )
+    optimization_choices: list[OptimizationChoice] = []
+    for index, row in enumerate(optimization_rows, start=1):
+        item = _require_mapping(row, field_name=f"generated.recipe.optimization_choices[{index}]")
+        optimization_choices.append(
+            OptimizationChoice(
+                strategy=_require_string(
+                    item.get("strategy"),
+                    field_name=f"generated.recipe.optimization_choices[{index}].strategy",
+                ),
+                precision=_require_string(
+                    item.get("precision"),
+                    field_name=f"generated.recipe.optimization_choices[{index}].precision",
+                ),
+                task_profile=_require_string(
+                    item.get("task_profile"),
+                    field_name=f"generated.recipe.optimization_choices[{index}].task_profile",
+                ),
+                skip_olive=_require_bool(
+                    item.get("skip_olive"),
+                    field_name=f"generated.recipe.optimization_choices[{index}].skip_olive",
+                ),
+                default=_require_bool(
+                    item.get("default"),
+                    field_name=f"generated.recipe.optimization_choices[{index}].default",
+                ),
+            )
+        )
+    try:
+        modality = CandidateModality(
+            _require_string(payload.get("modality"), field_name="generated.recipe.modality")
+        )
+    except ValueError as exc:
+        raise RecipeExecutionResolutionError(
+            f"Generated recipe modality is unsupported: {payload.get('modality')!r}.",
+        ) from exc
+    try:
+        inference_modality = CandidateModality(
+            _require_string(
+                payload.get("inference_modality"),
+                field_name="generated.recipe.inference_modality",
+            )
+        )
+    except ValueError as exc:
+        raise RecipeExecutionResolutionError(
+            f"Generated recipe inference_modality is unsupported: {payload.get('inference_modality')!r}.",
+        ) from exc
+    try:
+        status = RecipeStatus(_require_string(payload.get("status"), field_name="generated.recipe.status"))
+    except ValueError as exc:
+        raise RecipeExecutionResolutionError(
+            f"Generated recipe status is unsupported: {payload.get('status')!r}.",
+        ) from exc
+    return ModelRecipe(
+        id=_require_string(payload.get("id"), field_name="generated.recipe.id"),
+        version=_require_string(payload.get("version"), field_name="generated.recipe.version"),
+        status=status,
+        status_reason=_require_string(
+            payload.get("status_reason"),
+            field_name="generated.recipe.status_reason",
+        ),
+        huggingface_model_id=_require_string(
+            payload.get("huggingface_model_id"),
+            field_name="generated.recipe.huggingface_model_id",
+        ),
+        modality=modality,
+        task_profile=_require_string(payload.get("task_profile"), field_name="generated.recipe.task_profile"),
+        verified_revision=_optional_string(payload.get("verified_revision")),
+        preferred_revision=_optional_string(payload.get("preferred_revision")),
+        mobius=MobiusRecipeArgs(
+            ep=_require_string(mobius_payload.get("ep"), field_name="generated.recipe.mobius.ep"),
+            runtime=_require_string(mobius_payload.get("runtime"), field_name="generated.recipe.mobius.runtime"),
+            dtype=_optional_string(mobius_payload.get("dtype")),
+            task=_optional_string(mobius_payload.get("task")),
+        ),
+        olive=(
+            OliveRecipeArgs(
+                input_source=_require_string(
+                    olive_payload.get("input_source"),
+                    field_name="generated.recipe.olive.input_source",
+                ),
+                task=_require_string(olive_payload.get("task"), field_name="generated.recipe.olive.task"),
+                precision=_optional_string(olive_payload.get("precision")),
+                device=_require_string(
+                    olive_payload.get("device"),
+                    field_name="generated.recipe.olive.device",
+                ),
+                provider=_require_string(
+                    olive_payload.get("provider"),
+                    field_name="generated.recipe.olive.provider",
+                ),
+                log_level=_require_string(
+                    olive_payload.get("log_level"),
+                    field_name="generated.recipe.olive.log_level",
+                ),
+            )
+            if olive_payload is not None
+            else None
+        ),
+        ancillary_files=tuple(ancillary_files),
+        runtime_validation=_require_string(
+            payload.get("runtime_validation"),
+            field_name="generated.recipe.runtime_validation",
+        ),
+        inference_modality=inference_modality,
+        optimization_choices=tuple(optimization_choices),
+        artifact_cache_prefix=_require_string(
+            payload.get("artifact_cache_prefix"),
+            field_name="generated.recipe.artifact_cache_prefix",
+        ),
+        model_name_prefix=_require_string(
+            payload.get("model_name_prefix"),
+            field_name="generated.recipe.model_name_prefix",
+        ),
+        success_message=_require_string(
+            payload.get("success_message"),
+            field_name="generated.recipe.success_message",
+        ),
+    )
+
+
+def _require_mapping(value: object, *, field_name: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise RecipeExecutionResolutionError(f"{field_name} must be an object.")
+    return value
+
+
+def _require_array(value: object, *, field_name: str) -> list[object]:
+    if not isinstance(value, list):
+        raise RecipeExecutionResolutionError(f"{field_name} must be an array.")
+    return value
+
+
+def _require_string(value: object, *, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RecipeExecutionResolutionError(f"{field_name} must be a non-empty string.")
+    return value.strip()
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise RecipeExecutionResolutionError("Optional string field must be null or a string.")
+    stripped = value.strip()
+    return stripped or None
+
+
+def _require_bool(value: object, *, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise RecipeExecutionResolutionError(f"{field_name} must be a boolean.")
+    return value
+
+
+def _normalize_revision_sha(value: object, *, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RecipeExecutionResolutionError(f"{field_name} must be a non-empty string.")
+    normalized = value.strip().lower()
+    if _HEX40_RE.fullmatch(normalized) is None:
+        raise RecipeExecutionResolutionError(
+            f"{field_name} must be a full 40-character lowercase hex revision SHA.",
+        )
+    return normalized
 
 
 class FoundrySdkTextInferenceBackend:
@@ -120,6 +633,8 @@ class ProductionBuildStageRunner:
         runtime_timeout_seconds: int = 900,
         model_acquisition: HuggingFaceAcquisitionClient | None = None,
         recipe_registry: RecipeRegistry | None = None,
+        recipe_attempt_store: RecipeAttemptStore | None = None,
+        recipe_execution_resolver: RecipeExecutionResolver | None = None,
     ) -> None:
         self._process_runner = process_runner
         self._build_timeout_seconds = build_timeout_seconds
@@ -127,6 +642,10 @@ class ProductionBuildStageRunner:
         self._runtime_timeout_seconds = runtime_timeout_seconds
         self._model_acquisition = model_acquisition or HuggingFaceAcquisitionAdapter()
         self._recipe_registry = recipe_registry or DEFAULT_RECIPE_REGISTRY
+        self._execution_resolver = recipe_execution_resolver or RecipeExecutionResolver(
+            recipe_registry=self._recipe_registry,
+            recipe_attempt_store=recipe_attempt_store,
+        )
 
     def run(
         self,
@@ -135,23 +654,38 @@ class ProductionBuildStageRunner:
         persist: Callable[[], None],
         cancellation_event: Event,
     ) -> None:
-        staging_dir, package_dir = production_package_paths(job, recipe_registry=self._recipe_registry)
-        staging_preexisting = staging_dir.exists()
-        package_preexisting = package_dir.exists()
+        staging_dir: Path | None = None
+        package_dir: Path | None = None
+        staging_preexisting = False
+        package_preexisting = False
         try:
-            self._run(job, persist=persist, cancellation_event=cancellation_event)
+            execution = self._execution_resolver.resolve(job.request)
+            staging_dir, package_dir = production_package_paths(
+                job,
+                recipe_registry=self._recipe_registry,
+                resolved_recipe=execution.recipe,
+            )
+            staging_preexisting = staging_dir.exists()
+            package_preexisting = package_dir.exists()
+            self._run(
+                job,
+                recipe=execution.recipe,
+                pinned_revision=execution.pinned_revision,
+                persist=persist,
+                cancellation_event=cancellation_event,
+            )
         except Exception as exc:
-            if not staging_preexisting and staging_dir.exists():
+            if staging_dir is not None and not staging_preexisting and staging_dir.exists():
                 shutil.rmtree(staging_dir)
-            if not package_preexisting and package_dir.exists():
+            if package_dir is not None and not package_preexisting and package_dir.exists():
                 shutil.rmtree(package_dir)
             if job.state == JobState.CANCELLED:
                 return
-            classification = (
-                FailureClassification.MISSING_DEPENDENCY
-                if isinstance(exc, FileNotFoundError)
-                else FailureClassification.PROCESS_FAILED
-            )
+            classification = FailureClassification.PROCESS_FAILED
+            if isinstance(exc, FileNotFoundError):
+                classification = FailureClassification.MISSING_DEPENDENCY
+            elif isinstance(exc, RecipeExecutionResolutionError):
+                classification = exc.classification
             fail_job(
                 job,
                 FailureInfo(
@@ -167,35 +701,13 @@ class ProductionBuildStageRunner:
         self,
         job: BuildJob,
         *,
+        recipe: ModelRecipe,
+        pinned_revision: str,
         persist: Callable[[], None],
         cancellation_event: Event,
     ) -> None:
         request = job.request
-        recipe_match = self._recipe_registry.resolve(
-            model_id=request.candidate.huggingface_model_id,
-            modality=request.candidate.modality,
-            task_profile=request.task_profile,
-            allow_experimental=True,
-        )
-        recipe = recipe_match.recipe
-        if recipe is None:
-            raise RuntimeError(recipe_match.reason)
-        if recipe.status != RecipeStatus.VERIFIED:
-            raise RuntimeError(
-                f"Production execution is verified only for recipe status 'verified'; "
-                f"received '{recipe.id}' ({recipe.status.value})."
-            )
-        if recipe.verified_revision is None:
-            raise RuntimeError(
-                f"Verified recipe '{recipe.id}' is missing a pinned verified revision."
-            )
-        if request.hf_revision != recipe.verified_revision:
-            raise RuntimeError(
-                f"Production execution requires pinned revision {recipe.verified_revision}; "
-                f"received {request.hf_revision or 'none'}."
-            )
-        optimization = recipe.choice_for_profile(request.task_profile, request.skip_olive)
-        if optimization is None:
+        if recipe.choice_for_profile(request.task_profile, request.skip_olive) is None:
             supported = ", ".join(
                 f"{choice.task_profile}/skip_olive={choice.skip_olive}"
                 for choice in recipe.optimization_choices
@@ -215,19 +727,19 @@ class ProductionBuildStageRunner:
         mobius_dir.mkdir(parents=True, exist_ok=False)
         olive_dir.mkdir(parents=True, exist_ok=False)
 
-        transition(job, JobState.DOWNLOADING, f"Pinned Hugging Face revision {request.hf_revision}.")
+        transition(job, JobState.DOWNLOADING, f"Pinned Hugging Face revision {pinned_revision}.")
         persist()
         snapshot_path = self._model_acquisition.acquire_snapshot(
             recipe.huggingface_model_id,
             snapshot_dir,
-            revision=recipe.verified_revision,
+            revision=pinned_revision,
         )
         mobius_dtype = recipe.mobius.dtype or "default"
         transition(
             job,
             JobState.MOBIUS_BUILDING,
             (
-                f"Running verified Mobius {recipe.mobius.ep} {recipe.mobius.runtime} "
+                f"Running recipe Mobius {recipe.mobius.ep} {recipe.mobius.runtime} "
                 f"{mobius_dtype} build."
             ),
         )
@@ -268,7 +780,7 @@ class ProductionBuildStageRunner:
             job,
             JobState.OLIVE_OPTIMIZING,
             (
-                f"Running verified Olive {recipe.olive.input_source} "
+                f"Running recipe Olive {recipe.olive.input_source} "
                 f"{recipe.olive.precision or 'default'} optimization."
             ),
         )
@@ -311,7 +823,11 @@ class ProductionBuildStageRunner:
         persist()
         artifact_id = self._artifact_id(job)
         model_name = f"{recipe.model_name_prefix}-{artifact_id[:12]}:1"
-        staging_dir, package_dir = production_package_paths(job, recipe_registry=self._recipe_registry)
+        staging_dir, package_dir = production_package_paths(
+            job,
+            recipe_registry=self._recipe_registry,
+            resolved_recipe=recipe,
+        )
         if package_dir.exists():
             raise FileExistsError(f"Immutable artifact path already exists: {package_dir}")
         if staging_dir.exists():
@@ -400,7 +916,9 @@ class ProductionBuildStageRunner:
     ) -> CommandResult:
         result = self._process_runner.run(spec, cancel_event=cancellation_event)
         if not result.ok:
-            detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.exit_code}"
+            detail = _compact_failure_detail(
+                result.stderr.strip() or result.stdout.strip() or f"exit code {result.exit_code}"
+            )
             raise RuntimeError(f"{label} failed: {detail}")
         return result
 
@@ -429,22 +947,37 @@ def production_package_paths(
     job: BuildJob,
     *,
     recipe_registry: RecipeRegistry = DEFAULT_RECIPE_REGISTRY,
+    resolved_recipe: ModelRecipe | None = None,
 ) -> tuple[Path, Path]:
     artifact_id = ProductionBuildStageRunner._artifact_id(job)
     cache = job.request.model_cache_dir
-    recipe = recipe_registry.resolve(
-        model_id=job.request.candidate.huggingface_model_id,
-        modality=job.request.candidate.modality,
-        task_profile=job.request.task_profile,
-        allow_experimental=True,
-    ).recipe
-    prefix = recipe.artifact_cache_prefix if recipe else _fallback_cache_prefix(job.request.candidate.huggingface_model_id)
+    if resolved_recipe is not None:
+        prefix = resolved_recipe.artifact_cache_prefix
+    elif job.request.recipe_artifact_cache_prefix:
+        prefix = job.request.recipe_artifact_cache_prefix
+    else:
+        recipe = recipe_registry.resolve(
+            model_id=job.request.candidate.huggingface_model_id,
+            modality=job.request.candidate.modality,
+            task_profile=job.request.task_profile,
+            allow_experimental=True,
+        ).recipe
+        prefix = (
+            recipe.artifact_cache_prefix
+            if recipe
+            else _fallback_cache_prefix(job.request.candidate.huggingface_model_id)
+        )
+    normalized_prefix = _normalize_cache_prefix(prefix)
     return (
-        cache / f".partial-{prefix}-{artifact_id[:12]}",
-        cache / f"{prefix}-{artifact_id[:12]}",
+        cache / f".partial-{normalized_prefix}-{artifact_id[:12]}",
+        cache / f"{normalized_prefix}-{artifact_id[:12]}",
     )
 
 
-def _fallback_cache_prefix(model_id: str) -> str:
-    slug = re.sub(r"[^a-z0-9._-]+", "-", model_id.strip().split("/")[-1].lower())
+def _normalize_cache_prefix(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9._-]+", "-", value.strip().lower()).strip("-")
     return slug or "model"
+
+
+def _fallback_cache_prefix(model_id: str) -> str:
+    return _normalize_cache_prefix(model_id.strip().split("/")[-1])
