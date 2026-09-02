@@ -182,3 +182,140 @@ def test_cleanup_failed_workspaces_from_summary_preserves_succeeded_job(tmp_path
     assert not failed_workspace.exists()
     assert succeeded_workspace.exists()
 
+
+def test_sanitize_text_redacts_tokens_and_truncates() -> None:
+    module = _load_round_runner_module()
+    raw = (
+        "token hf_abcdefghijklmnopqrstuvwxyz123456 "
+        "Bearer SUPERSECRET012345 api_key=ABCDEF012345 "
+        "path C:\\temp\\secret.txt \u0007"
+    )
+    sanitized = module._sanitize_text(raw, (), max_chars=80)
+    assert "hf_abcdefghijklmnopqrstuvwxyz123456" not in sanitized
+    assert "SUPERSECRET012345" not in sanitized
+    assert "ABCDEF012345" not in sanitized
+    assert "C:\\temp\\secret.txt" not in sanitized
+    assert "\u0007" not in sanitized
+    assert len(sanitized) <= 80
+
+
+def test_load_quality_validation_evidence_from_metrics_ref(tmp_path: Path) -> None:
+    module = _load_round_runner_module()
+    runtime_root = tmp_path / "runtime"
+    state_root = runtime_root / "state"
+    workspace_root = runtime_root / "workspace"
+    cache_root = runtime_root / "cache"
+    for path in (runtime_root, state_root, workspace_root, cache_root):
+        path.mkdir(parents=True, exist_ok=True)
+
+    job_id = "11111111-1111-1111-1111-111111111111"
+    evidence_path = workspace_root / job_id / "quality-validation-evidence.json"
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "profile_id": "textgen-basic-quality-v1",
+                "profile_version": 1,
+                "baseline_comparison": {"passed": False, "regressions": ["regressed"]},
+                "per_prompt": [
+                    {
+                        "prompt_id": "prompt-a",
+                        "category": "correctness",
+                        "prompt": "p" * 400,
+                        "baseline": {
+                            "output_text": "b" * 900,
+                            "checks": {"passed": True, "failures": []},
+                        },
+                        "optimized": {
+                            "output_text": "o" * 900,
+                            "checks": {"passed": False, "failures": ["missing_keyword"]},
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    paths = module.RunPaths(
+        repo_root=tmp_path,
+        output_root=tmp_path,
+        manifest_path=tmp_path / "models.json",
+        scratch_root=tmp_path,
+        runtime_root=runtime_root,
+        state_root=state_root,
+        workspace_base=workspace_root,
+        model_cache_dir=cache_root,
+        service_db_path=state_root / "service.sqlite3",
+        recipe_attempt_db_path=state_root / "recipe-attempts.sqlite3",
+        run_id="r4-test",
+    )
+    attempt_payload = {
+        "gates": [
+            {
+                "gate": "quality_validation",
+                "metrics_ref": f"quality-metrics://{job_id}/quality-validation-evidence.json",
+            }
+        ]
+    }
+    loaded = module._load_quality_validation_evidence(
+        paths=paths,
+        attempt_payload=attempt_payload,
+        job_id=job_id,
+    )
+
+    assert isinstance(loaded, dict)
+    assert loaded["status"] == "loaded"
+    assert loaded["metrics_ref"] == f"quality-metrics://{job_id}/quality-validation-evidence.json"
+    prompts = loaded["per_prompt"]
+    assert isinstance(prompts, list) and len(prompts) == 1
+    prompt = prompts[0]
+    baseline = prompt["baseline"]
+    optimized = prompt["optimized"]
+    assert isinstance(baseline, dict) and isinstance(optimized, dict)
+    assert isinstance(prompt["prompt"], str) and len(prompt["prompt"]) <= module.QUALITY_EVIDENCE_MAX_PROMPT_CHARS
+    assert isinstance(baseline["output_text"], str)
+    assert len(baseline["output_text"]) <= module.QUALITY_EVIDENCE_MAX_OUTPUT_CHARS
+    assert isinstance(optimized["output_text"], str)
+    assert len(optimized["output_text"]) <= module.QUALITY_EVIDENCE_MAX_OUTPUT_CHARS
+    excerpt = loaded["failure_excerpt"]
+    assert isinstance(excerpt, list) and len(excerpt) == 1
+    assert excerpt[0]["prompt_id"] == "prompt-a"
+    assert excerpt[0]["optimized_passed"] is False
+
+
+def test_load_quality_validation_evidence_detects_job_mismatch(tmp_path: Path) -> None:
+    module = _load_round_runner_module()
+    runtime_root = tmp_path / "runtime"
+    state_root = runtime_root / "state"
+    workspace_root = runtime_root / "workspace"
+    cache_root = runtime_root / "cache"
+    for path in (runtime_root, state_root, workspace_root, cache_root):
+        path.mkdir(parents=True, exist_ok=True)
+    paths = module.RunPaths(
+        repo_root=tmp_path,
+        output_root=tmp_path,
+        manifest_path=tmp_path / "models.json",
+        scratch_root=tmp_path,
+        runtime_root=runtime_root,
+        state_root=state_root,
+        workspace_base=workspace_root,
+        model_cache_dir=cache_root,
+        service_db_path=state_root / "service.sqlite3",
+        recipe_attempt_db_path=state_root / "recipe-attempts.sqlite3",
+        run_id="r4-test",
+    )
+    loaded = module._load_quality_validation_evidence(
+        paths=paths,
+        attempt_payload={
+            "gates": [
+                {
+                    "gate": "quality_validation",
+                    "metrics_ref": "quality-metrics://aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/quality-validation-evidence.json",
+                }
+            ]
+        },
+        job_id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    )
+    assert isinstance(loaded, dict)
+    assert loaded["status"] == "metrics-ref-job-mismatch"

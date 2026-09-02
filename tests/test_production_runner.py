@@ -10,6 +10,7 @@ from threading import Event
 
 import pytest
 
+import fl_model_onboarding.production_runner as production_runner_module
 from fl_model_onboarding.adapters.interfaces import CommandResult, CommandSpec
 from fl_model_onboarding.architecture_capabilities import (
     load_architecture_capability_registry,
@@ -899,3 +900,260 @@ def test_package_collision_does_not_delete_existing_immutable_artifact(tmp_path:
 
     assert job.state == JobState.FAILED
     assert marker.read_text(encoding="utf-8") == "keep"
+
+
+def test_decoder_output_reconciliation_remaps_unique_quantized_suffix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir(parents=True, exist_ok=False)
+    (staging / "model.onnx").write_bytes(b"onnx-placeholder")
+    (staging / "genai_config.json").write_text(
+        json.dumps(
+            {
+                "model": {
+                    "decoder": {
+                        "outputs": {
+                            "logits": "logits",
+                            "present_key_names": "present.0.key",
+                        }
+                    }
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        production_runner_module,
+        "_load_onnx_graph_output_names",
+        lambda _: ("logits_Q4", "present.0.key"),
+    )
+
+    result = production_runner_module._reconcile_decoder_outputs_in_staging_package(staging_dir=staging)
+
+    assert result["status"] == "applied"
+    assert result["remapped_outputs"] == {"logits": "logits_Q4"}
+    updated = json.loads((staging / "genai_config.json").read_text(encoding="utf-8"))
+    outputs = updated["model"]["decoder"]["outputs"]
+    assert outputs["logits"] == "logits_Q4"
+    assert outputs["present_key_names"] == "present.0.key"
+
+
+def test_decoder_output_reconciliation_fails_closed_on_ambiguous_suffix_candidates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir(parents=True, exist_ok=False)
+    (staging / "model.onnx").write_bytes(b"onnx-placeholder")
+    original = {
+        "model": {
+            "decoder": {
+                "outputs": {
+                    "logits": "logits",
+                }
+            }
+        }
+    }
+    (staging / "genai_config.json").write_text(json.dumps(original, indent=2), encoding="utf-8")
+    monkeypatch.setattr(
+        production_runner_module,
+        "_load_onnx_graph_output_names",
+        lambda _: ("logits_Q4", "logits_Q8"),
+    )
+
+    with pytest.raises(RuntimeError, match="unresolved mappings"):
+        production_runner_module._reconcile_decoder_outputs_in_staging_package(staging_dir=staging)
+    current = json.loads((staging / "genai_config.json").read_text(encoding="utf-8"))
+    assert current == original
+
+
+def test_decoder_output_reconciliation_fails_closed_on_missing_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir(parents=True, exist_ok=False)
+    (staging / "model.onnx").write_bytes(b"onnx-placeholder")
+    original = {
+        "model": {
+            "decoder": {
+                "outputs": {
+                    "logits": "logits",
+                }
+            }
+        }
+    }
+    (staging / "genai_config.json").write_text(json.dumps(original, indent=2), encoding="utf-8")
+    monkeypatch.setattr(
+        production_runner_module,
+        "_load_onnx_graph_output_names",
+        lambda _: ("other_output",),
+    )
+
+    with pytest.raises(RuntimeError, match="unresolved mappings"):
+        production_runner_module._reconcile_decoder_outputs_in_staging_package(staging_dir=staging)
+    current = json.loads((staging / "genai_config.json").read_text(encoding="utf-8"))
+    assert current == original
+
+
+def test_decoder_output_reconciliation_leaves_already_correct_mapping_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir(parents=True, exist_ok=False)
+    (staging / "model.onnx").write_bytes(b"onnx-placeholder")
+    original = {
+        "model": {
+            "decoder": {
+                "outputs": {
+                    "logits": "logits_Q4",
+                }
+            }
+        }
+    }
+    (staging / "genai_config.json").write_text(json.dumps(original, indent=2), encoding="utf-8")
+    monkeypatch.setattr(
+        production_runner_module,
+        "_load_onnx_graph_output_names",
+        lambda _: ("logits_Q4", "present.0.key"),
+    )
+
+    result = production_runner_module._reconcile_decoder_outputs_in_staging_package(staging_dir=staging)
+
+    assert result["status"] == "verified"
+    current = json.loads((staging / "genai_config.json").read_text(encoding="utf-8"))
+    assert current == original
+
+
+def test_decoder_output_reconciliation_accepts_indexed_decoder_output_templates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir(parents=True, exist_ok=False)
+    (staging / "model.onnx").write_bytes(b"onnx-placeholder")
+    original = {
+        "model": {
+            "decoder": {
+                "outputs": {
+                    "logits": "logits_Q4",
+                    "present_key_names": "present.%d.key",
+                    "present_value_names": "present.%d.value",
+                }
+            }
+        }
+    }
+    (staging / "genai_config.json").write_text(json.dumps(original, indent=2), encoding="utf-8")
+    monkeypatch.setattr(
+        production_runner_module,
+        "_load_onnx_graph_output_names",
+        lambda _: (
+            "logits_Q4",
+            "present.0.key",
+            "present.1.key",
+            "present.0.value",
+        ),
+    )
+
+    result = production_runner_module._reconcile_decoder_outputs_in_staging_package(staging_dir=staging)
+
+    assert result["status"] == "verified"
+    assert result["remapped_outputs"] == {}
+    current = json.loads((staging / "genai_config.json").read_text(encoding="utf-8"))
+    assert current == original
+
+
+def test_decoder_output_reconciliation_rejects_unsafe_paths_and_invalid_config_shape(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir(parents=True, exist_ok=False)
+    (staging / "model.onnx").write_bytes(b"onnx-placeholder")
+    (staging / "genai_config.json").write_text(
+        json.dumps({"model": {"decoder": {"outputs": {"logits": "logits"}}}}, indent=2),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="unsafe path components"):
+        production_runner_module._reconcile_decoder_outputs_in_staging_package(
+            staging_dir=staging,
+            model_relative_path="../model.onnx",
+        )
+    (staging / "genai_config.json").write_text(
+        json.dumps({"model": {"decoder": {"outputs": ["not", "a", "mapping"]}}}, indent=2),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="must be an object"):
+        production_runner_module._reconcile_decoder_outputs_in_staging_package(staging_dir=staging)
+
+
+class TinyOutputMismatchRunner(ContractProcessRunner):
+    def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+        self.specs.append(spec)
+        self.cancel_events.append(cancel_event)
+        argv = spec.argv
+        stdout = ""
+        if argv[:2] == ("mobius", "build"):
+            output = Path(argv[-1])
+            (output / "model.onnx").write_bytes(b"mobius")
+            (output / "genai_config.json").write_text(
+                json.dumps({"model": {"decoder": {"outputs": {"logits": "logits"}}}}, indent=2),
+                encoding="utf-8",
+            )
+            (output / "tokenizer.json").write_text("{}", encoding="utf-8")
+        elif argv[:2] == ("olive", "optimize"):
+            output = Path(argv[argv.index("--output_path") + 1])
+            (output / "model.onnx").write_bytes(b"olive")
+            (output / "genai_config.json").write_text(
+                json.dumps({"model": {"decoder": {"outputs": {"logits": "logits"}}}}, indent=2),
+                encoding="utf-8",
+            )
+            (output / "tokenizer.json").write_text("{}", encoding="utf-8")
+        elif "validate-runtime" in argv:
+            stdout = json.dumps(
+                {
+                    "ok": True,
+                    "checks": [
+                        "onnx_checker=1",
+                        "ort_cpu_load=passed",
+                        "oga_generation=passed",
+                    ],
+                }
+            )
+        elif "foundry-infer" in argv:
+            stdout = json.dumps({"ok": True, "output": "OK"})
+        return CommandResult(spec=spec, exit_code=0, stdout=stdout, stderr="")
+
+
+def test_production_runner_reconciles_staging_outputs_before_runtime_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="tiny-reconcile", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    runner = TinyOutputMismatchRunner()
+    monkeypatch.setattr(
+        production_runner_module,
+        "_load_onnx_graph_output_names",
+        lambda _: ("logits_Q4",),
+    )
+
+    ProductionBuildStageRunner(runner, model_acquisition=PinnedSnapshot()).run(
+        job,
+        persist=lambda: None,
+        cancellation_event=Event(),
+    )
+
+    assert job.state == JobState.SUCCEEDED
+    assert job.artifacts
+    package_config = json.loads((job.artifacts[0].path / "genai_config.json").read_text(encoding="utf-8"))
+    assert package_config["model"]["decoder"]["outputs"]["logits"] == "logits_Q4"
+    assert any(
+        "decoder output reconciliation applied" in event.message.lower()
+        for event in job.events
+    )

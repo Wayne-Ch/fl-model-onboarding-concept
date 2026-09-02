@@ -118,6 +118,11 @@ from .workspace_layout import default_workspace_base, workspace_root_for_job
 _HF_TOKEN_RE = re.compile(r"\bhf_[A-Za-z0-9]{16,}\b")
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{8,})")
 _API_KEY_RE = re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)")
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|authorization|secret)\s*[:=]\s*([^\s,;]+)"
+)
+_WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"[A-Za-z]:(?:\\|/(?!/))[^\"'\r\n]*")
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 _DEFAULT_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 _ASR_MODEL_ID = DISTIL_WHISPER_MODEL_ID
@@ -128,6 +133,10 @@ _RECIPE_DEFAULT_PRECISION = "auto"
 _RECIPE_QUALITY_PROFILE_ID = "textgen-basic-quality-v1"
 _AUTOMATIC_RECIPE_ATTEMPT_CONFIRMATION_PROVENANCE = "api.confirm_automatic_recipe_attempt"
 _ATTEMPT_FAILURE_MESSAGE_MAX = 2048
+_QUALITY_EVIDENCE_SCHEMA_VERSION = "1.0.0"
+_QUALITY_EVIDENCE_FILENAME = "quality-validation-evidence.json"
+_QUALITY_EVIDENCE_MAX_OUTPUT_CHARS = 512
+_QUALITY_EVIDENCE_MAX_PROMPT_CHARS = 256
 _RECIPE_TOOLCHAIN = RecipeCompilerToolchain(
     mobius_version="0.1.0",
     olive_version="0.13.0",
@@ -334,6 +343,7 @@ class QualityValidationOutcome:
     gate_status: AttemptGateStatus
     message: str
     evidence_ref: str
+    metrics_ref: str | None = None
 
 
 class BuildStageRunner(Protocol):
@@ -2051,6 +2061,20 @@ class LocalOnboardingService:
             baseline_outputs=baseline,
             require_baseline_comparison=True,
         )
+        try:
+            metrics_ref = self._persist_quality_validation_metrics(
+                job=job,
+                baseline_outputs=baseline,
+                optimized_outputs=optimized,
+                quality_result=result,
+            )
+        except (OSError, ValueError, TypeError) as exc:
+            return QualityValidationOutcome(
+                passed=False,
+                gate_status=AttemptGateStatus.FAILED,
+                message=f"Quality evidence capture failed: {exc}",
+                evidence_ref=f"{evidence_prefix}/metrics-persist-failed",
+            )
         baseline_gate = result.promotion_evidence.baseline_comparison_gate
         if baseline_gate == GateState.MISSING:
             return QualityValidationOutcome(
@@ -2058,6 +2082,7 @@ class LocalOnboardingService:
                 gate_status=AttemptGateStatus.NOT_RUN,
                 message="Quality baseline comparison was not recorded for this attempt.",
                 evidence_ref=f"{evidence_prefix}/baseline-not-run",
+                metrics_ref=metrics_ref,
             )
         if baseline_gate == GateState.UNAVAILABLE:
             return QualityValidationOutcome(
@@ -2065,6 +2090,7 @@ class LocalOnboardingService:
                 gate_status=AttemptGateStatus.UNAVAILABLE,
                 message="Quality baseline comparison was unavailable for this attempt.",
                 evidence_ref=f"{evidence_prefix}/baseline-unavailable",
+                metrics_ref=metrics_ref,
             )
         if result.promotion_evidence.can_promote:
             return QualityValidationOutcome(
@@ -2076,6 +2102,7 @@ class LocalOnboardingService:
                     "(determinism enforcement is limited to max_tokens in runtime worker)."
                 ),
                 evidence_ref=f"{evidence_prefix}/baseline-passed",
+                metrics_ref=metrics_ref,
             )
 
         failures: list[str] = []
@@ -2095,7 +2122,142 @@ class LocalOnboardingService:
             gate_status=AttemptGateStatus.FAILED,
             message="Quality validation failed: " + "; ".join(failures),
             evidence_ref=evidence_ref,
+            metrics_ref=metrics_ref,
         )
+
+    @staticmethod
+    def _quality_metrics_ref_for_job(job_id: str) -> str:
+        return f"quality-metrics://{job_id}/{_QUALITY_EVIDENCE_FILENAME}"
+
+    @staticmethod
+    def _sanitize_quality_capture_text(text: str, *, max_chars: int) -> str:
+        cleaned = _CONTROL_CHAR_RE.sub("", text)
+        cleaned = _HF_TOKEN_RE.sub("[REDACTED]", cleaned)
+        cleaned = _BEARER_RE.sub("******", cleaned)
+        cleaned = _API_KEY_RE.sub(r"\1[REDACTED]", cleaned)
+        cleaned = _SECRET_ASSIGNMENT_RE.sub(r"\1=[REDACTED]", cleaned)
+        cleaned = _WINDOWS_ABSOLUTE_PATH_RE.sub("<redacted-absolute-path>", cleaned)
+        cleaned = cleaned.strip()
+        if len(cleaned) <= max_chars:
+            return cleaned
+        if max_chars <= 3:
+            return cleaned[:max_chars]
+        return cleaned[: max_chars - 3].rstrip() + "..."
+
+    @staticmethod
+    def _deterministic_inference_payload(value: Any) -> dict[str, object] | None:
+        if value is None:
+            return None
+        return {
+            "temperature": value.temperature,
+            "seed": value.seed,
+            "max_tokens": value.max_tokens,
+        }
+
+    @classmethod
+    def _prompt_execution_payload(
+        cls,
+        *,
+        record: PromptExecutionRecord | None,
+        check: Any,
+    ) -> dict[str, object] | None:
+        if record is None and check is None:
+            return None
+        payload: dict[str, object] = {}
+        if record is not None:
+            payload["output_text"] = cls._sanitize_quality_capture_text(
+                record.output_text,
+                max_chars=_QUALITY_EVIDENCE_MAX_OUTPUT_CHARS,
+            )
+            payload["applied_determinism"] = cls._deterministic_inference_payload(record.applied_determinism)
+            payload["unsupported_determinism_fields"] = list(record.unsupported_determinism_fields)
+        if check is not None:
+            determinism = check.determinism
+            payload["checks"] = {
+                "passed": check.passed,
+                "failures": list(check.failures),
+                "determinism": {
+                    "recorded": determinism.recorded,
+                    "fully_enforced": determinism.fully_enforced,
+                    "unsupported_fields": list(determinism.unsupported_fields),
+                    "mismatched_fields": list(determinism.mismatched_fields),
+                },
+            }
+        return payload
+
+    def _persist_quality_validation_metrics(
+        self,
+        *,
+        job: BuildJob,
+        baseline_outputs: tuple[PromptExecutionRecord, ...],
+        optimized_outputs: tuple[PromptExecutionRecord, ...],
+        quality_result: Any,
+    ) -> str:
+        baseline_by_id = {row.prompt_id: row for row in baseline_outputs}
+        optimized_by_id = {row.prompt_id: row for row in optimized_outputs}
+        baseline_checks = (
+            {row.prompt_id: row for row in quality_result.baseline_functional.prompt_results}
+            if quality_result.baseline_functional is not None
+            else {}
+        )
+        optimized_checks = {
+            row.prompt_id: row for row in quality_result.optimized_functional.prompt_results
+        }
+        prompt_rows: list[dict[str, object]] = []
+        for prompt in self._quality_profile.prompts:
+            prompt_rows.append(
+                {
+                    "prompt_id": prompt.prompt_id,
+                    "category": prompt.category.value,
+                    "prompt": self._sanitize_quality_capture_text(
+                        prompt.prompt,
+                        max_chars=_QUALITY_EVIDENCE_MAX_PROMPT_CHARS,
+                    ),
+                    "baseline": self._prompt_execution_payload(
+                        record=baseline_by_id.get(prompt.prompt_id),
+                        check=baseline_checks.get(prompt.prompt_id),
+                    ),
+                    "optimized": self._prompt_execution_payload(
+                        record=optimized_by_id.get(prompt.prompt_id),
+                        check=optimized_checks.get(prompt.prompt_id),
+                    ),
+                }
+            )
+
+        baseline_comparison = quality_result.baseline_comparison
+        evidence_payload: dict[str, object] = {
+            "schema_version": _QUALITY_EVIDENCE_SCHEMA_VERSION,
+            "job_id": job.job_id,
+            "profile_id": quality_result.promotion_evidence.profile_id,
+            "profile_version": quality_result.promotion_evidence.profile_version,
+            "deterministic_inference": self._deterministic_inference_payload(
+                self._quality_profile.deterministic_inference
+            ),
+            "unsupported_determinism_fields_reported_by_runtime": ["temperature", "seed"],
+            "promotion_evidence": {
+                "can_promote": quality_result.promotion_evidence.can_promote,
+                "functional_gate": quality_result.promotion_evidence.functional_gate.value,
+                "baseline_comparison_gate": quality_result.promotion_evidence.baseline_comparison_gate.value,
+                "metrics_capture_gate": quality_result.promotion_evidence.metrics_gate.value,
+                "notes": list(quality_result.promotion_evidence.notes),
+            },
+            "baseline_comparison": (
+                {
+                    "passed": baseline_comparison.passed,
+                    "regressions": list(baseline_comparison.regressions),
+                }
+                if baseline_comparison is not None
+                else None
+            ),
+            "per_prompt": prompt_rows,
+        }
+        evidence_path = job.request.workspace_root / _QUALITY_EVIDENCE_FILENAME
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(
+            json.dumps(evidence_payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        return self._quality_metrics_ref_for_job(job.job_id)
 
     def _resolve_quality_baseline_artifact(
         self,
@@ -2395,6 +2557,7 @@ class LocalOnboardingService:
                 gate=AttemptGate.QUALITY_VALIDATION,
                 status=quality_outcome.gate_status,
                 evidence_ref=quality_outcome.evidence_ref,
+                metrics_ref=quality_outcome.metrics_ref,
             )
             if not quality_outcome.passed:
                 next_action = "Resolve quality prompt failures before attempting promotion."

@@ -31,7 +31,19 @@ EXPECTED_FROZEN_MODELS: tuple[tuple[str, str], ...] = (
     ("ibm-granite/granite-3.2-2b-instruct", "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3"),
 )
 TERMINAL_STATES = {"succeeded", "failed", "cancelled"}
-WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"[A-Za-z]:(?:\\|/(?!/))[^\s\"']+")
+WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"[A-Za-z]:(?:\\|/(?!/))[^\"'\r\n]*")
+CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+HF_TOKEN_RE = re.compile(r"\bhf_[A-Za-z0-9]{16,}\b")
+BEARER_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{8,})")
+API_KEY_RE = re.compile(r"(?i)\b(api[-_ ]?key\s*[=:]\s*)(\S+)")
+SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|authorization|secret)\s*[:=]\s*([^\s,;]+)"
+)
+QUALITY_METRICS_REF_RE = re.compile(
+    r"^quality-metrics://(?P<job_id>[0-9a-fA-F-]+)/(?P<filename>[A-Za-z0-9._-]+)$"
+)
+QUALITY_EVIDENCE_MAX_OUTPUT_CHARS = 512
+QUALITY_EVIDENCE_MAX_PROMPT_CHARS = 256
 REQUIRED_COMMANDS: tuple[str, ...] = ("foundry", "mobius", "olive")
 REQUIRED_DISTRIBUTIONS: tuple[tuple[str, str], ...] = (
     ("fl-model-onboarding", "fl_model_onboarding"),
@@ -569,6 +581,13 @@ def _parse_obsolete_cleanup_spec(value: str) -> tuple[Path, Path]:
     return summary_path, runtime_root
 
 
+def _round_run_id_prefix(round_name: str) -> str:
+    match = re.fullmatch(r"round-(\d+)", round_name.strip().lower())
+    if match is None:
+        return "run"
+    return f"r{match.group(1)}"
+
+
 def _cleanup_failed_workspaces_from_summary(
     *,
     summary_path: Path,
@@ -943,6 +962,191 @@ def _compact_attempt(payload: Any) -> dict[str, Any]:
     }
 
 
+def _quality_prompt_execution_payload(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    payload: dict[str, Any] = {}
+    output_text = value.get("output_text")
+    if isinstance(output_text, str):
+        payload["output_text"] = _sanitize_text(
+            output_text,
+            (),
+            max_chars=QUALITY_EVIDENCE_MAX_OUTPUT_CHARS,
+        )
+    applied = value.get("applied_determinism")
+    if isinstance(applied, dict):
+        payload["applied_determinism"] = applied
+    unsupported = value.get("unsupported_determinism_fields")
+    if isinstance(unsupported, list):
+        payload["unsupported_determinism_fields"] = [str(item) for item in unsupported]
+    checks = value.get("checks")
+    if isinstance(checks, dict):
+        payload["checks"] = checks
+    return payload or None
+
+
+def _quality_failure_excerpt(per_prompt: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    failures: list[dict[str, Any]] = []
+    for row in per_prompt:
+        baseline = row.get("baseline") if isinstance(row.get("baseline"), dict) else None
+        optimized = row.get("optimized") if isinstance(row.get("optimized"), dict) else None
+        baseline_checks = baseline.get("checks") if isinstance(baseline, dict) and isinstance(baseline.get("checks"), dict) else None
+        optimized_checks = (
+            optimized.get("checks")
+            if isinstance(optimized, dict) and isinstance(optimized.get("checks"), dict)
+            else None
+        )
+        baseline_passed = (
+            bool(baseline_checks.get("passed"))
+            if isinstance(baseline_checks, dict) and isinstance(baseline_checks.get("passed"), bool)
+            else None
+        )
+        optimized_passed = (
+            bool(optimized_checks.get("passed"))
+            if isinstance(optimized_checks, dict) and isinstance(optimized_checks.get("passed"), bool)
+            else None
+        )
+        if baseline_passed is True and optimized_passed is True:
+            continue
+        if baseline_passed is None and optimized_passed is None:
+            continue
+        failures.append(
+            {
+                "prompt_id": row.get("prompt_id"),
+                "baseline_passed": baseline_passed,
+                "optimized_passed": optimized_passed,
+                "baseline_failures": (
+                    baseline_checks.get("failures")
+                    if isinstance(baseline_checks, dict) and isinstance(baseline_checks.get("failures"), list)
+                    else []
+                ),
+                "optimized_failures": (
+                    optimized_checks.get("failures")
+                    if isinstance(optimized_checks, dict) and isinstance(optimized_checks.get("failures"), list)
+                    else []
+                ),
+                "baseline_output_text": baseline.get("output_text") if isinstance(baseline, dict) else None,
+                "optimized_output_text": optimized.get("output_text") if isinstance(optimized, dict) else None,
+            }
+        )
+    return failures
+
+
+def _load_quality_validation_evidence(
+    *,
+    paths: RunPaths,
+    attempt_payload: Any,
+    job_id: str | None,
+) -> dict[str, Any] | None:
+    if not isinstance(attempt_payload, dict):
+        return None
+    gates = attempt_payload.get("gates")
+    if not isinstance(gates, list):
+        return None
+    quality_gate = next(
+        (
+            row
+            for row in gates
+            if isinstance(row, dict) and str(row.get("gate", "")).lower() == "quality_validation"
+        ),
+        None,
+    )
+    if quality_gate is None:
+        return None
+    metrics_ref_raw = quality_gate.get("metrics_ref")
+    metrics_ref = str(metrics_ref_raw).strip() if isinstance(metrics_ref_raw, str) else ""
+    if not metrics_ref:
+        return {
+            "status": "metrics-ref-missing",
+            "metrics_ref": None,
+        }
+    match = QUALITY_METRICS_REF_RE.fullmatch(metrics_ref)
+    if match is None:
+        return {
+            "status": "metrics-ref-unsupported",
+            "metrics_ref": metrics_ref,
+        }
+    ref_job_id = match.group("job_id")
+    if job_id is not None and ref_job_id != job_id:
+        return {
+            "status": "metrics-ref-job-mismatch",
+            "metrics_ref": metrics_ref,
+            "expected_job_id": job_id,
+            "ref_job_id": ref_job_id,
+        }
+    filename = match.group("filename")
+    workspace_root = paths.workspace_base.resolve()
+    evidence_path = (workspace_root / ref_job_id / filename).resolve()
+    try:
+        evidence_path.relative_to(workspace_root)
+    except ValueError:
+        return {
+            "status": "metrics-ref-unsafe-path",
+            "metrics_ref": metrics_ref,
+            "ref_job_id": ref_job_id,
+        }
+    if not evidence_path.is_file():
+        return {
+            "status": "metrics-file-missing",
+            "metrics_ref": metrics_ref,
+            "ref_job_id": ref_job_id,
+        }
+    try:
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "status": "metrics-file-unreadable",
+            "metrics_ref": metrics_ref,
+            "ref_job_id": ref_job_id,
+            "error": str(exc),
+        }
+    if not isinstance(payload, dict):
+        return {
+            "status": "metrics-file-invalid-shape",
+            "metrics_ref": metrics_ref,
+            "ref_job_id": ref_job_id,
+        }
+
+    prompt_rows_raw = payload.get("per_prompt")
+    prompt_rows: list[dict[str, Any]] = []
+    if isinstance(prompt_rows_raw, list):
+        for row in prompt_rows_raw:
+            if not isinstance(row, dict):
+                continue
+            prompt_rows.append(
+                {
+                    "prompt_id": row.get("prompt_id"),
+                    "category": row.get("category"),
+                    "prompt": _sanitize_text(
+                        str(row.get("prompt")),
+                        (),
+                        max_chars=QUALITY_EVIDENCE_MAX_PROMPT_CHARS,
+                    )
+                    if isinstance(row.get("prompt"), str)
+                    else None,
+                    "baseline": _quality_prompt_execution_payload(row.get("baseline")),
+                    "optimized": _quality_prompt_execution_payload(row.get("optimized")),
+                }
+            )
+    failure_excerpt = _quality_failure_excerpt(prompt_rows)
+    return {
+        "status": "loaded",
+        "metrics_ref": metrics_ref,
+        "ref_job_id": ref_job_id,
+        "schema_version": payload.get("schema_version"),
+        "profile_id": payload.get("profile_id"),
+        "profile_version": payload.get("profile_version"),
+        "deterministic_inference": payload.get("deterministic_inference"),
+        "unsupported_determinism_fields_reported_by_runtime": payload.get(
+            "unsupported_determinism_fields_reported_by_runtime"
+        ),
+        "promotion_evidence": payload.get("promotion_evidence"),
+        "baseline_comparison": payload.get("baseline_comparison"),
+        "per_prompt": prompt_rows,
+        "failure_excerpt": failure_excerpt,
+    }
+
+
 def _load_generated_record(db_path: Path, recipe_fingerprint: str) -> dict[str, Any] | None:
     if not db_path.exists():
         return None
@@ -1064,9 +1268,10 @@ def _seed_snapshot_cache_from_previous_run(
 def _replacement_pairs(
     paths: RunPaths,
     *,
+    round_name: str,
     python_runtime: dict[str, Any] | None = None,
 ) -> tuple[tuple[str, str], ...]:
-    root_placeholder = f"scratch://round-4/{paths.run_id}"
+    root_placeholder = f"scratch://{round_name}/{paths.run_id}"
     replacements: list[tuple[str, str]] = [
         (str(paths.runtime_root), root_placeholder),
         (str(paths.state_root), f"{root_placeholder}/state"),
@@ -1091,13 +1296,27 @@ def _replacement_pairs(
     return tuple(replacements)
 
 
-def _sanitize_text(value: str, replacements: tuple[tuple[str, str], ...]) -> str:
+def _sanitize_text(
+    value: str,
+    replacements: tuple[tuple[str, str], ...],
+    *,
+    max_chars: int | None = None,
+) -> str:
     out = value
     for src, dst in replacements:
         src_backslash = src.replace("/", "\\")
         src_forward = src.replace("\\", "/")
         out = out.replace(src_backslash, dst).replace(src_forward, dst).replace(src, dst)
+    out = CONTROL_CHAR_RE.sub("", out)
+    out = HF_TOKEN_RE.sub("[REDACTED]", out)
+    out = BEARER_RE.sub("******", out)
+    out = API_KEY_RE.sub(r"\1[REDACTED]", out)
+    out = SECRET_ASSIGNMENT_RE.sub(r"\1=[REDACTED]", out)
     out = WINDOWS_ABSOLUTE_PATH_RE.sub("<redacted-absolute-path>", out)
+    if max_chars is not None and len(out) > max_chars:
+        if max_chars <= 3:
+            return out[:max_chars]
+        return out[: max_chars - 3].rstrip() + "..."
     return out
 
 
@@ -1474,6 +1693,14 @@ def _run_one_model(
                 else:
                     result["job"] = None
                     result["attempt"] = None
+            job_payload = result.get("job")
+            result["quality_validation_evidence"] = _load_quality_validation_evidence(
+                paths=paths,
+                attempt_payload=result.get("attempt"),
+                job_id=str(job_payload.get("job_id"))
+                if isinstance(job_payload, dict) and isinstance(job_payload.get("job_id"), str)
+                else None,
+            )
     finally:
         if service is not None:
             try:
@@ -1726,6 +1953,7 @@ def _format_bytes(value: int) -> str:
 
 def _build_report(
     *,
+    round_name: str,
     run_paths: RunPaths,
     git_head: str,
     git_branch: str,
@@ -1744,8 +1972,9 @@ def _build_report(
 ) -> str:
     model_success_rate = str(round_outcome.get("success_rate", "not_applicable"))
     attempt_success_rate = str(round_outcome.get("attempt_success_rate", "0/0"))
+    round_title = round_name.replace("-", " ").title()
     lines: list[str] = []
-    lines.append("# Recipe Agent v1 Round 4 Report")
+    lines.append(f"# Recipe Agent v1 {round_title} Report")
     lines.append("")
     lines.append(f"- **Run ID:** `{run_paths.run_id}`")
     lines.append(f"- **Branch:** `{git_branch}`")
@@ -1759,7 +1988,7 @@ def _build_report(
     )
     if not round_outcome.get("model_success_rate_applicable"):
         lines.append(f"- **Raw attempt outcome (diagnostic only):** `{attempt_success_rate}`")
-    lines.append(f"- **Retained external evidence root:** `scratch://round-4/{run_paths.run_id}`")
+    lines.append(f"- **Retained external evidence root:** `scratch://{round_name}/{run_paths.run_id}`")
     lines.append("")
     lines.append("## Frozen manifest and deterministic checks")
     lines.append("")
@@ -1790,16 +2019,30 @@ def _build_report(
     lines.append("")
     lines.append("## Per-model outcomes")
     lines.append("")
-    lines.append("| Model | Attempt state | First failed stage | Classification | Prior passed gates |")
-    lines.append("| --- | --- | --- | --- | --- |")
+    lines.append("| Model | Attempt state | First failed stage | Classification | Prior passed gates | Quality evidence |")
+    lines.append("| --- | --- | --- | --- | --- | --- |")
     for row in model_results:
         summary = row.get("failure_summary", {})
         prior = summary.get("prior_successful_gates") or []
         prior_text = ", ".join(str(item) for item in prior) if prior else "-"
+        quality_payload = row.get("quality_validation_evidence")
+        if isinstance(quality_payload, dict):
+            quality_status = str(quality_payload.get("status") or "-")
+            failure_excerpt = quality_payload.get("failure_excerpt")
+            if quality_status == "loaded":
+                quality_text = (
+                    f"loaded ({len(failure_excerpt)} prompt check failures)"
+                    if isinstance(failure_excerpt, list) and failure_excerpt
+                    else "loaded (all prompt checks passed)"
+                )
+            else:
+                quality_text = quality_status
+        else:
+            quality_text = "-"
         lines.append(
             "| "
             + f"{row.get('model_id')} | {summary.get('attempt_state')} | {summary.get('first_failed_stage') or '-'} "
-            + f"| {summary.get('first_failed_classification') or '-'} | {prior_text} |"
+            + f"| {summary.get('first_failed_classification') or '-'} | {prior_text} | {quality_text} |"
         )
     lines.append("")
     failed_rows = [row for row in model_results if row.get("failure_summary", {}).get("attempt_state") != "succeeded"]
@@ -1834,6 +2077,31 @@ def _build_report(
                     + f"fingerprint `{record.get('recipe_fingerprint')}`, capability `{record.get('capability_fingerprint')}`, "
                     + f"toolchain `{record.get('toolchain_fingerprint')}`, profile `{record.get('profile_fingerprint')}`"
                 )
+            quality_payload = row.get("quality_validation_evidence")
+            if isinstance(quality_payload, dict):
+                lines.append(f"   - Quality evidence status: `{quality_payload.get('status')}`")
+                metrics_ref = quality_payload.get("metrics_ref")
+                if metrics_ref:
+                    lines.append(f"   - Quality metrics ref: `{metrics_ref}`")
+                failure_excerpt = quality_payload.get("failure_excerpt")
+                if isinstance(failure_excerpt, list) and failure_excerpt:
+                    lines.append("   - Bounded quality prompt evidence:")
+                    for prompt_row in failure_excerpt[:3]:
+                        prompt_id = prompt_row.get("prompt_id")
+                        baseline_passed = prompt_row.get("baseline_passed")
+                        optimized_passed = prompt_row.get("optimized_passed")
+                        lines.append(
+                            "     - "
+                            + f"`{prompt_id}` baseline_passed={baseline_passed} optimized_passed={optimized_passed}"
+                        )
+                        baseline_text = prompt_row.get("baseline_output_text")
+                        if isinstance(baseline_text, str) and baseline_text:
+                            baseline_excerpt = baseline_text.replace("\n", "\\n")
+                            lines.append(f"       baseline: `{baseline_excerpt}`")
+                        optimized_text = prompt_row.get("optimized_output_text")
+                        if isinstance(optimized_text, str) and optimized_text:
+                            optimized_excerpt = optimized_text.replace("\n", "\\n")
+                            lines.append(f"       optimized: `{optimized_excerpt}`")
         lines.append("")
     lines.append("## Verified recipe reuse re-check (no rebuild)")
     lines.append("")
@@ -1880,7 +2148,9 @@ def _build_report(
         )
     else:
         lines.append("- Obsolete failed workspace cleanup: not requested.")
-    lines.append("- Paths represented in committed artifacts by `scratch://round-4/<run_id>/...` placeholders.")
+    lines.append(
+        f"- Paths represented in committed artifacts by `scratch://{round_name}/<run_id>/...` placeholders."
+    )
     lines.append("")
     return "\n".join(lines)
 
@@ -1944,13 +2214,20 @@ def main() -> int:
             "can be provided multiple times."
         ),
     )
+    parser.add_argument(
+        "--round-name",
+        default="",
+        help="Round label for output filenames and scratch URI placeholders (default: script directory name).",
+    )
     args = parser.parse_args()
 
     script_root = Path(__file__).resolve().parent
+    round_name = args.round_name.strip() or script_root.name
+    round_prefix = _round_run_id_prefix(round_name)
     output_root = Path(args.output_dir).resolve() if args.output_dir.strip() else script_root
     repo_root = script_root.parents[2]
     manifest_path = script_root.parent / "models.json"
-    run_id = args.run_id.strip() or datetime.now(timezone.utc).strftime("r4-%Y%m%dT%H%M%SZ")
+    run_id = args.run_id.strip() or datetime.now(timezone.utc).strftime(f"{round_prefix}-%Y%m%dT%H%M%SZ")
     previous_runtime_root = Path(args.seed_runtime_root).resolve() if args.seed_runtime_root.strip() else None
 
     scratch_root = Path(args.scratch_root).resolve()
@@ -1981,7 +2258,11 @@ def main() -> int:
 
     selected_python = Path(args.python_exe).resolve()
     python_runtime = _resolve_python_runtime(selected_python)
-    replacements = _replacement_pairs(paths, python_runtime=python_runtime)
+    replacements = _replacement_pairs(
+        paths,
+        round_name=round_name,
+        python_runtime=python_runtime,
+    )
 
     started_utc = _now_utc_iso()
     git_head = _git_value(paths.repo_root, ["rev-parse", "HEAD"])
@@ -2176,6 +2457,26 @@ def main() -> int:
                     if failure_summary.get("preflight_recipe_unregistered_expected")
                     else None
                 ),
+                "quality_validation_evidence_status": (
+                    row.get("quality_validation_evidence", {}).get("status")
+                    if isinstance(row.get("quality_validation_evidence"), dict)
+                    else None
+                ),
+                "quality_validation_metrics_ref": (
+                    row.get("quality_validation_evidence", {}).get("metrics_ref")
+                    if isinstance(row.get("quality_validation_evidence"), dict)
+                    else None
+                ),
+                "quality_validation_baseline_comparison": (
+                    row.get("quality_validation_evidence", {}).get("baseline_comparison")
+                    if isinstance(row.get("quality_validation_evidence"), dict)
+                    else None
+                ),
+                "quality_validation_failure_excerpt": (
+                    row.get("quality_validation_evidence", {}).get("failure_excerpt")
+                    if isinstance(row.get("quality_validation_evidence"), dict)
+                    else []
+                ),
                 "job_state": row.get("job", {}).get("state") if isinstance(row.get("job"), dict) else None,
                 "job_id": row.get("job", {}).get("job_id") if isinstance(row.get("job"), dict) else None,
                 "attempt_id": row.get("attempt", {}).get("attempt_id") if isinstance(row.get("attempt"), dict) else None,
@@ -2234,12 +2535,12 @@ def main() -> int:
         "python_environment": toolchain_probe.get("python_runtime"),
         "toolchain_probe": toolchain_probe,
         "scratch_locations": {
-            "root": f"scratch://round-4/{paths.run_id}",
-            "state": f"scratch://round-4/{paths.run_id}/state",
-            "workspace": f"scratch://round-4/{paths.run_id}/workspace",
-            "cache": f"scratch://round-4/{paths.run_id}/cache",
-            "service_db": f"scratch://round-4/{paths.run_id}/state/service.sqlite3",
-            "recipe_attempt_db": f"scratch://round-4/{paths.run_id}/state/recipe-attempts.sqlite3",
+            "root": f"scratch://{round_name}/{paths.run_id}",
+            "state": f"scratch://{round_name}/{paths.run_id}/state",
+            "workspace": f"scratch://{round_name}/{paths.run_id}/workspace",
+            "cache": f"scratch://{round_name}/{paths.run_id}/cache",
+            "service_db": f"scratch://{round_name}/{paths.run_id}/state/service.sqlite3",
+            "recipe_attempt_db": f"scratch://{round_name}/{paths.run_id}/state/recipe-attempts.sqlite3",
         },
         "final_snapshot": final_snapshot,
         "model_registry_and_catalog_snapshot": [
@@ -2279,9 +2580,10 @@ def main() -> int:
         )
 
     _write_json(paths.output_root / "round-manifest.json", _sanitize_obj(manifest_payload, replacements))
-    _write_json(paths.output_root / "round-4-summary.json", _sanitize_obj(summary_payload, replacements))
+    _write_json(paths.output_root / f"{round_name}-summary.json", _sanitize_obj(summary_payload, replacements))
 
     report = _build_report(
+        round_name=round_name,
         run_paths=paths,
         git_head=git_head,
         git_branch=git_branch,
@@ -2298,7 +2600,7 @@ def main() -> int:
         current_run_cleanup=_sanitize_obj(current_run_cleanup, replacements),
         obsolete_cleanup=_sanitize_obj(obsolete_cleanup, replacements),
     )
-    (paths.output_root / "round-4-report.md").write_text(report, encoding="utf-8")
+    (paths.output_root / f"{round_name}-report.md").write_text(report, encoding="utf-8")
     return 0
 
 

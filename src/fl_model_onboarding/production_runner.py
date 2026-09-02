@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
-from typing import Any, Callable
+from typing import Any, Callable, Mapping, Sequence
 
 from .adapters.interfaces import CommandResult, CommandSpec, ProcessRunner
 from .adapters.huggingface_acquisition import HuggingFaceAcquisitionAdapter
@@ -50,6 +50,8 @@ SMOLLM2_MODEL_ID = VERIFIED_SMOLLM2_MODEL_ID
 SMOLLM2_REVISION = SMOLLM2_VERIFIED_REVISION
 _HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+_QUANTIZED_OUTPUT_RE = re.compile(r"^(?P<base>.+)_Q(?P<bits>\d+)$", re.IGNORECASE)
+_INDEXED_DECODER_OUTPUT_RE = re.compile(r"%(?:0?\d*)d")
 _MAX_COMMAND_FAILURE_DETAIL_CHARS = 1200
 
 
@@ -75,6 +77,217 @@ def _compact_failure_detail(value: str) -> str:
     if len(compact) <= _MAX_COMMAND_FAILURE_DETAIL_CHARS:
         return compact
     return "..." + compact[-(_MAX_COMMAND_FAILURE_DETAIL_CHARS - 3) :].lstrip()
+
+
+def _resolve_staging_relative_path(
+    *,
+    staging_dir: Path,
+    relative_path: str,
+    field_name: str,
+) -> Path:
+    normalized = relative_path.strip().replace("\\", "/")
+    if not normalized:
+        raise RuntimeError(f"{field_name} must be a non-empty relative path.")
+    if normalized.startswith("/") or Path(normalized).is_absolute():
+        raise RuntimeError(f"{field_name} must remain relative to the staging package root.")
+    parts = [part for part in normalized.split("/") if part]
+    if not parts or any(part in {".", ".."} for part in parts):
+        raise RuntimeError(f"{field_name} contains unsafe path components.")
+    staging_root = staging_dir.resolve()
+    candidate = (staging_root / Path(*parts)).resolve()
+    try:
+        candidate.relative_to(staging_root)
+    except ValueError as exc:
+        raise RuntimeError(f"{field_name} escapes the staging package root.") from exc
+    return candidate
+
+
+def _decoder_output_map_from_config_payload(payload: Mapping[str, object]) -> dict[str, str] | None:
+    model = payload.get("model")
+    if model is None:
+        return None
+    if not isinstance(model, dict):
+        raise RuntimeError("genai_config.json field 'model' must be an object when present.")
+    decoder = model.get("decoder")
+    if decoder is None:
+        return None
+    if not isinstance(decoder, dict):
+        raise RuntimeError("genai_config.json field 'model.decoder' must be an object when present.")
+    outputs = decoder.get("outputs")
+    if outputs is None:
+        return None
+    if not isinstance(outputs, dict):
+        raise RuntimeError("genai_config.json field 'model.decoder.outputs' must be an object.")
+    mapped: dict[str, str] = {}
+    for key, value in outputs.items():
+        if not isinstance(value, str):
+            raise RuntimeError(
+                "genai_config.json field 'model.decoder.outputs' must map to string output names.",
+            )
+        mapped[str(key)] = value
+    return mapped
+
+
+def _load_onnx_graph_output_names(model_path: Path) -> tuple[str, ...]:
+    try:
+        import onnx
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "ONNX Python package is required for decoder output reconciliation.",
+        ) from exc
+    try:
+        model = onnx.load(str(model_path), load_external_data=False)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"Unable to read ONNX graph outputs from '{model_path.name}'.",
+        ) from exc
+    outputs = tuple(dict.fromkeys(str(row.name) for row in model.graph.output if str(row.name)))
+    if not outputs:
+        raise RuntimeError(f"ONNX model '{model_path.name}' has no graph outputs to validate.")
+    return outputs
+
+
+def _decoder_indexed_output_pattern(name: str) -> re.Pattern[str] | None:
+    if _INDEXED_DECODER_OUTPUT_RE.search(name) is None:
+        return None
+    parts: list[str] = []
+    cursor = 0
+    for match in _INDEXED_DECODER_OUTPUT_RE.finditer(name):
+        parts.append(re.escape(name[cursor : match.start()]))
+        parts.append(r"\d+")
+        cursor = match.end()
+    parts.append(re.escape(name[cursor:]))
+    return re.compile(r"^" + "".join(parts) + r"$")
+
+
+def _build_decoder_output_reconciliation(
+    *,
+    graph_outputs: Sequence[str],
+    decoder_outputs: Mapping[str, str],
+) -> tuple[dict[str, str], dict[str, str], dict[str, dict[str, object]]]:
+    available = tuple(dict.fromkeys(str(name) for name in graph_outputs if str(name)))
+    present: dict[str, str] = {}
+    remapped: dict[str, str] = {}
+    unresolved: dict[str, dict[str, object]] = {}
+    for logical_name, physical_name in decoder_outputs.items():
+        mapped_name = str(physical_name)
+        if mapped_name in available:
+            present[str(logical_name)] = mapped_name
+            continue
+        indexed_pattern = _decoder_indexed_output_pattern(mapped_name)
+        if indexed_pattern is not None:
+            indexed_matches = [output_name for output_name in available if indexed_pattern.fullmatch(output_name)]
+            if indexed_matches:
+                present[str(logical_name)] = mapped_name
+                continue
+        candidates = [
+            output_name
+            for output_name in available
+            if (
+                (match := _QUANTIZED_OUTPUT_RE.fullmatch(output_name)) is not None
+                and match.group("base") == mapped_name
+            )
+        ]
+        if len(candidates) == 1:
+            remapped[str(logical_name)] = candidates[0]
+            continue
+        unresolved[str(logical_name)] = {
+            "requested_output": mapped_name,
+            "candidates": candidates,
+            "reason": "no_match" if len(candidates) == 0 else "ambiguous_match",
+        }
+    return present, remapped, unresolved
+
+
+def _reconcile_decoder_outputs_in_staging_package(
+    *,
+    staging_dir: Path,
+    model_relative_path: str = "model.onnx",
+    config_relative_path: str = "genai_config.json",
+) -> dict[str, object]:
+    config_path = _resolve_staging_relative_path(
+        staging_dir=staging_dir,
+        relative_path=config_relative_path,
+        field_name="config_relative_path",
+    )
+    if not config_path.is_file():
+        raise RuntimeError(f"Staging package is missing required file '{config_relative_path}'.")
+
+    payload_raw = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(payload_raw, dict):
+        raise RuntimeError("genai_config.json must contain a JSON object.")
+
+    decoder_outputs_before = _decoder_output_map_from_config_payload(payload_raw)
+    if decoder_outputs_before is None:
+        return {
+            "status": "skipped",
+            "reason": "decoder-output-mapping-missing",
+            "decoder_outputs_before": {},
+            "decoder_outputs_after": {},
+            "remapped_outputs": {},
+            "graph_outputs": [],
+            "present_outputs": {},
+        }
+    if not decoder_outputs_before:
+        return {
+            "status": "skipped",
+            "reason": "decoder-output-mapping-empty",
+            "decoder_outputs_before": {},
+            "decoder_outputs_after": {},
+            "remapped_outputs": {},
+            "graph_outputs": [],
+            "present_outputs": {},
+        }
+
+    model_path = _resolve_staging_relative_path(
+        staging_dir=staging_dir,
+        relative_path=model_relative_path,
+        field_name="model_relative_path",
+    )
+    if not model_path.is_file():
+        raise RuntimeError(f"Staging package is missing required file '{model_relative_path}'.")
+
+    graph_outputs = _load_onnx_graph_output_names(model_path)
+    present_outputs, remapped_outputs, unresolved = _build_decoder_output_reconciliation(
+        graph_outputs=graph_outputs,
+        decoder_outputs=decoder_outputs_before,
+    )
+    decoder_outputs_after = dict(decoder_outputs_before)
+    decoder_outputs_after.update(remapped_outputs)
+
+    if unresolved:
+        details = ", ".join(
+            f"{key}=>{row['requested_output']} (candidates={row['candidates']})"
+            for key, row in sorted(unresolved.items())
+        )
+        raise RuntimeError(
+            "Decoder output reconciliation failed for staging package due to unresolved mappings: "
+            + details,
+        )
+
+    if remapped_outputs:
+        model_payload = payload_raw.get("model")
+        if not isinstance(model_payload, dict):
+            raise RuntimeError("genai_config.json is missing required object 'model'.")
+        decoder_payload = model_payload.get("decoder")
+        if not isinstance(decoder_payload, dict):
+            raise RuntimeError("genai_config.json is missing required object 'model.decoder'.")
+        outputs_payload = decoder_payload.get("outputs")
+        if not isinstance(outputs_payload, dict):
+            raise RuntimeError("genai_config.json is missing required object 'model.decoder.outputs'.")
+        for logical_name, remapped_name in remapped_outputs.items():
+            outputs_payload[logical_name] = remapped_name
+        config_path.write_text(json.dumps(payload_raw, indent=2), encoding="utf-8")
+
+    return {
+        "status": "applied" if remapped_outputs else "verified",
+        "reason": "ok",
+        "graph_outputs": list(graph_outputs),
+        "present_outputs": present_outputs,
+        "decoder_outputs_before": decoder_outputs_before,
+        "decoder_outputs_after": decoder_outputs_after,
+        "remapped_outputs": remapped_outputs,
+    }
 
 
 @dataclass(frozen=True)
@@ -857,6 +1070,32 @@ class ProductionBuildStageRunner:
             json.dumps({"Name": model_name}, indent=2),
             encoding="utf-8",
         )
+        reconciliation = _reconcile_decoder_outputs_in_staging_package(staging_dir=staging_dir)
+        if reconciliation["status"] == "applied":
+            before = reconciliation["decoder_outputs_before"]
+            after = reconciliation["decoder_outputs_after"]
+            remapped = reconciliation["remapped_outputs"]
+            if isinstance(before, dict) and isinstance(after, dict) and isinstance(remapped, dict):
+                delta = {
+                    key: {"before": before.get(key), "after": after.get(key)}
+                    for key in sorted(remapped.keys())
+                }
+            else:
+                delta = {}
+            job.add_event(
+                "Staging decoder output reconciliation applied before runtime validation: "
+                + json.dumps(delta, sort_keys=True),
+            )
+            persist()
+        elif reconciliation["status"] == "verified":
+            job.add_event("Staging decoder output reconciliation verified existing decoder mappings.")
+            persist()
+        else:
+            job.add_event(
+                "Staging decoder output reconciliation skipped: "
+                + str(reconciliation.get("reason") or "no decoder outputs mapping"),
+            )
+            persist()
 
         transition(job, JobState.RUNTIME_VALIDATING, "Validating ONNX, ORT CPU, and OGA generation.")
         persist()

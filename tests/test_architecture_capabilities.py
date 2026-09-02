@@ -112,6 +112,8 @@ def test_qwen_family_resolves_as_tool_supported_unverified() -> None:
     assert result.capability is not None
     assert result.capability.status == CapabilityStatus.TOOL_SUPPORTED_UNVERIFIED
     assert result.capability.family == "qwen"
+    assert result.capability.mobius_rules.dtype == "f32"
+    assert result.capability.olive_rules.precision == "int4"
 
 
 def test_mllama_is_not_treated_as_verified_llama() -> None:
@@ -324,7 +326,10 @@ def test_verified_and_unverified_argument_confidence_is_explicit() -> None:
     assert granite.olive_rules.precision_confidence == ArgumentEvidenceConfidence.EVIDENCE_PINNED
 
     assert qwen.mobius_rules.dtype_confidence == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
+    assert qwen.mobius_rules.dtype == "f32"
+    assert qwen.olive_rules.precision == "int4"
     assert qwen.olive_rules.precision_confidence == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
+    assert phi.mobius_rules.dtype is None
     assert phi.mobius_rules.dtype_confidence == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
     assert phi.olive_rules.precision_confidence == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
 

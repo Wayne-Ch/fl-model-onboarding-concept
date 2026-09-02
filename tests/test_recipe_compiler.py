@@ -132,6 +132,9 @@ def test_unverified_capability_marks_candidate_argument_provenance() -> None:
         )
     )
     assert compiled.recipe.status == RecipeStatus.EXPERIMENTAL
+    assert compiled.recipe.mobius.dtype == "f32"
+    assert compiled.recipe.olive is not None
+    assert compiled.recipe.olive.precision == "int4"
     assert compiled.provenance.capability_status == CapabilityStatus.TOOL_SUPPORTED_UNVERIFIED
     assert compiled.provenance.argument_provenance.contains_unverified_arguments is True
     assert (
@@ -142,6 +145,34 @@ def test_unverified_capability_marks_candidate_argument_provenance() -> None:
         compiled.provenance.argument_provenance.olive_precision_confidence
         == ArgumentEvidenceConfidence.CANDIDATE_UNVERIFIED
     )
+
+
+def test_qwen_mobius_dtype_participates_in_generated_fingerprint() -> None:
+    request = _llm_input(
+        model_id="example-org/qwen-candidate",
+        model_type="qwen2",
+        architecture="Qwen2ForCausalLM",
+        requested_precision="int4",
+    )
+    compiled = compile_generated_recipe(request)
+    capability = request.capability_resolution.capability
+    assert capability is not None
+    alternate_capability = replace(
+        capability,
+        mobius_rules=replace(
+            capability.mobius_rules,
+            dtype=None,
+            dtype_rule="temporary test override",
+        ),
+    )
+    alternate_resolution = replace(request.capability_resolution, capability=alternate_capability)
+    alternate = compile_generated_recipe(replace(request, capability_resolution=alternate_resolution))
+
+    assert compiled.recipe.mobius.dtype == "f32"
+    assert alternate.recipe.mobius.dtype is None
+    assert compiled.fingerprint != alternate.fingerprint
+    assert compiled.provenance.capability_status == CapabilityStatus.TOOL_SUPPORTED_UNVERIFIED
+    assert alternate.provenance.capability_status == CapabilityStatus.TOOL_SUPPORTED_UNVERIFIED
 
 
 def test_compilation_is_byte_deterministic_for_same_inputs() -> None:

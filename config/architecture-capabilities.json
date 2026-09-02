@@ -241,8 +241,8 @@
         "task": "text-generation",
         "ep": "cpu",
         "runtime": "ort-genai",
-        "dtype": null,
-        "dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value.",
+        "dtype": "f32",
+        "dtype_rule": "Round 4 runtime diagnostics observed BF16-scale INT4 contrib-op failures in current ORT/OGA; candidate policy pins Mobius dtype to f32 while preserving Olive INT4.",
         "dtype_confidence": "candidate-unverified"
       },
       "olive_rules": {
@@ -325,6 +325,12 @@
           "source_type": "upstream-doc",
           "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
           "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+        },
+        {
+          "evidence_id": "round4-runtime-qwen-f32-int4-candidate",
+          "source_type": "repo-doc",
+          "location": "docs/recipe-agent-runtime-diagnostics.md#qwen2-diagnosis-rebuilt-variant-qwen2-0-5b",
+          "summary": "Round 4 runtime diagnostics showed Mobius dtype f32 plus Olive INT4 passes current runtime while default candidate path failed."
         }
       ]
     },
