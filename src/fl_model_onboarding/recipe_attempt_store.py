@@ -108,8 +108,19 @@ class CandidatePlanValidationError(RecipeAttemptStoreError):
 class CandidateSelectionConflictError(RecipeAttemptStoreError):
     """Raised when selecting or exhausting a candidate lineage would violate the
     single-winner, verified-only selection contract (for example: selecting a
-    non-verified or unknown child, selecting a second winner, or exhausting a
-    lineage that still has an unselected verified candidate)."""
+    non-verified or unknown child, selecting a second winner, exhausting a
+    lineage that still has an unselected verified candidate, or selecting a
+    candidate whose linked attempt does not share the parent's generation
+    identity)."""
+
+
+class CandidateReuseIntegrityError(RecipeAttemptStoreError):
+    """Raised when a previously-selected candidate winner fails a fail-closed
+    generation-identity check at reuse-lookup time (for example, a row written or
+    corrupted through an unsupported/direct path). Reuse must never silently serve
+    a cross-identity or corrupt winner: it is always safer to raise here than to
+    return an artifact that does not actually belong to the requested model/request
+    identity."""
 
 
 class AttemptState(StrEnum):
@@ -1937,7 +1948,14 @@ class RecipeAttemptStore:
         (via the existing ``create_attempt``), and must supply the exact
         ``trigger``/``retry_evaluation`` that the policy declares for that
         candidate index -- fail-closed on any mismatch, duplicate, ordering
-        violation, or `max_candidates` overrun.
+        violation, or `max_candidates` overrun. Also fail-closed if the child
+        attempt's generation identity (model_id, revision_sha, requested_device,
+        requested_precision, compiler_version, capability_fingerprint,
+        toolchain_fingerprint, profile_fingerprint) does not exactly match the
+        parent's: a candidate may legitimately resolve a different
+        recipe_fingerprint/quantization override, but it must always be a
+        candidate *of the same generated model/request*, never an unrelated
+        attempt.
         """
         parent_id = _coerce_str(parent_attempt_id, "parent_attempt_id")
         child_id = _coerce_str(attempt_id, "attempt_id")
@@ -2017,6 +2035,7 @@ class RecipeAttemptStore:
             connection.execute("BEGIN IMMEDIATE;")
             child_attempt = self._load_attempt(connection, child_id)
             recipe_fingerprint = child_attempt.recipe_fingerprint
+            parent_attempt = child_attempt if child_id == parent_id else self._load_attempt(connection, parent_id)
 
             lineage_row = connection.execute(
                 """
@@ -2088,6 +2107,17 @@ class RecipeAttemptStore:
                 raise CandidatePlanValidationError(
                     f"Candidate index {candidate_index} cannot be registered before candidate index 0."
                 )
+
+            # Fail-closed invariant: a candidate's linked attempt must resolve the
+            # exact same generated-model/request identity as its parent. Checked here,
+            # loaded/validated within this same transaction and strictly before any
+            # candidate row is inserted, so a fully separate (e.g. different model)
+            # successful attempt can never be registered as a fallback candidate.
+            _require_matching_candidate_generation_identity(
+                parent_attempt,
+                child_attempt,
+                error_cls=CandidatePlanValidationError,
+            )
 
             candidate_fingerprint = build_candidate_recipe_fingerprint(
                 recipe_fingerprint=recipe_fingerprint,
@@ -2251,6 +2281,10 @@ class RecipeAttemptStore:
         environment-scope fields are nullable until a later slice actually
         supplies them; leaving them null never masquerades as a verified scope
         (see :attr:`CandidateAttemptRecord.has_fully_validated_selection_scope`).
+        Also fail-closed (defense in depth, on top of the check already enforced
+        at registration) if the candidate's linked attempt does not share the
+        parent's full generation identity, so a preexisting or tampered
+        cross-identity row can never be selected as a winner.
         """
         parent_id = _coerce_str(parent_attempt_id, "parent_attempt_id")
         candidate_id_value = _coerce_str(candidate_attempt_id, "candidate_attempt_id")
@@ -2292,6 +2326,18 @@ class RecipeAttemptStore:
                     f"Candidate attempt '{candidate_id_value}' is not verified "
                     f"(linked attempt state is '{candidate.attempt_state.value}') and cannot be selected."
                 )
+            # Defense in depth: re-validate the candidate's linked attempt against the
+            # parent's generation identity before committing selection. Registration
+            # already enforces this, but this second check ensures a preexisting or
+            # tampered cross-identity row (e.g. written before this invariant existed,
+            # or inserted through an unsupported path) can never be selected/win.
+            parent_attempt = self._load_attempt(connection, parent_id)
+            child_attempt = self._load_attempt(connection, candidate.attempt_id)
+            _require_matching_candidate_generation_identity(
+                parent_attempt,
+                child_attempt,
+                error_cls=CandidateSelectionConflictError,
+            )
             connection.execute(
                 """
                 UPDATE candidate_attempts
@@ -2419,6 +2465,16 @@ class RecipeAttemptStore:
         by complete provenance identity. Never executes anything and never
         infers invocation counts: it only returns durable rows already
         persisted by :meth:`select_verified_candidate_attempt`.
+
+        Defense in depth: even though the SQL above already filters on the
+        *parent* attempt's generation identity, this also re-validates the
+        winner's own linked (child) attempt against that same parent identity
+        before returning it. This guards against a preexisting or corrupt row
+        (for example, inserted through a test-only/direct SQL path, or written
+        before this invariant existed) that would otherwise silently be served
+        as a reusable winner despite belonging to a different generation
+        identity; such a row raises :class:`CandidateReuseIntegrityError`
+        instead of ever being returned.
         """
         normalized = _normalize_candidate_selection_reuse_query(query)
         with self._connect() as connection:
@@ -2459,7 +2515,15 @@ class RecipeAttemptStore:
             ).fetchone()
             if row is None:
                 return None
-            return self._load_candidate_attempt(connection, row["candidate_attempt_id"])
+            candidate = self._load_candidate_attempt(connection, row["candidate_attempt_id"])
+            parent_attempt = self._load_attempt(connection, candidate.parent_attempt_id)
+            child_attempt = self._load_attempt(connection, candidate.attempt_id)
+            _require_matching_candidate_generation_identity(
+                parent_attempt,
+                child_attempt,
+                error_cls=CandidateReuseIntegrityError,
+            )
+            return candidate
 
     def _list_candidate_attempts_locked(
         self,
@@ -3203,6 +3267,67 @@ def _normalize_candidate_selection_reuse_query(
     )
 
 
+_CANDIDATE_GENERATION_IDENTITY_FIELDS: tuple[str, ...] = (
+    "model_id",
+    "revision_sha",
+    "requested_device",
+    "requested_precision",
+    "compiler_version",
+    "capability_fingerprint",
+    "toolchain_fingerprint",
+    "profile_fingerprint",
+)
+
+
+def _candidate_generation_identity_mismatches(
+    parent: RecipeAttempt,
+    child: RecipeAttempt,
+) -> list[str]:
+    """Return every generation-identity field name on which ``child``'s underlying
+    attempt differs from ``parent``'s.
+
+    A candidate attempt (default or fallback) must always resolve the *same*
+    generated-model/request identity as its parent -- model_id, revision_sha,
+    requested_device, requested_precision, compiler_version, capability_fingerprint,
+    toolchain_fingerprint, and profile_fingerprint. Only ``recipe_fingerprint`` (and,
+    separately, the candidate's own quantization override) may legitimately differ,
+    because a fallback candidate is allowed to resolve a different quantized recipe
+    for the *same* underlying model/request. Never trust a candidate's linked attempt
+    without this check: without it, a fully separate attempt (for example, a
+    completely different model's successful attempt) could be registered, selected,
+    or reused as if it were a fallback of the parent.
+    """
+    return [
+        field_name
+        for field_name in _CANDIDATE_GENERATION_IDENTITY_FIELDS
+        if getattr(parent, field_name) != getattr(child, field_name)
+    ]
+
+
+def _require_matching_candidate_generation_identity(
+    parent: RecipeAttempt,
+    child: RecipeAttempt,
+    *,
+    error_cls: type[RecipeAttemptStoreError],
+) -> None:
+    """Fail closed unless ``child`` shares ``parent``'s full generation identity.
+
+    ``error_cls`` lets each call site raise its own already-established typed
+    error (``CandidatePlanValidationError`` at registration,
+    ``CandidateSelectionConflictError`` at selection,
+    ``CandidateReuseIntegrityError`` at reuse lookup) while sharing one single
+    comparison implementation.
+    """
+    mismatched = _candidate_generation_identity_mismatches(parent, child)
+    if mismatched:
+        raise error_cls(
+            f"Candidate attempt '{child.attempt_id}' has a different generation identity "
+            f"than parent attempt '{parent.attempt_id}' for field(s): {', '.join(mismatched)}. "
+            "A candidate must share the parent's full generation identity; only its "
+            "recipe_fingerprint and quantization parameters may differ."
+        )
+
+
 def _assert_attempt_request_matches_generated(
     request: RecipeAttemptRequest,
     record: GeneratedRecipeRecord,
@@ -3749,6 +3874,7 @@ __all__ = [
     "CandidateInvocationCounters",
     "CandidateLineageSelectionState",
     "CandidatePlanValidationError",
+    "CandidateReuseIntegrityError",
     "CandidateSelectionConflictError",
     "CandidateSelectionReuseQuery",
     "CandidateWinnerStatus",

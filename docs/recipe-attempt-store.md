@@ -120,7 +120,15 @@ data. A candidate counts as **verified** exactly when its linked attempt reaches
   half of the cross-module trigger-constant enforcement described below). Enforces
   `(parent_attempt_id, candidate_index)`/`candidate_id` uniqueness, in-order
   registration, a fixed policy/quality-profile identity per lineage, and
-  `policy.max_candidates`.
+  `policy.max_candidates`. Also fails closed (`CandidatePlanValidationError`) unless
+  the child attempt's generation identity (`model_id`, `revision_sha`,
+  `requested_device`, `requested_precision`, `compiler_version`,
+  `capability_fingerprint`, `toolchain_fingerprint`, `profile_fingerprint`) is
+  byte-for-byte identical to the parent's -- only `recipe_fingerprint` and the
+  candidate's own quantization override may differ. Parent and child are loaded and
+  compared inside the same transaction, before any candidate row is inserted, so a
+  fully separate (e.g. different model) successful attempt can never be registered as
+  a fallback candidate.
 - `finalize_candidate_attempt_evidence(...)` — atomically attach nullable
   artifact/package refs and invocation counters once the linked attempt is terminal.
   Write-once: identical values are a no-op, differing values raise.
@@ -128,6 +136,10 @@ data. A candidate counts as **verified** exactly when its linked attempt reaches
   Fails closed unless the lineage is `PENDING` and the candidate's linked attempt is
   `SUCCEEDED`. Always persists `selected_by="validation"`. Never overwrites a failed
   default with a fallback: the failed default row is untouched and stays queryable.
+  Defense in depth: re-validates the candidate's linked attempt against the parent's
+  generation identity (the same check as registration) before committing selection,
+  raising `CandidateSelectionConflictError` if it was ever violated (e.g. a
+  preexisting or tampered row).
 - `finalize_exhausted_candidate_lineage(...)` — atomically marks a lineage
   `EXHAUSTED` (no winner). Fails closed if any candidate is not yet terminal, or if any
   candidate is verified-but-unselected (that candidate must be selected instead).
@@ -136,7 +148,10 @@ data. A candidate counts as **verified** exactly when its linked attempt reaches
   default candidate remains discoverable alongside the winner.
 - `find_reusable_candidate_selection(query: CandidateSelectionReuseQuery)` — read-only
   lookup of a previously *selected* verified candidate by complete provenance
-  identity. Never executes anything and never infers invocation counts.
+  identity. Never executes anything and never infers invocation counts. Defense in
+  depth: also re-validates the winner's linked attempt against its own parent's
+  generation identity before returning it, raising `CandidateReuseIntegrityError`
+  (fail closed) rather than ever silently serving a cross-identity or corrupt winner.
 
 ### Fingerprints
 

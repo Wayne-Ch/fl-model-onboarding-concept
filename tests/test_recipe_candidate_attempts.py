@@ -37,6 +37,7 @@ from fl_model_onboarding.recipe_attempt_store import (
     CandidateInvocationCounters,
     CandidateLineageSelectionState,
     CandidatePlanValidationError,
+    CandidateReuseIntegrityError,
     CandidateSelectionConflictError,
     CandidateSelectionReuseQuery,
     CandidateWinnerStatus,
@@ -95,7 +96,12 @@ def _resolve_capability(*, model_id: str):
     return registry.resolve(metadata=metadata, task="llm", device="cpu", requested_precision="auto")
 
 
-def _generated_recipe(*, model_id: str = "example-org/candidate-model", ort_version: str = "1.29.0"):
+def _generated_recipe(
+    *,
+    model_id: str = "example-org/candidate-model",
+    ort_version: str = "1.29.0",
+    extra_available_files: tuple[str, ...] = (),
+):
     resolution = _resolve_capability(model_id=model_id)
     return compile_generated_recipe(
         RecipeCompilerInput(
@@ -110,7 +116,7 @@ def _generated_recipe(*, model_id: str = "example-org/candidate-model", ort_vers
             requires_remote_code=False,
             config_files=("config.json",),
             tokenizer_files=("tokenizer.json",),
-            available_files=("config.json", "tokenizer.json", "model.safetensors"),
+            available_files=("config.json", "tokenizer.json", "model.safetensors") + extra_available_files,
             capability_resolution=resolution,
             toolchain=_toolchain(ort_version=ort_version),
         )
@@ -121,11 +127,13 @@ def _create_and_start_attempt(
     store: RecipeAttemptStore,
     *,
     idempotency_key: str,
+    model_id: str = "example-org/candidate-model",
     ort_version: str = "1.29.0",
+    extra_available_files: tuple[str, ...] = (),
 ) -> tuple[object, object]:
     """Create + start a plain attempt (candidate_index 0 style setup), independent
     of any candidate-plan registration."""
-    generated = _generated_recipe(ort_version=ort_version)
+    generated = _generated_recipe(model_id=model_id, ort_version=ort_version, extra_available_files=extra_available_files)
     generated_record = store.upsert_generated_recipe(generated)
     request = build_attempt_request_from_generated(generated_record)
     request_fingerprint = build_attempt_request_fingerprint(request)
@@ -197,6 +205,66 @@ def _register_fallback(
     )
 
 
+def _clone_attempt_row_with_overrides(
+    store: RecipeAttemptStore,
+    *,
+    template_attempt_id: str,
+    new_attempt_id: str,
+    new_idempotency_key: str,
+    overrides: dict[str, str],
+) -> None:
+    """Insert a new ``attempts`` row that is an exact clone of
+    ``template_attempt_id`` except for ``overrides``, entirely bypassing
+    ``create_attempt``/gate recording.
+
+    Used only to exercise the store's fail-closed generation-identity checks with
+    single-field mismatches the deterministic recipe compiler cannot itself
+    produce today (for example, it only ever compiles for one
+    ``requested_device``). This talks to the sqlite file directly through a
+    plain ``sqlite3.connect`` (not ``RecipeAttemptStore._connect``), so no
+    foreign-key enforcement applies to the cloned ``recipe_fingerprint``
+    reference.
+    """
+    with sqlite3.connect(store.db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            "SELECT * FROM attempts WHERE attempt_id = ?", (template_attempt_id,)
+        ).fetchone()
+        assert row is not None
+        columns = list(row.keys())
+        values = {column: row[column] for column in columns}
+        values["attempt_id"] = new_attempt_id
+        values["idempotency_key"] = new_idempotency_key
+        values.update(overrides)
+        connection.execute(
+            f"INSERT INTO attempts ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+            tuple(values[column] for column in columns),
+        )
+        connection.commit()
+
+
+def _repoint_candidate_attempt_to(
+    store: RecipeAttemptStore,
+    *,
+    candidate_attempt_id: str,
+    attempt_id: str,
+) -> None:
+    """Directly rewrite a persisted candidate's linked ``attempt_id`` via raw SQL.
+
+    Simulates a corrupted/tampered row (or one written through some unsupported,
+    non-``register_candidate_attempt`` path before the generation-identity
+    invariant existed): something the store's own write APIs would never
+    produce, but which read paths must still fail closed against instead of
+    silently serving.
+    """
+    with sqlite3.connect(store.db_path) as connection:
+        connection.execute(
+            "UPDATE candidate_attempts SET attempt_id = ? WHERE candidate_attempt_id = ?",
+            (attempt_id, candidate_attempt_id),
+        )
+        connection.commit()
+
+
 # --------------------------------------------------------------------------
 # Fresh DB: plan / default + fallback persistence / order
 # --------------------------------------------------------------------------
@@ -205,8 +273,12 @@ def _register_fallback(
 def test_fresh_db_candidate_plan_persists_default_and_fallback_in_order(tmp_path: Path) -> None:
     store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
     _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    # Same full generation identity as the parent (model/revision/device/precision/
+    # compiler/capability/toolchain/profile): only the extra available file differs,
+    # which changes recipe_fingerprint without changing identity -- the legitimate
+    # shape of a fallback candidate.
     _fallback_generated, fallback_attempt = _create_and_start_attempt(
-        store, idempotency_key="fallback", ort_version="1.30.0"
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
     )
 
     default_candidate = _register_default(store, default_attempt.attempt_id)
@@ -287,7 +359,7 @@ def test_duplicate_candidate_index_and_max_candidates_are_enforced(tmp_path: Pat
         _register_default(store, default_attempt.attempt_id)
 
     _fallback_generated, fallback_attempt = _create_and_start_attempt(
-        store, idempotency_key="fallback", ort_version="1.30.0"
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
     )
     _register_fallback(
         store,
@@ -446,7 +518,7 @@ def test_failed_default_and_verified_fallback_atomic_selection(tmp_path: Path) -
     _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
 
     _fallback_generated, fallback_attempt = _create_and_start_attempt(
-        store, idempotency_key="fallback", ort_version="1.30.0"
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
     )
     fallback_candidate = _register_fallback(
         store,
@@ -572,7 +644,7 @@ def test_lineage_can_be_exhausted_when_every_candidate_fails(tmp_path: Path) -> 
     _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
 
     _fallback_generated, fallback_attempt = _create_and_start_attempt(
-        store, idempotency_key="fallback", ort_version="1.30.0"
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
     )
     _register_fallback(
         store,
@@ -692,7 +764,7 @@ def test_candidate_fingerprints_differ_across_a_real_default_and_fallback_pair(t
     _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
     default_candidate = _register_default(store, default_attempt.attempt_id)
     _fallback_generated, fallback_attempt = _create_and_start_attempt(
-        store, idempotency_key="fallback", ort_version="1.30.0"
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
     )
     fallback_candidate = _register_fallback(
         store,
@@ -757,7 +829,7 @@ def test_reuse_lookup_returns_selected_verified_child_with_full_provenance(tmp_p
     _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
 
     _fallback_generated, fallback_attempt = _create_and_start_attempt(
-        store, idempotency_key="fallback", ort_version="1.30.0"
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
     )
     fallback_candidate = _register_fallback(
         store,
@@ -858,6 +930,225 @@ def test_unknown_or_non_verified_candidate_selection_is_rejected(tmp_path: Path)
             candidate_attempt_id="unknown-candidate-attempt-id",
             reason="unknown child should never be selectable",
         )
+
+
+# --------------------------------------------------------------------------
+# Reviewer defect: a candidate must share its parent's full generation identity
+# --------------------------------------------------------------------------
+
+
+def test_reviewer_repro_fully_separate_model_b_attempt_cannot_register_as_model_a_fallback(
+    tmp_path: Path,
+) -> None:
+    """Exact reviewer reproduction: a fully successful, completely separate
+    (different model_id, and therefore different generation identity) attempt
+    must never be registrable as a fallback candidate of another model's
+    attempt, even though it independently passed every gate on its own."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _model_a_generated, model_a_default = _create_and_start_attempt(
+        store, idempotency_key="model-a-default", model_id="example-org/model-a"
+    )
+    _register_default(store, model_a_default.attempt_id)
+
+    _model_b_generated, model_b_attempt = _create_and_start_attempt(
+        store, idempotency_key="model-b-fully-separate", model_id="example-org/model-b"
+    )
+    _succeed_attempt(store, model_b_attempt.attempt_id)
+
+    with pytest.raises(CandidatePlanValidationError, match="model_id"):
+        store.register_candidate_attempt(
+            parent_attempt_id=model_a_default.attempt_id,
+            attempt_id=model_b_attempt.attempt_id,
+            candidate_index=1,
+            policy=_POLICY,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+            trigger=RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+            retry_evaluation=_RETRYABLE_EVALUATION,
+        )
+
+    # Model A's lineage remains untouched: still pending, with only its own
+    # default candidate -- the Model B attempt was never inserted as a row.
+    lineage = store.get_candidate_lineage(model_a_default.attempt_id)
+    assert lineage is not None
+    assert lineage.selection_state == CandidateLineageSelectionState.PENDING
+    assert len(store.list_candidate_attempts(model_a_default.attempt_id)) == 1
+
+
+@pytest.mark.parametrize(
+    ("field_name", "override_value"),
+    [
+        ("model_id", "totally-different-model"),
+        ("revision_sha", "f" * 40),
+        ("requested_device", "gpu"),
+        ("requested_precision", "int8"),
+        ("compiler_version", "9.9.9"),
+        ("capability_fingerprint", "a" * 64),
+        ("toolchain_fingerprint", "b" * 64),
+        ("profile_fingerprint", "c" * 64),
+    ],
+)
+def test_register_candidate_attempt_rejects_every_generation_identity_field_mismatch(
+    tmp_path: Path,
+    field_name: str,
+    override_value: str,
+) -> None:
+    """Parameterized over every field register_candidate_attempt must compare:
+    model_id, revision_sha, requested_device, requested_precision,
+    compiler_version, capability_fingerprint, toolchain_fingerprint, and
+    profile_fingerprint. A candidate whose linked attempt differs from its
+    parent on *any single one* of these must be rejected, and the raised error
+    must name the mismatched field."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+    _succeed_attempt(store, default_attempt.attempt_id)
+
+    mismatched_attempt_id = f"mismatched-{field_name}"
+    _clone_attempt_row_with_overrides(
+        store,
+        template_attempt_id=default_attempt.attempt_id,
+        new_attempt_id=mismatched_attempt_id,
+        new_idempotency_key=mismatched_attempt_id,
+        overrides={field_name: override_value},
+    )
+
+    with pytest.raises(CandidatePlanValidationError, match=field_name):
+        store.register_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=mismatched_attempt_id,
+            candidate_index=1,
+            policy=_POLICY,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+            trigger=RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+            retry_evaluation=_RETRYABLE_EVALUATION,
+        )
+    # Never inserted: the lineage still has only its default candidate.
+    assert len(store.list_candidate_attempts(default_attempt.attempt_id)) == 1
+
+
+def test_register_candidate_attempt_accepts_same_identity_with_different_recipe_and_block_size(
+    tmp_path: Path,
+) -> None:
+    """Same generation identity as the parent, but a different recipe_fingerprint
+    and a different candidate quantization block_size, must be accepted --
+    those are the only two things allowed to differ between a parent and its
+    fallback candidate."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    default_candidate = _register_default(store, default_attempt.attempt_id)
+
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
+    )
+    assert fallback_attempt.model_id == default_attempt.model_id
+    assert fallback_attempt.revision_sha == default_attempt.revision_sha
+    assert fallback_attempt.requested_device == default_attempt.requested_device
+    assert fallback_attempt.requested_precision == default_attempt.requested_precision
+    assert fallback_attempt.compiler_version == default_attempt.compiler_version
+    assert fallback_attempt.capability_fingerprint == default_attempt.capability_fingerprint
+    assert fallback_attempt.toolchain_fingerprint == default_attempt.toolchain_fingerprint
+    assert fallback_attempt.profile_fingerprint == default_attempt.profile_fingerprint
+    assert fallback_attempt.recipe_fingerprint != default_attempt.recipe_fingerprint
+
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    assert fallback_candidate.quantization_override_block_size == 64
+    assert default_candidate.quantization_override_block_size is None
+    assert fallback_candidate.recipe_fingerprint != default_candidate.recipe_fingerprint
+
+
+def test_select_verified_candidate_attempt_refuses_corrupt_cross_identity_row(tmp_path: Path) -> None:
+    """Defense in depth: even if a candidate row's linked attempt somehow points
+    at a different generation identity than its parent (e.g. a row written
+    through an unsupported/direct path, or corrupted after the fact),
+    ``select_verified_candidate_attempt`` must refuse to select it rather than
+    silently letting a cross-identity attempt win."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+    _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
+
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
+    )
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    _succeed_attempt(store, fallback_attempt.attempt_id)
+
+    _cross_generated, cross_attempt = _create_and_start_attempt(
+        store, idempotency_key="cross-model", model_id="totally-different-model"
+    )
+    _succeed_attempt(store, cross_attempt.attempt_id)
+
+    # Simulate a corrupt/tampered row by repointing the already-registered
+    # fallback candidate at the fully separate, successful, different-identity
+    # attempt -- register_candidate_attempt would never allow this, but a
+    # preexisting/corrupt row must still be refused at selection time.
+    _repoint_candidate_attempt_to(
+        store,
+        candidate_attempt_id=fallback_candidate.candidate_attempt_id,
+        attempt_id=cross_attempt.attempt_id,
+    )
+
+    with pytest.raises(CandidateSelectionConflictError, match="model_id"):
+        store.select_verified_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            candidate_attempt_id=fallback_candidate.candidate_attempt_id,
+            reason="attempted selection of a corrupted cross-identity row",
+        )
+
+    # No selection was ever committed: the lineage is still pending.
+    lineage = store.get_candidate_lineage(default_attempt.attempt_id)
+    assert lineage is not None
+    assert lineage.selection_state == CandidateLineageSelectionState.PENDING
+
+
+def test_find_reusable_candidate_selection_refuses_corrupt_selected_row(tmp_path: Path) -> None:
+    """Defense in depth: if an already-*selected* winner row is later found to
+    point at a different generation identity than its parent (corrupted after
+    selection, or written through an unsupported path), the reuse lookup must
+    fail closed rather than ever silently returning that winner as reusable."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+    _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
+
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
+    )
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    _succeed_attempt(store, fallback_attempt.attempt_id)
+    store.select_verified_candidate_attempt(
+        parent_attempt_id=default_attempt.attempt_id,
+        candidate_attempt_id=fallback_candidate.candidate_attempt_id,
+        reason="fallback verified after retryable structural regression",
+    )
+
+    _cross_generated, cross_attempt = _create_and_start_attempt(
+        store, idempotency_key="cross-model", model_id="totally-different-model"
+    )
+    _succeed_attempt(store, cross_attempt.attempt_id)
+
+    # Corrupt the *already-selected* winner row after the fact.
+    _repoint_candidate_attempt_to(
+        store,
+        candidate_attempt_id=fallback_candidate.candidate_attempt_id,
+        attempt_id=cross_attempt.attempt_id,
+    )
+
+    query = _reuse_query_for(default_attempt=default_attempt, fallback_attempt=fallback_attempt)
+    with pytest.raises(CandidateReuseIntegrityError, match="model_id"):
+        store.find_reusable_candidate_selection(query)
 
 
 # --------------------------------------------------------------------------
