@@ -1,0 +1,1907 @@
+{
+  "decoding_controls_probe": {
+    "foundry_baseline": {
+      "applied": {
+        "do_sample": false,
+        "max_tokens": 64,
+        "seed": 17,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "command_ok": true,
+      "duration_seconds": 7.006,
+      "ok": true,
+      "output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+      "requested": {
+        "do_sample": false,
+        "max_tokens": 64,
+        "seed": 17,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "unsupported": {}
+    },
+    "foundry_optimized": {
+      "applied": {
+        "do_sample": false,
+        "max_tokens": 64,
+        "seed": 17,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "command_ok": true,
+      "duration_seconds": 5.537,
+      "ok": true,
+      "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+      "requested": {
+        "do_sample": false,
+        "max_tokens": 64,
+        "seed": 17,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "unsupported": {}
+    },
+    "oga_baseline": {
+      "applied": {
+        "do_sample": false,
+        "max_length": 85,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "generated_tokens": 49,
+      "ok": true,
+      "output_bounded": "Your code should pass the following test case:\n```python\nresult = get_answer_and_unit('12 cm')\nassert result == {'answer': 12, 'unit': 'cm'}\n```",
+      "requested": {
+        "do_sample": false,
+        "max_length": 85,
+        "max_tokens": 64,
+        "seed": 17,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "unsupported": {
+        "max_tokens": "Unknown value \"max_tokens\"",
+        "seed": "Unknown value \"seed\""
+      }
+    },
+    "oga_optimized": {
+      "applied": {
+        "do_sample": false,
+        "max_length": 85,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "generated_tokens": 1,
+      "ok": true,
+      "output_bounded": "",
+      "requested": {
+        "do_sample": false,
+        "max_length": 85,
+        "max_tokens": 64,
+        "seed": 17,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "unsupported": {
+        "max_tokens": "Unknown value \"max_tokens\"",
+        "seed": "Unknown value \"seed\""
+      }
+    }
+  },
+  "determinism_repeated_trials": {
+    "baseline_outputs_for_reuse": [
+      {
+        "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+        "factual-red-planet": "Mars",
+        "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "instruction-two-words-blue-river": "River"
+      },
+      {
+        "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+        "factual-red-planet": "Mars",
+        "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "instruction-two-words-blue-river": "River"
+      },
+      {
+        "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+        "factual-red-planet": "Mars",
+        "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "instruction-two-words-blue-river": "River"
+      },
+      {
+        "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+        "factual-red-planet": "Mars",
+        "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "instruction-two-words-blue-river": "River"
+      },
+      {
+        "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+        "factual-red-planet": "Mars",
+        "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "instruction-two-words-blue-river": "River"
+      },
+      {
+        "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+        "factual-red-planet": "Mars",
+        "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "instruction-two-words-blue-river": "River"
+      }
+    ],
+    "baseline_runs": [
+      {
+        "batch_seconds": 6.422,
+        "json_prompt": {
+          "char_count": 34,
+          "has_markdown_fence": false,
+          "json_parse_ok": true,
+          "output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "required_keys_present": true,
+          "token_count": 18,
+          "word_count": 6
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "instruction-two-words-blue-river": "River"
+        },
+        "trial": 1
+      },
+      {
+        "batch_seconds": 7.235,
+        "json_prompt": {
+          "char_count": 34,
+          "has_markdown_fence": false,
+          "json_parse_ok": true,
+          "output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "required_keys_present": true,
+          "token_count": 18,
+          "word_count": 6
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "instruction-two-words-blue-river": "River"
+        },
+        "trial": 2
+      },
+      {
+        "batch_seconds": 6.781,
+        "json_prompt": {
+          "char_count": 34,
+          "has_markdown_fence": false,
+          "json_parse_ok": true,
+          "output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "required_keys_present": true,
+          "token_count": 18,
+          "word_count": 6
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "instruction-two-words-blue-river": "River"
+        },
+        "trial": 3
+      },
+      {
+        "batch_seconds": 7.031,
+        "json_prompt": {
+          "char_count": 34,
+          "has_markdown_fence": false,
+          "json_parse_ok": true,
+          "output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "required_keys_present": true,
+          "token_count": 18,
+          "word_count": 6
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "instruction-two-words-blue-river": "River"
+        },
+        "trial": 4
+      },
+      {
+        "batch_seconds": 7.719,
+        "json_prompt": {
+          "char_count": 34,
+          "has_markdown_fence": false,
+          "json_parse_ok": true,
+          "output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "required_keys_present": true,
+          "token_count": 18,
+          "word_count": 6
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "instruction-two-words-blue-river": "River"
+        },
+        "trial": 5
+      },
+      {
+        "batch_seconds": 6.328,
+        "json_prompt": {
+          "char_count": 34,
+          "has_markdown_fence": false,
+          "json_parse_ok": true,
+          "output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "required_keys_present": true,
+          "token_count": 18,
+          "word_count": 6
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "instruction-two-words-blue-river": "River"
+        },
+        "trial": 6
+      }
+    ],
+    "optimized_runs": [
+      {
+        "batch_seconds": 6.109,
+        "json_prompt": {
+          "char_count": 140,
+          "has_markdown_fence": true,
+          "json_parse_ok": false,
+          "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "required_keys_present": false,
+          "token_count": 46,
+          "word_count": 26
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "instruction-two-words-blue-river": "The river is blue."
+        },
+        "trial": 1
+      },
+      {
+        "batch_seconds": 5.969,
+        "json_prompt": {
+          "char_count": 140,
+          "has_markdown_fence": true,
+          "json_parse_ok": false,
+          "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "required_keys_present": false,
+          "token_count": 46,
+          "word_count": 26
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "instruction-two-words-blue-river": "The river is blue."
+        },
+        "trial": 2
+      },
+      {
+        "batch_seconds": 5.829,
+        "json_prompt": {
+          "char_count": 140,
+          "has_markdown_fence": true,
+          "json_parse_ok": false,
+          "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "required_keys_present": false,
+          "token_count": 46,
+          "word_count": 26
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "instruction-two-words-blue-river": "The river is blue."
+        },
+        "trial": 3
+      },
+      {
+        "batch_seconds": 5.891,
+        "json_prompt": {
+          "char_count": 140,
+          "has_markdown_fence": true,
+          "json_parse_ok": false,
+          "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "required_keys_present": false,
+          "token_count": 46,
+          "word_count": 26
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "instruction-two-words-blue-river": "The river is blue."
+        },
+        "trial": 4
+      },
+      {
+        "batch_seconds": 5.547,
+        "json_prompt": {
+          "char_count": 140,
+          "has_markdown_fence": true,
+          "json_parse_ok": false,
+          "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "required_keys_present": false,
+          "token_count": 46,
+          "word_count": 26
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "instruction-two-words-blue-river": "The river is blue."
+        },
+        "trial": 5
+      },
+      {
+        "batch_seconds": 6.266,
+        "json_prompt": {
+          "char_count": 140,
+          "has_markdown_fence": true,
+          "json_parse_ok": false,
+          "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "required_keys_present": false,
+          "token_count": 46,
+          "word_count": 26
+        },
+        "ok": true,
+        "outputs_bounded": {
+          "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+          "factual-red-planet": "Mars",
+          "format-json-answer-unit": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "instruction-two-words-blue-river": "The river is blue."
+        },
+        "trial": 6
+      }
+    ],
+    "pair_verdicts": [
+      {
+        "baseline_comparison_regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "can_promote": false,
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "json_prompt_baseline_passed": true,
+        "json_prompt_optimized_passed": false,
+        "trial": 1
+      },
+      {
+        "baseline_comparison_regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "can_promote": false,
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "json_prompt_baseline_passed": true,
+        "json_prompt_optimized_passed": false,
+        "trial": 2
+      },
+      {
+        "baseline_comparison_regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "can_promote": false,
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "json_prompt_baseline_passed": true,
+        "json_prompt_optimized_passed": false,
+        "trial": 3
+      },
+      {
+        "baseline_comparison_regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "can_promote": false,
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "json_prompt_baseline_passed": true,
+        "json_prompt_optimized_passed": false,
+        "trial": 4
+      },
+      {
+        "baseline_comparison_regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "can_promote": false,
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "json_prompt_baseline_passed": true,
+        "json_prompt_optimized_passed": false,
+        "trial": 5
+      },
+      {
+        "baseline_comparison_regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "can_promote": false,
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "json_prompt_baseline_passed": true,
+        "json_prompt_optimized_passed": false,
+        "trial": 6
+      }
+    ],
+    "summary": {
+      "baseline_fenced_rate": "0/6",
+      "baseline_json_valid_rate": "6/6",
+      "baseline_unique_json_outputs": 1,
+      "can_promote_rate": "0/6",
+      "optimized_fenced_rate": "6/6",
+      "optimized_json_valid_rate": "0/6",
+      "optimized_unique_json_outputs": 1,
+      "quality_regression_signature_rate": "6/6"
+    },
+    "trial_count": 6
+  },
+  "diagnostic_id": "smollm-round6-json-regression",
+  "frozen_model": {
+    "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "retained_optimized_package_name": "smollm2-360m-instruct-034fda2a3a24",
+    "retained_snapshot_dir_name": "snapshot-huggingfacetb-smollm2-360m-instruct-a10cc1512eabd3dde888204e902eca88bddb4951",
+    "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951"
+  },
+  "generated_utc": "2026-09-02T18:42:05Z",
+  "graph_comparison": {
+    "baseline": {
+      "dequantize_linear_count": 0,
+      "gather_block_quantized_count": 0,
+      "matmul_count": 161,
+      "matmul_nbits_count": 0,
+      "op_counts_top20": [
+        {
+          "count": 161,
+          "op": "MatMul"
+        },
+        {
+          "count": 64,
+          "op": "Mul"
+        },
+        {
+          "count": 64,
+          "op": "SkipSimplifiedLayerNormalization"
+        },
+        {
+          "count": 32,
+          "op": "GroupQueryAttention"
+        },
+        {
+          "count": 32,
+          "op": "Sigmoid"
+        },
+        {
+          "count": 2,
+          "op": "Cast"
+        },
+        {
+          "count": 2,
+          "op": "Gather"
+        },
+        {
+          "count": 1,
+          "op": "Constant"
+        },
+        {
+          "count": 1,
+          "op": "RMSNormalization"
+        },
+        {
+          "count": 1,
+          "op": "ReduceSum"
+        },
+        {
+          "count": 1,
+          "op": "Shape"
+        },
+        {
+          "count": 1,
+          "op": "Sub"
+        },
+        {
+          "count": 1,
+          "op": "Transpose"
+        }
+      ],
+      "total_nodes": 363
+    },
+    "optimized": {
+      "dequantize_linear_count": 0,
+      "gather_block_quantized_count": 1,
+      "matmul_count": 1,
+      "matmul_nbits_count": 160,
+      "op_counts_top20": [
+        {
+          "count": 160,
+          "op": "MatMulNBits"
+        },
+        {
+          "count": 65,
+          "op": "RMSNormalization"
+        },
+        {
+          "count": 64,
+          "op": "Add"
+        },
+        {
+          "count": 64,
+          "op": "Mul"
+        },
+        {
+          "count": 32,
+          "op": "GroupQueryAttention"
+        },
+        {
+          "count": 32,
+          "op": "Sigmoid"
+        },
+        {
+          "count": 2,
+          "op": "Cast"
+        },
+        {
+          "count": 1,
+          "op": "Gather"
+        },
+        {
+          "count": 1,
+          "op": "GatherBlockQuantized"
+        },
+        {
+          "count": 1,
+          "op": "MatMul"
+        },
+        {
+          "count": 1,
+          "op": "ReduceSum"
+        },
+        {
+          "count": 1,
+          "op": "Shape"
+        },
+        {
+          "count": 1,
+          "op": "Sub"
+        },
+        {
+          "count": 1,
+          "op": "Transpose"
+        }
+      ],
+      "total_nodes": 426
+    }
+  },
+  "int4_variant_experiments": {
+    "variants": [
+      {
+        "graph_summary": {
+          "dequantize_linear_count": 0,
+          "gather_block_quantized_count": 1,
+          "matmul_count": 1,
+          "matmul_nbits_count": 160,
+          "op_counts_top20": [
+            {
+              "count": 160,
+              "op": "MatMulNBits"
+            },
+            {
+              "count": 65,
+              "op": "RMSNormalization"
+            },
+            {
+              "count": 64,
+              "op": "Add"
+            },
+            {
+              "count": 64,
+              "op": "Mul"
+            },
+            {
+              "count": 32,
+              "op": "GroupQueryAttention"
+            },
+            {
+              "count": 32,
+              "op": "Sigmoid"
+            },
+            {
+              "count": 2,
+              "op": "Cast"
+            },
+            {
+              "count": 1,
+              "op": "Gather"
+            },
+            {
+              "count": 1,
+              "op": "GatherBlockQuantized"
+            },
+            {
+              "count": 1,
+              "op": "MatMul"
+            },
+            {
+              "count": 1,
+              "op": "ReduceSum"
+            },
+            {
+              "count": 1,
+              "op": "Shape"
+            },
+            {
+              "count": 1,
+              "op": "Sub"
+            },
+            {
+              "count": 1,
+              "op": "Transpose"
+            }
+          ],
+          "total_nodes": 426
+        },
+        "model_name": "smollm2-360m-instruct-onboarding-4afe094a-8d7-mobius-baseline-int4_default:1",
+        "olive_args": [],
+        "optimize_ok": true,
+        "optimize_seconds": 22.865,
+        "optimize_stderr_excerpt": "",
+        "optimize_stdout_excerpt": "Loading ONNX model from <redacted-absolute-path>\n[2026-09-02 11:38:15,755] [INFO] [run.py:99:run_engine] Running workflow default_workflow\n[2026-09-02 11:38:15,848] [INFO] [cache.py:142:__init__] Using cache directory: <redacted-absolute-path>\n[2026-09-02 11:38:15,849] [INFO] [accelerator_creator.py:200:create_accelerator] Running workflow on accelerator...",
+        "status": "evaluated",
+        "summary": {
+          "can_promote_rate": "0/3",
+          "json_fenced_rate": "3/3",
+          "json_parse_ok_rate": "0/3",
+          "json_regression_signature_rate": "3/3"
+        },
+        "trial_count": 3,
+        "trials": [
+          {
+            "batch_ok": true,
+            "batch_seconds": 5.86,
+            "json_prompt": {
+              "char_count": 140,
+              "has_markdown_fence": true,
+              "json_parse_ok": false,
+              "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 26
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 1
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 8.031,
+            "json_prompt": {
+              "char_count": 140,
+              "has_markdown_fence": true,
+              "json_parse_ok": false,
+              "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 26
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 2
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 5.5,
+            "json_prompt": {
+              "char_count": 140,
+              "has_markdown_fence": true,
+              "json_parse_ok": false,
+              "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 26
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 3
+          }
+        ],
+        "variant_id": "int4_default"
+      },
+      {
+        "graph_summary": {
+          "dequantize_linear_count": 0,
+          "gather_block_quantized_count": 1,
+          "matmul_count": 1,
+          "matmul_nbits_count": 160,
+          "op_counts_top20": [
+            {
+              "count": 160,
+              "op": "MatMulNBits"
+            },
+            {
+              "count": 65,
+              "op": "RMSNormalization"
+            },
+            {
+              "count": 64,
+              "op": "Add"
+            },
+            {
+              "count": 64,
+              "op": "Mul"
+            },
+            {
+              "count": 32,
+              "op": "GroupQueryAttention"
+            },
+            {
+              "count": 32,
+              "op": "Sigmoid"
+            },
+            {
+              "count": 2,
+              "op": "Cast"
+            },
+            {
+              "count": 1,
+              "op": "Gather"
+            },
+            {
+              "count": 1,
+              "op": "GatherBlockQuantized"
+            },
+            {
+              "count": 1,
+              "op": "MatMul"
+            },
+            {
+              "count": 1,
+              "op": "ReduceSum"
+            },
+            {
+              "count": 1,
+              "op": "Shape"
+            },
+            {
+              "count": 1,
+              "op": "Sub"
+            },
+            {
+              "count": 1,
+              "op": "Transpose"
+            }
+          ],
+          "total_nodes": 426
+        },
+        "model_name": "smollm2-360m-instruct-onboarding-4afe094a-8d7-mobius-baseline-int4_block_size_16:1",
+        "olive_args": [
+          "--block_size",
+          "16"
+        ],
+        "optimize_ok": true,
+        "optimize_seconds": 21.9,
+        "optimize_stderr_excerpt": "",
+        "optimize_stdout_excerpt": "Loading ONNX model from <redacted-absolute-path>\n[2026-09-02 11:39:01,125] [INFO] [run.py:99:run_engine] Running workflow default_workflow\n[2026-09-02 11:39:01,177] [INFO] [cache.py:142:__init__] Using cache directory: <redacted-absolute-path>\n[2026-09-02 11:39:01,177] [INFO] [accelerator_creator.py:200:create_accelerator] Running workflow on accelerator...",
+        "status": "evaluated",
+        "summary": {
+          "can_promote_rate": "0/3",
+          "json_fenced_rate": "0/3",
+          "json_parse_ok_rate": "0/3",
+          "json_regression_signature_rate": "3/3"
+        },
+        "trial_count": 3,
+        "trials": [
+          {
+            "batch_ok": true,
+            "batch_seconds": 8.078,
+            "json_prompt": {
+              "char_count": 306,
+              "has_markdown_fence": false,
+              "json_parse_ok": false,
+              "output_bounded": "I'm sorry, but as an AI, I don't have the ability to access or process user data. I'm designed to provide responses based on pre-defined templates and user instructions. I'm here to assist with text-based conversations, not with processing user data. I recommend using a programming language like Python or",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 50
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 1
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 5.969,
+            "json_prompt": {
+              "char_count": 306,
+              "has_markdown_fence": false,
+              "json_parse_ok": false,
+              "output_bounded": "I'm sorry, but as an AI, I don't have the ability to access or process user data. I'm designed to provide responses based on pre-defined templates and user instructions. I'm here to assist with text-based conversations, not with processing user data. I recommend using a programming language like Python or",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 50
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 2
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 7.203,
+            "json_prompt": {
+              "char_count": 306,
+              "has_markdown_fence": false,
+              "json_parse_ok": false,
+              "output_bounded": "I'm sorry, but as an AI, I don't have the ability to access or process user data. I'm designed to provide responses based on pre-defined templates and user instructions. I'm here to assist with text-based conversations, not with processing user data. I recommend using a programming language like Python or",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 50
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 3
+          }
+        ],
+        "variant_id": "int4_block_size_16"
+      },
+      {
+        "graph_summary": {
+          "dequantize_linear_count": 0,
+          "gather_block_quantized_count": 1,
+          "matmul_count": 1,
+          "matmul_nbits_count": 160,
+          "op_counts_top20": [
+            {
+              "count": 160,
+              "op": "MatMulNBits"
+            },
+            {
+              "count": 65,
+              "op": "RMSNormalization"
+            },
+            {
+              "count": 64,
+              "op": "Add"
+            },
+            {
+              "count": 64,
+              "op": "Mul"
+            },
+            {
+              "count": 32,
+              "op": "GroupQueryAttention"
+            },
+            {
+              "count": 32,
+              "op": "Sigmoid"
+            },
+            {
+              "count": 2,
+              "op": "Cast"
+            },
+            {
+              "count": 1,
+              "op": "Gather"
+            },
+            {
+              "count": 1,
+              "op": "GatherBlockQuantized"
+            },
+            {
+              "count": 1,
+              "op": "MatMul"
+            },
+            {
+              "count": 1,
+              "op": "ReduceSum"
+            },
+            {
+              "count": 1,
+              "op": "Shape"
+            },
+            {
+              "count": 1,
+              "op": "Sub"
+            },
+            {
+              "count": 1,
+              "op": "Transpose"
+            }
+          ],
+          "total_nodes": 426
+        },
+        "model_name": "smollm2-360m-instruct-onboarding-4afe094a-8d7-mobius-baseline-int4_block_size_32:1",
+        "olive_args": [
+          "--block_size",
+          "32"
+        ],
+        "optimize_ok": true,
+        "optimize_seconds": 16.198,
+        "optimize_stderr_excerpt": "",
+        "optimize_stdout_excerpt": "Loading ONNX model from <redacted-absolute-path>\n[2026-09-02 11:39:45,848] [INFO] [run.py:99:run_engine] Running workflow default_workflow\n[2026-09-02 11:39:45,903] [INFO] [cache.py:142:__init__] Using cache directory: <redacted-absolute-path>\n[2026-09-02 11:39:45,909] [INFO] [accelerator_creator.py:200:create_accelerator] Running workflow on accelerator...",
+        "status": "evaluated",
+        "summary": {
+          "can_promote_rate": "0/3",
+          "json_fenced_rate": "0/3",
+          "json_parse_ok_rate": "0/3",
+          "json_regression_signature_rate": "3/3"
+        },
+        "trial_count": 3,
+        "trials": [
+          {
+            "batch_ok": true,
+            "batch_seconds": 6.875,
+            "json_prompt": {
+              "char_count": 288,
+              "has_markdown_fence": false,
+              "json_parse_ok": false,
+              "output_bounded": "I'm sorry, but I'm an AI and I don't have the ability to access or process user data. I'm here to assist with text-based questions and requests. I'm designed to provide responses in a structured and conversational format. I'm not capable of retrieving or processing user data. I'm here to",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 50
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:factual-red-planet",
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:factual-red-planet",
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 1
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 6.407,
+            "json_prompt": {
+              "char_count": 288,
+              "has_markdown_fence": false,
+              "json_parse_ok": false,
+              "output_bounded": "I'm sorry, but I'm an AI and I don't have the ability to access or process user data. I'm here to assist with text-based questions and requests. I'm designed to provide responses in a structured and conversational format. I'm not capable of retrieving or processing user data. I'm here to",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 50
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:factual-red-planet",
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:factual-red-planet",
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 2
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 6.735,
+            "json_prompt": {
+              "char_count": 288,
+              "has_markdown_fence": false,
+              "json_parse_ok": false,
+              "output_bounded": "I'm sorry, but I'm an AI and I don't have the ability to access or process user data. I'm here to assist with text-based questions and requests. I'm designed to provide responses in a structured and conversational format. I'm not capable of retrieving or processing user data. I'm here to",
+              "required_keys_present": false,
+              "token_count": null,
+              "word_count": 50
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [
+                "optimized_failed_prompt:factual-red-planet",
+                "optimized_failed_prompt:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ],
+              "can_promote": false,
+              "integrity_failures": [
+                "baseline_passed_optimized_failed:factual-red-planet",
+                "baseline_passed_optimized_failed:format-json-answer-unit",
+                "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+              ]
+            },
+            "trial": 3
+          }
+        ],
+        "variant_id": "int4_block_size_32"
+      },
+      {
+        "graph_summary": {
+          "dequantize_linear_count": 0,
+          "gather_block_quantized_count": 1,
+          "matmul_count": 1,
+          "matmul_nbits_count": 160,
+          "op_counts_top20": [
+            {
+              "count": 160,
+              "op": "MatMulNBits"
+            },
+            {
+              "count": 65,
+              "op": "RMSNormalization"
+            },
+            {
+              "count": 64,
+              "op": "Add"
+            },
+            {
+              "count": 64,
+              "op": "Mul"
+            },
+            {
+              "count": 32,
+              "op": "GroupQueryAttention"
+            },
+            {
+              "count": 32,
+              "op": "Sigmoid"
+            },
+            {
+              "count": 2,
+              "op": "Cast"
+            },
+            {
+              "count": 1,
+              "op": "Gather"
+            },
+            {
+              "count": 1,
+              "op": "GatherBlockQuantized"
+            },
+            {
+              "count": 1,
+              "op": "MatMul"
+            },
+            {
+              "count": 1,
+              "op": "ReduceSum"
+            },
+            {
+              "count": 1,
+              "op": "Shape"
+            },
+            {
+              "count": 1,
+              "op": "Sub"
+            },
+            {
+              "count": 1,
+              "op": "Transpose"
+            }
+          ],
+          "total_nodes": 426
+        },
+        "model_name": "smollm2-360m-instruct-onboarding-4afe094a-8d7-mobius-baseline-int4_block_size_64:1",
+        "olive_args": [
+          "--block_size",
+          "64"
+        ],
+        "optimize_ok": true,
+        "optimize_seconds": 16.696,
+        "optimize_stderr_excerpt": "",
+        "optimize_stdout_excerpt": "Loading ONNX model from <redacted-absolute-path>\n[2026-09-02 11:40:23,836] [INFO] [run.py:99:run_engine] Running workflow default_workflow\n[2026-09-02 11:40:23,901] [INFO] [cache.py:142:__init__] Using cache directory: <redacted-absolute-path>\n[2026-09-02 11:40:23,907] [INFO] [accelerator_creator.py:200:create_accelerator] Running workflow on accelerator...",
+        "status": "evaluated",
+        "summary": {
+          "can_promote_rate": "5/5",
+          "json_fenced_rate": "0/5",
+          "json_parse_ok_rate": "5/5",
+          "json_regression_signature_rate": "0/5"
+        },
+        "trial_count": 5,
+        "trials": [
+          {
+            "batch_ok": true,
+            "batch_seconds": 6.719,
+            "json_prompt": {
+              "char_count": 38,
+              "has_markdown_fence": false,
+              "json_parse_ok": true,
+              "output_bounded": "{\n    \"answer\": 12,\n    \"unit\": \"cm\"\n}",
+              "required_keys_present": true,
+              "token_count": null,
+              "word_count": 6
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [],
+              "can_promote": true,
+              "integrity_failures": []
+            },
+            "trial": 1
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 5.531,
+            "json_prompt": {
+              "char_count": 38,
+              "has_markdown_fence": false,
+              "json_parse_ok": true,
+              "output_bounded": "{\n    \"answer\": 12,\n    \"unit\": \"cm\"\n}",
+              "required_keys_present": true,
+              "token_count": null,
+              "word_count": 6
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [],
+              "can_promote": true,
+              "integrity_failures": []
+            },
+            "trial": 2
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 6.063,
+            "json_prompt": {
+              "char_count": 38,
+              "has_markdown_fence": false,
+              "json_parse_ok": true,
+              "output_bounded": "{\n    \"answer\": 12,\n    \"unit\": \"cm\"\n}",
+              "required_keys_present": true,
+              "token_count": null,
+              "word_count": 6
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [],
+              "can_promote": true,
+              "integrity_failures": []
+            },
+            "trial": 3
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 5.703,
+            "json_prompt": {
+              "char_count": 38,
+              "has_markdown_fence": false,
+              "json_parse_ok": true,
+              "output_bounded": "{\n    \"answer\": 12,\n    \"unit\": \"cm\"\n}",
+              "required_keys_present": true,
+              "token_count": null,
+              "word_count": 6
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [],
+              "can_promote": true,
+              "integrity_failures": []
+            },
+            "trial": 4
+          },
+          {
+            "batch_ok": true,
+            "batch_seconds": 5.859,
+            "json_prompt": {
+              "char_count": 38,
+              "has_markdown_fence": false,
+              "json_parse_ok": true,
+              "output_bounded": "{\n    \"answer\": 12,\n    \"unit\": \"cm\"\n}",
+              "required_keys_present": true,
+              "token_count": null,
+              "word_count": 6
+            },
+            "quality_eval": {
+              "baseline_comparison_regressions": [],
+              "can_promote": true,
+              "integrity_failures": []
+            },
+            "trial": 5
+          }
+        ],
+        "variant_id": "int4_block_size_64"
+      },
+      {
+        "olive_args": [
+          "--block_size",
+          "-1"
+        ],
+        "optimize_ok": false,
+        "optimize_seconds": 41.534,
+        "optimize_stderr_excerpt": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"<redacted-absolute-path>\", line 11, in <module>\n    main(called_as_console_script=False)\n  File \"<redacted-absolute-path>\", line 79, in main\n    service.run()\n  File \"<redacted-absolute-path>\", line 137, in wr...",
+        "optimize_stdout_excerpt": "Loading ONNX model from <redacted-absolute-path>\n[2026-09-02 11:41:40,666] [INFO] [run.py:99:run_engine] Running workflow default_workflow\n[2026-09-02 11:41:40,732] [INFO] [cache.py:142:__init__] Using cache directory: <redacted-absolute-path>\n[2026-09-02 11:41:40,737] [INFO] [accelerator_creator.py:200:create_accelerator] Running workflow on accelerator...",
+        "status": "optimize_failed_or_unsupported",
+        "trial_count": 0,
+        "trials": [],
+        "variant_id": "int4_block_size_-1"
+      },
+      {
+        "olive_args": [
+          "--act_precision",
+          "uint8"
+        ],
+        "optimize_ok": false,
+        "optimize_seconds": 18.875,
+        "optimize_stderr_excerpt": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"<redacted-absolute-path>\", line 11, in <module>\n    main(called_as_console_script=False)\n  File \"<redacted-absolute-path>\", line 79, in main\n    service.run()\n  File \"<redacted-absolute-path>\", line 137, in wr...",
+        "optimize_stdout_excerpt": "Loading ONNX model from <redacted-absolute-path>\n[2026-09-02 11:41:54,419] [INFO] [run.py:99:run_engine] Running workflow default_workflow\n[2026-09-02 11:41:54,486] [INFO] [cache.py:142:__init__] Using cache directory: <redacted-absolute-path>\n[2026-09-02 11:41:54,486] [INFO] [accelerator_creator.py:200:create_accelerator] Running workflow on accelerator...",
+        "status": "optimize_failed_or_unsupported",
+        "trial_count": 0,
+        "trials": [],
+        "variant_id": "int4_act_precision_uint8"
+      }
+    ],
+    "variants_root": "<redacted-absolute-path>"
+  },
+  "layer_isolation_hybrid_swaps": {
+    "directories": {
+      "hybrid_a_dir": "<redacted-absolute-path>",
+      "hybrid_b_dir": "<redacted-absolute-path>",
+      "hybrid_root": "<redacted-absolute-path>"
+    },
+    "hybrid_a_baseline_package_plus_optimized_graph": {
+      "batch_ok": true,
+      "batch_seconds": 6.172,
+      "json_prompt_has_fence": true,
+      "json_prompt_output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+      "json_prompt_parse_ok": false,
+      "quality_eval": {
+        "baseline_comparison_gate": "failed",
+        "baseline_comparison_regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "can_promote": false,
+        "functional_gate": "passed",
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "metrics_capture_gate": "unavailable",
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "baseline_passed": false,
+            "optimized_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "optimized_passed": false,
+            "prompt_id": "arithmetic-addition-17-plus-28"
+          },
+          {
+            "baseline_failures": [],
+            "baseline_passed": true,
+            "optimized_failures": [],
+            "optimized_passed": true,
+            "prompt_id": "factual-red-planet"
+          },
+          {
+            "baseline_failures": [
+              "required_token_missing:blue"
+            ],
+            "baseline_passed": false,
+            "optimized_failures": [
+              "max_words_exceeded"
+            ],
+            "optimized_passed": false,
+            "prompt_id": "instruction-two-words-blue-river"
+          },
+          {
+            "baseline_failures": [],
+            "baseline_passed": true,
+            "optimized_failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "optimized_passed": false,
+            "prompt_id": "format-json-answer-unit"
+          }
+        ],
+        "recipe_status": "blocked"
+      }
+    },
+    "hybrid_b_optimized_package_plus_baseline_graph": {
+      "batch_ok": true,
+      "batch_seconds": 6.687,
+      "json_prompt_has_fence": false,
+      "json_prompt_output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+      "json_prompt_parse_ok": true,
+      "quality_eval": {
+        "baseline_comparison_gate": "passed",
+        "baseline_comparison_regressions": [],
+        "can_promote": true,
+        "functional_gate": "passed",
+        "integrity_failures": [],
+        "metrics_capture_gate": "unavailable",
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "baseline_passed": false,
+            "optimized_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "optimized_passed": false,
+            "prompt_id": "arithmetic-addition-17-plus-28"
+          },
+          {
+            "baseline_failures": [],
+            "baseline_passed": true,
+            "optimized_failures": [],
+            "optimized_passed": true,
+            "prompt_id": "factual-red-planet"
+          },
+          {
+            "baseline_failures": [
+              "required_token_missing:blue"
+            ],
+            "baseline_passed": false,
+            "optimized_failures": [
+              "required_token_missing:blue"
+            ],
+            "optimized_passed": false,
+            "prompt_id": "instruction-two-words-blue-river"
+          },
+          {
+            "baseline_failures": [],
+            "baseline_passed": true,
+            "optimized_failures": [],
+            "optimized_passed": true,
+            "prompt_id": "format-json-answer-unit"
+          }
+        ],
+        "recipe_status": "verified"
+      }
+    }
+  },
+  "operational_cleanup": {
+    "external_cleanup_result": {
+      "ok": true,
+      "removed": true
+    },
+    "external_run_root": "<redacted-absolute-path>",
+    "lingering_process_probe": {
+      "count": 0,
+      "ok": true,
+      "rows": []
+    },
+    "retain_external_requested": false
+  },
+  "packaging_and_template_comparison": {
+    "chat_template_fingerprints": {
+      "baseline": {
+        "chat_template_jinja_sha256": null,
+        "tokenizer_config_chat_template_sha256": "872be49dbb638044ad01b60388f48d469ff2980e5f0dccdc22ec907db54d0788"
+      },
+      "optimized": {
+        "chat_template_jinja_sha256": null,
+        "tokenizer_config_chat_template_sha256": "872be49dbb638044ad01b60388f48d469ff2980e5f0dccdc22ec907db54d0788"
+      }
+    },
+    "files": {
+      "config.json": {
+        "baseline": {
+          "exists": false
+        },
+        "optimized": {
+          "exists": false
+        },
+        "sha_equal": false
+      },
+      "genai_config.json": {
+        "baseline": {
+          "exists": true,
+          "sha256": "8f2b585228a8607946b7ec5a52a12d410b3868ac563488eb55ab920ba2f63986",
+          "size_bytes": 1399
+        },
+        "optimized": {
+          "exists": true,
+          "sha256": "8f2b585228a8607946b7ec5a52a12d410b3868ac563488eb55ab920ba2f63986",
+          "size_bytes": 1399
+        },
+        "sha_equal": true
+      },
+      "inference_model.json": {
+        "baseline": {
+          "exists": true,
+          "sha256": "68b57342d361eb9ecfe2c68f1c1514f3c5925fb8a3904f789e14e3df938a6c06",
+          "size_bytes": 81
+        },
+        "optimized": {
+          "exists": true,
+          "sha256": "6197db2df30d6d5faa0a201ec24417ea1b0c680a1917eac8e549be1b6c94fa42",
+          "size_bytes": 65
+        },
+        "sha_equal": false
+      },
+      "special_tokens_map.json": {
+        "baseline": {
+          "exists": true,
+          "sha256": "2b7379f3ae813529281a5c602bc5a11c1d4e0a99107aaa597fe936c1e813ca52",
+          "size_bytes": 655
+        },
+        "optimized": {
+          "exists": true,
+          "sha256": "2b7379f3ae813529281a5c602bc5a11c1d4e0a99107aaa597fe936c1e813ca52",
+          "size_bytes": 655
+        },
+        "sha_equal": true
+      },
+      "tokenizer.json": {
+        "baseline": {
+          "exists": true,
+          "sha256": "9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c",
+          "size_bytes": 2104556
+        },
+        "optimized": {
+          "exists": true,
+          "sha256": "9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c",
+          "size_bytes": 2104556
+        },
+        "sha_equal": true
+      },
+      "tokenizer_config.json": {
+        "baseline": {
+          "exists": true,
+          "sha256": "4ec77d44f62efeb38d7e044a1db318f6a939438425312dfa333b8382dbad98df",
+          "size_bytes": 3764
+        },
+        "optimized": {
+          "exists": true,
+          "sha256": "4ec77d44f62efeb38d7e044a1db318f6a939438425312dfa333b8382dbad98df",
+          "size_bytes": 3764
+        },
+        "sha_equal": true
+      }
+    },
+    "genai_config_exact_equal": true,
+    "inference_model_name": {
+      "baseline": "smollm2-360m-instruct-onboarding-4afe094a-8d7-mobius-baseline:1",
+      "equal": false,
+      "optimized": "smollm2-360m-instruct-onboarding-034fda2a3a24:1"
+    }
+  },
+  "quality_profile": {
+    "deterministic_inference": {
+      "max_tokens": 64,
+      "seed": 17,
+      "temperature": 0.0
+    },
+    "profile_id": "textgen-basic-quality-v1",
+    "prompt_ids": [
+      "arithmetic-addition-17-plus-28",
+      "factual-red-planet",
+      "instruction-two-words-blue-river",
+      "format-json-answer-unit"
+    ],
+    "unsupported_determinism_fields_by_runtime_contract": [
+      "temperature",
+      "seed"
+    ]
+  },
+  "remedy_analysis": {
+    "mandatory_full_set_rerun": {
+      "gates_must_remain_strict": [
+        "no JSON fence stripping",
+        "no parser-only acceptance",
+        "no validator relaxation",
+        "no output rewriting"
+      ],
+      "model_ids": [
+        "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "Qwen/Qwen2-1.5B-Instruct",
+        "Qwen/Qwen2-0.5B-Instruct",
+        "ibm-granite/granite-3.2-2b-instruct"
+      ],
+      "required": true,
+      "scope": "full frozen five-model set unchanged"
+    },
+    "ranked_candidates": [
+      {
+        "candidate": "capability-level Olive INT4 block_size=64",
+        "evidence": {
+          "can_promote_rate": "5/5",
+          "json_fenced_rate": "0/5",
+          "json_parse_ok_rate": "5/5",
+          "json_regression_signature_rate": "0/5"
+        },
+        "rank": 1,
+        "risk": "Not yet proven across full frozen five-model set; must run unchanged-five-model rerun before adoption.",
+        "scope": "llama-text-generation-cpu-int4-v1 capability policy candidate (not model-id keyed).",
+        "status": "proven_on_target_model"
+      },
+      {
+        "candidate": "keep current int4 default",
+        "evidence": {
+          "can_promote_rate": "0/3",
+          "json_fenced_rate": "3/3",
+          "json_parse_ok_rate": "0/3",
+          "json_regression_signature_rate": "3/3"
+        },
+        "rank": 2,
+        "risk": "Retains deterministic JSON regression signature on SmolLM2.",
+        "scope": "existing production path",
+        "status": "rejected_for_target"
+      }
+    ],
+    "recommended_next_action": "Run unchanged-five-model Round 6 rerun with capability-level INT4 block_size=64 policy candidate to validate generalization and guard against regressions.",
+    "rejected_approaches": [
+      {
+        "evidence": {
+          "can_promote_rate": "0/3",
+          "json_fenced_rate": "3/3",
+          "json_parse_ok_rate": "0/3",
+          "json_regression_signature_rate": "3/3"
+        },
+        "reason": "quality_gate_failed",
+        "variant_id": "int4_default"
+      },
+      {
+        "evidence": {
+          "can_promote_rate": "0/3",
+          "json_fenced_rate": "0/3",
+          "json_parse_ok_rate": "0/3",
+          "json_regression_signature_rate": "3/3"
+        },
+        "reason": "quality_gate_failed",
+        "variant_id": "int4_block_size_16"
+      },
+      {
+        "evidence": {
+          "can_promote_rate": "0/3",
+          "json_fenced_rate": "0/3",
+          "json_parse_ok_rate": "0/3",
+          "json_regression_signature_rate": "3/3"
+        },
+        "reason": "quality_gate_failed",
+        "variant_id": "int4_block_size_32"
+      },
+      {
+        "evidence": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"<redacted-absolute-path>\", line 11, in <module>\n    main(called_as_console_script=False)\n  File \"<redacted-absolute-path>\", line 79, in main\n    service.run()\n  File \"<redacted-absolute-path>\", line 137, in wr...",
+        "reason": "toolchain_unsupported_or_optimize_failed",
+        "variant_id": "int4_block_size_-1"
+      },
+      {
+        "evidence": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"<redacted-absolute-path>\", line 11, in <module>\n    main(called_as_console_script=False)\n  File \"<redacted-absolute-path>\", line 79, in main\n    service.run()\n  File \"<redacted-absolute-path>\", line 137, in wr...",
+        "reason": "toolchain_unsupported_or_optimize_failed",
+        "variant_id": "int4_act_precision_uint8"
+      }
+    ],
+    "safe_generic_fix_proven_for_full_round6_five_model_set": false,
+    "safe_generic_fix_proven_for_target_model": true
+  },
+  "reproduction_single_batch": {
+    "baseline_batch_seconds": 6.906,
+    "baseline_model_name": "smollm2-360m-instruct-onboarding-4afe094a-8d7-mobius-baseline:1",
+    "batch_request": {
+      "batch_timeout_seconds": 3600,
+      "per_prompt_timeout_seconds": 900,
+      "prompts": [
+        {
+          "max_tokens": 64,
+          "prompt": "What is 17 + 28? Reply using only digits.",
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        },
+        {
+          "max_tokens": 64,
+          "prompt": "Which planet is known as the Red Planet? Reply with one word.",
+          "prompt_id": "factual-red-planet"
+        },
+        {
+          "max_tokens": 64,
+          "prompt": "Output exactly two words: blue river",
+          "prompt_id": "instruction-two-words-blue-river"
+        },
+        {
+          "max_tokens": 64,
+          "prompt": "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.",
+          "prompt_id": "format-json-answer-unit"
+        }
+      ]
+    },
+    "bounded_outputs": {
+      "baseline": {
+        "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+        "factual-red-planet": "Mars",
+        "format-json-answer-unit": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "instruction-two-words-blue-river": "River"
+      },
+      "optimized": {
+        "arithmetic-addition-17-plus-28": "17 + 28 = 45",
+        "factual-red-planet": "Mars",
+        "format-json-answer-unit": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+        "instruction-two-words-blue-river": "The river is blue."
+      }
+    },
+    "json_prompt": {
+      "baseline": {
+        "char_count": 34,
+        "has_markdown_fence": false,
+        "json_parse_ok": true,
+        "output_bounded": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "required_keys_present": true,
+        "token_count": 18,
+        "word_count": 6
+      },
+      "optimized": {
+        "char_count": 140,
+        "has_markdown_fence": true,
+        "json_parse_ok": false,
+        "output_bounded": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+        "required_keys_present": false,
+        "token_count": 46,
+        "word_count": 26
+      }
+    },
+    "optimized_batch_seconds": 6.86,
+    "optimized_model_name": "smollm2-360m-instruct-onboarding-034fda2a3a24:1",
+    "quality_eval": {
+      "baseline_comparison_gate": "failed",
+      "baseline_comparison_regressions": [
+        "optimized_failed_prompt:format-json-answer-unit",
+        "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+      ],
+      "can_promote": false,
+      "functional_gate": "passed",
+      "integrity_failures": [
+        "baseline_passed_optimized_failed:format-json-answer-unit",
+        "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+      ],
+      "metrics_capture_gate": "unavailable",
+      "per_prompt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        },
+        {
+          "baseline_failures": [],
+          "baseline_passed": true,
+          "optimized_failures": [],
+          "optimized_passed": true,
+          "prompt_id": "factual-red-planet"
+        },
+        {
+          "baseline_failures": [
+            "required_token_missing:blue"
+          ],
+          "baseline_passed": false,
+          "optimized_failures": [
+            "max_words_exceeded"
+          ],
+          "optimized_passed": false,
+          "prompt_id": "instruction-two-words-blue-river"
+        },
+        {
+          "baseline_failures": [],
+          "baseline_passed": true,
+          "optimized_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "optimized_passed": false,
+          "prompt_id": "format-json-answer-unit"
+        }
+      ],
+      "recipe_status": "blocked"
+    }
+  },
+  "root_cause_assessment": {
+    "confidence": "high",
+    "primary_layer": "quantized_graph_behavior",
+    "ruled_out_or_lower_confidence_layers": [
+      "evaluator mapping (strict JSON contract behaved as designed)",
+      "model-id-specific prompt logic (no model-specific workaround tested)",
+      "runtime worker prompt ordering (prompt order preserved and bounded timings)"
+    ],
+    "supporting_evidence": [
+      "Baseline and optimized package metadata (genai_config/tokenizer/config) remained equivalent where compared.",
+      "Swapping only ONNX graphs swapped behavior; package/config swap alone did not reproduce the fence regression.",
+      "Repeated trials showed stable baseline clean JSON and optimized fenced invalid JSON outputs."
+    ]
+  },
+  "round6_claim_under_review": {
+    "baseline_comparison_from_round6": {
+      "passed": false,
+      "regressions": [
+        "optimized_failed_prompt:format-json-answer-unit",
+        "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+      ]
+    },
+    "failure_excerpt_from_round6": [
+      {
+        "baseline_failures": [
+          "exact_match_failed",
+          "max_words_exceeded"
+        ],
+        "baseline_output_text": "17 + 28 = 45",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "exact_match_failed",
+          "max_words_exceeded"
+        ],
+        "optimized_output_text": "17 + 28 = 45",
+        "optimized_passed": false,
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      },
+      {
+        "baseline_failures": [
+          "required_token_missing:blue"
+        ],
+        "baseline_output_text": "River",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "max_words_exceeded"
+        ],
+        "optimized_output_text": "The river is blue.",
+        "optimized_passed": false,
+        "prompt_id": "instruction-two-words-blue-river"
+      },
+      {
+        "baseline_failures": [],
+        "baseline_output_text": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "baseline_passed": true,
+        "optimized_failures": [
+          "forbidden_token_present:```",
+          "json_format_invalid"
+        ],
+        "optimized_output_text": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+        "optimized_passed": false,
+        "prompt_id": "format-json-answer-unit"
+      }
+    ],
+    "metrics_ref": "quality-metrics://4afe094a-8d75-4bc2-9ef3-ae32291591fc/quality-validation-evidence.json",
+    "recipe_verification_from_round6": {
+      "baseline_available": true,
+      "can_promote": false,
+      "gate_status": "failed",
+      "integrity_failures": [
+        "baseline_passed_optimized_failed:format-json-answer-unit",
+        "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+      ],
+      "regression_free": false,
+      "runtime_functional": true,
+      "status": "blocked"
+    }
+  },
+  "schema_version": "1.0.0",
+  "source_round": {
+    "branch": "wayne-ch-linus-running-round-6",
+    "commit": "4e07f09f4963db50978e3683a0b796659e84d35a",
+    "manifest_path": "evaluation/recipe-agent-v1/round-6/round-manifest.json",
+    "model_result_path": "evaluation/recipe-agent-v1/round-6/model-results/02-huggingfacetb-smollm2-360m-instruct.json",
+    "round_id": "r6-20260902T172246Z",
+    "summary_path": "evaluation/recipe-agent-v1/round-6/round-6-summary.json"
+  },
+  "toolchain_probe": {
+    "executable": "<redacted-absolute-path>",
+    "missing": [],
+    "python": "3.11.9",
+    "versions": {
+      "fl-model-onboarding": "0.1.0",
+      "foundry-local-sdk": "1.2.4",
+      "mobius-onnx": "0.1.0",
+      "olive-ai": "0.13.0",
+      "onnx": "1.22.0",
+      "onnxruntime": "1.29.0",
+      "onnxruntime-genai": "0.15.2"
+    }
+  }
+}
