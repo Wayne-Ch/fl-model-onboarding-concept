@@ -371,6 +371,28 @@ def test_production_runner_uses_verified_contract_and_registers_artifact(tmp_pat
     assert runner.cancel_events[-1] is not None
 
 
+def test_production_runner_uses_explicit_runtime_interpreter_for_worker_commands(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="explicit-runtime-python", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    runner = ContractProcessRunner()
+    explicit_python = (tmp_path / "runtime-venv" / "Scripts" / "python.exe").resolve()
+
+    ProductionBuildStageRunner(
+        runner,
+        model_acquisition=PinnedSnapshot(),  # type: ignore[arg-type]
+        runtime_python_executable=explicit_python,
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.SUCCEEDED
+    validate_runtime = next(spec for spec in runner.specs if "validate-runtime" in spec.argv)
+    foundry_infer = next(spec for spec in runner.specs if "foundry-infer" in spec.argv)
+    assert validate_runtime.argv[0] == str(explicit_python)
+    assert foundry_infer.argv[0] == str(explicit_python)
+
+
 def test_service_indexes_exact_revision_profile_after_runner_sdk_success(tmp_path: Path) -> None:
     process_runner = ContractProcessRunner()
     service = LocalOnboardingService(

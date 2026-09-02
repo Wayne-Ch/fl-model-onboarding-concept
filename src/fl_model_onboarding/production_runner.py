@@ -572,6 +572,20 @@ def _normalize_revision_sha(value: object, *, field_name: str) -> str:
     return normalized
 
 
+def _resolve_python_executable(value: Path | str | None) -> Path:
+    if value is None:
+        return Path(sys.executable).resolve()
+    if isinstance(value, Path):
+        candidate = value
+    elif isinstance(value, str):
+        if not value.strip():
+            raise ValueError("runtime python executable must be non-empty when provided.")
+        candidate = Path(value.strip())
+    else:
+        raise TypeError("runtime python executable must be a path-like string or Path.")
+    return candidate.resolve()
+
+
 class FoundrySdkTextInferenceBackend:
     def __init__(
         self,
@@ -579,10 +593,12 @@ class FoundrySdkTextInferenceBackend:
         *,
         timeout_seconds: int = 900,
         cancellation_event: Event | None = None,
+        runtime_python_executable: Path | str | None = None,
     ) -> None:
         self._process_runner = process_runner
         self._timeout_seconds = timeout_seconds
         self._cancellation_event = cancellation_event
+        self._runtime_python_executable = _resolve_python_executable(runtime_python_executable)
 
     def infer(
         self,
@@ -606,7 +622,7 @@ class FoundrySdkTextInferenceBackend:
             result = self._process_runner.run(
                 CommandSpec(
                     argv=(
-                        sys.executable,
+                        str(self._runtime_python_executable),
                         "-m",
                         "fl_model_onboarding.runtime_worker",
                         "foundry-infer",
@@ -642,12 +658,14 @@ class ProductionBuildStageRunner:
         recipe_registry: RecipeRegistry | None = None,
         recipe_attempt_store: RecipeAttemptStore | None = None,
         recipe_execution_resolver: RecipeExecutionResolver | None = None,
+        runtime_python_executable: Path | str | None = None,
     ) -> None:
         self._process_runner = process_runner
         self._build_timeout_seconds = build_timeout_seconds
         self._olive_timeout_seconds = olive_timeout_seconds
         self._runtime_timeout_seconds = runtime_timeout_seconds
         self._model_acquisition = model_acquisition or HuggingFaceAcquisitionAdapter()
+        self._runtime_python_executable = _resolve_python_executable(runtime_python_executable)
         self._recipe_registry = recipe_registry or DEFAULT_RECIPE_REGISTRY
         self._execution_resolver = recipe_execution_resolver or RecipeExecutionResolver(
             recipe_registry=self._recipe_registry,
@@ -845,7 +863,7 @@ class ProductionBuildStageRunner:
         runtime_result = self._run_command(
             CommandSpec(
                 argv=(
-                    sys.executable,
+                    str(self._runtime_python_executable),
                     "-m",
                     "fl_model_onboarding.runtime_worker",
                     "validate-runtime",
@@ -877,6 +895,7 @@ class ProductionBuildStageRunner:
             self._process_runner,
             timeout_seconds=self._runtime_timeout_seconds,
             cancellation_event=cancellation_event,
+            runtime_python_executable=self._runtime_python_executable,
         )
         output = inference_backend.infer(
             artifact=BuildArtifact(

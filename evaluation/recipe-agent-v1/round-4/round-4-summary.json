@@ -1,0 +1,494 @@
+{
+  "attempt_success_rate": "0/5",
+  "baseline_valid": true,
+  "branch": "wayne-ch-linus-fixing-generated-execution",
+  "commit": "72a87d0abaeed8ac8b5027cc0f7978e321edb94c",
+  "current_run_workspace_cleanup": {
+    "blocked_count": 0,
+    "cleaned_count": 5,
+    "details": [
+      {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 9982056288,
+        "job_id": "588416f7-7a8f-429f-afe9-08b7b7ec8d30",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\588416f7-7a8f-429f-afe9-08b7b7ec8d30"
+      },
+      {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3698951910,
+        "job_id": "17e1e928-4eff-42ac-a908-dd23328c5a60",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\17e1e928-4eff-42ac-a908-dd23328c5a60"
+      },
+      {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 8769340049,
+        "job_id": "40064d6c-b183-4e3a-b231-42ae92467c1b",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\40064d6c-b183-4e3a-b231-42ae92467c1b"
+      },
+      {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3089788186,
+        "job_id": "a01afb5b-6977-4977-afb7-0582b18aa9ee",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\a01afb5b-6977-4977-afb7-0582b18aa9ee"
+      },
+      {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 24028286301,
+        "job_id": "67e5821f-a563-4bb6-a677-7c64ae6e6b54",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\67e5821f-a563-4bb6-a677-7c64ae6e6b54"
+      }
+    ],
+    "freed_bytes": 49568422734,
+    "missing_count": 0,
+    "retain_failed_workspaces": false,
+    "retained_failed_count": 0
+  },
+  "environment_blockers": [],
+  "environment_fail_fast_triggered": false,
+  "finished_utc": "2026-09-02T08:55:46.059283+00:00",
+  "model_success_rate_applicable": true,
+  "models_failed": 5,
+  "models_succeeded": 0,
+  "models_total": 5,
+  "obsolete_failed_workspace_cleanup": {
+    "runs": [
+      {
+        "blocked_count": 0,
+        "deleted_count": 5,
+        "details": [
+          {
+            "action": "deleted",
+            "freed_bytes": 6603396111,
+            "job_id": "1b0e2955-ab0f-4079-a3fa-88ce740ba43e",
+            "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "workspace_path": "<redacted-absolute-path>"
+          },
+          {
+            "action": "deleted",
+            "freed_bytes": 2178877491,
+            "job_id": "f04412df-6216-4d2b-8101-9d90f7cc600f",
+            "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+            "workspace_path": "<redacted-absolute-path>"
+          },
+          {
+            "action": "deleted",
+            "freed_bytes": 6195173572,
+            "job_id": "5c1201dd-5abd-4c91-9f7e-76265a37b159",
+            "model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "workspace_path": "<redacted-absolute-path>"
+          },
+          {
+            "action": "deleted",
+            "freed_bytes": 1993726981,
+            "job_id": "ba0348a0-18ad-4626-a732-c2c189dfdc20",
+            "model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "workspace_path": "<redacted-absolute-path>"
+          },
+          {
+            "action": "deleted",
+            "freed_bytes": 15642680897,
+            "job_id": "faf90eff-86c2-4099-9558-71fe9143bb13",
+            "model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "workspace_path": "<redacted-absolute-path>"
+          }
+        ],
+        "freed_bytes": 32613855052,
+        "missing_count": 0,
+        "run_id": "r2-20260902t1950z",
+        "runtime_root": "<redacted-absolute-path>",
+        "status": "completed",
+        "summary_path": "<repo-root>\\evaluation\\recipe-agent-v1\\round-2\\round-2-summary.json"
+      },
+      {
+        "blocked_count": 0,
+        "deleted_count": 5,
+        "details": [
+          {
+            "action": "deleted",
+            "freed_bytes": 9982056140,
+            "job_id": "7048867b-8807-4196-8337-2d0d113f36a0",
+            "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "workspace_path": "<redacted-absolute-path>"
+          },
+          {
+            "action": "deleted",
+            "freed_bytes": 3698870154,
+            "job_id": "6f602ac4-830c-4bf8-af56-14b95da00bc9",
+            "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+            "workspace_path": "<redacted-absolute-path>"
+          },
+          {
+            "action": "deleted",
+            "freed_bytes": 8769339941,
+            "job_id": "fd43a3a7-5614-4c97-8682-f018a49a763d",
+            "model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "workspace_path": "<redacted-absolute-path>"
+          },
+          {
+            "action": "deleted",
+            "freed_bytes": 3089788078,
+            "job_id": "2d52b7bd-89ed-48ac-af47-d903cb335d3d",
+            "model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "workspace_path": "<redacted-absolute-path>"
+          },
+          {
+            "action": "deleted",
+            "freed_bytes": 24028204535,
+            "job_id": "c79323d3-ac76-4241-b20b-d8e7ae6be84e",
+            "model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "workspace_path": "<redacted-absolute-path>"
+          }
+        ],
+        "freed_bytes": 49568258848,
+        "missing_count": 0,
+        "run_id": "r3-20260902T031122Z",
+        "runtime_root": "<redacted-absolute-path>",
+        "status": "completed",
+        "summary_path": "<repo-root>\\evaluation\\recipe-agent-v1\\round-3\\round-3-summary.json"
+      }
+    ],
+    "total_freed_bytes": 82182113900
+  },
+  "results": [
+    {
+      "attempt_id": "9be322b2-89ec-46d9-ad29-81353c853208",
+      "attempt_state": "failed",
+      "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": "Runtime validation failed: {\"ok\": false, \"error\": \"Model output was not found: logits\"}",
+      "event_count": 9,
+      "first_failed_classification": "gate_failed",
+      "first_failed_stage": "runtime_validating",
+      "job_id": "588416f7-7a8f-429f-afe9-08b7b7ec8d30",
+      "job_state": "failed",
+      "lingering_process_count": 0,
+      "manifest_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "model_index": 1,
+      "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize"
+      ],
+      "profile_fingerprint": "3ba0f69d071bb52253c9dcd2d62030ebd4871fa2e686b5e162fd18597a1d74d9",
+      "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "recipe_registry_status": "unregistered",
+      "resource_after": {
+        "cache_bytes": 12099957404,
+        "disk_free_gb": 1240.545,
+        "disk_used_gb": 665.897,
+        "runtime_bytes": 22082222836,
+        "state_bytes": 209144,
+        "timestamp_utc": "2026-09-02T08:43:23.804062+00:00",
+        "workspace_bytes": 9982056288
+      },
+      "resource_before": {
+        "cache_bytes": 12099957404,
+        "disk_free_gb": 1249.843,
+        "disk_used_gb": 656.598,
+        "runtime_bytes": 12099957404,
+        "state_bytes": 0,
+        "timestamp_utc": "2026-09-02T08:41:00.421112+00:00",
+        "workspace_bytes": 0
+      },
+      "source_owner": "fl-onboarding",
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 9982056288,
+        "job_id": "588416f7-7a8f-429f-afe9-08b7b7ec8d30",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\588416f7-7a8f-429f-afe9-08b7b7ec8d30"
+      }
+    },
+    {
+      "attempt_id": "646647ca-4f78-4869-abcf-4fe82cd7f00d",
+      "attempt_state": "failed",
+      "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": "Quality validation failed: arithmetic-addition-17-plus-28:exact_match_failed|max_words_exceeded; instruction-two-words-blue-river:max_words_exceeded; format-json-answer-unit:forbidden_token_present:```|json_format_invalid; baseline:baseline_failed_functional_checks|optimized_failed_prompt:format-json-answer-unit",
+      "event_count": 11,
+      "first_failed_classification": "validation_failed",
+      "first_failed_stage": "succeeded",
+      "job_id": "17e1e928-4eff-42ac-a908-dd23328c5a60",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "model_index": 2,
+      "next_action": "Resolve quality prompt failures before attempting promotion.",
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference"
+      ],
+      "profile_fingerprint": "32ebdc1fd1a4f5a646626403301350b9b3934035cf66a4e2ea77ab554a2f6986",
+      "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+      "recipe_registry_status": "unregistered",
+      "resource_after": {
+        "cache_bytes": 12495391256,
+        "disk_free_gb": 1236.781,
+        "disk_used_gb": 669.661,
+        "runtime_bytes": 26176637366,
+        "state_bytes": 151552,
+        "timestamp_utc": "2026-09-02T08:45:49.899127+00:00",
+        "workspace_bytes": 13681008198
+      },
+      "resource_before": {
+        "cache_bytes": 12099957404,
+        "disk_free_gb": 1240.545,
+        "disk_used_gb": 665.897,
+        "runtime_bytes": 22082222836,
+        "state_bytes": 209144,
+        "timestamp_utc": "2026-09-02T08:43:23.830213+00:00",
+        "workspace_bytes": 9982056288
+      },
+      "source_owner": "fl-onboarding",
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3698951910,
+        "job_id": "17e1e928-4eff-42ac-a908-dd23328c5a60",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\17e1e928-4eff-42ac-a908-dd23328c5a60"
+      }
+    },
+    {
+      "attempt_id": "5a1ff700-40c8-4e61-81c7-e7d2293ec773",
+      "attempt_state": "failed",
+      "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": "Runtime validation failed: {\"ok\": false, \"error\": \"[ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for GatherBlockQuantized(1) node with name 'model/embed_tokens/Gather_node_0_Q4'\"}",
+      "event_count": 9,
+      "first_failed_classification": "gate_failed",
+      "first_failed_stage": "runtime_validating",
+      "job_id": "40064d6c-b183-4e3a-b231-42ae92467c1b",
+      "job_state": "failed",
+      "lingering_process_count": 0,
+      "manifest_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "model_index": 3,
+      "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize"
+      ],
+      "profile_fingerprint": "264dff405d4ad4493de5306103d659511ede8df54b41023314f7b4dc86143192",
+      "recipe_fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229",
+      "recipe_registry_status": "unregistered",
+      "resource_after": {
+        "cache_bytes": 12495391256,
+        "disk_free_gb": 1228.608,
+        "disk_used_gb": 677.833,
+        "runtime_bytes": 34946010231,
+        "state_bytes": 176128,
+        "timestamp_utc": "2026-09-02T08:48:01.868010+00:00",
+        "workspace_bytes": 22450348247
+      },
+      "resource_before": {
+        "cache_bytes": 12495391256,
+        "disk_free_gb": 1236.781,
+        "disk_used_gb": 669.661,
+        "runtime_bytes": 26176551006,
+        "state_bytes": 151552,
+        "timestamp_utc": "2026-09-02T08:45:49.938523+00:00",
+        "workspace_bytes": 13681008198
+      },
+      "source_owner": "fl-onboarding",
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 8769340049,
+        "job_id": "40064d6c-b183-4e3a-b231-42ae92467c1b",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\40064d6c-b183-4e3a-b231-42ae92467c1b"
+      }
+    },
+    {
+      "attempt_id": "fad4c48b-7280-45db-a004-dd048c1001f4",
+      "attempt_state": "failed",
+      "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": "Runtime validation failed: {\"ok\": false, \"error\": \"[ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for GatherBlockQuantized(1) node with name 'model/embed_tokens/Gather_node_0_Q4'\"}",
+      "event_count": 9,
+      "first_failed_classification": "gate_failed",
+      "first_failed_stage": "runtime_validating",
+      "job_id": "a01afb5b-6977-4977-afb7-0582b18aa9ee",
+      "job_state": "failed",
+      "lingering_process_count": 0,
+      "manifest_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "model_index": 4,
+      "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize"
+      ],
+      "profile_fingerprint": "83132f6e8d047a396fb1f5a3d6e63fedba4e2781a1404d8c6629b01bf4c64edd",
+      "recipe_fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db",
+      "recipe_registry_status": "unregistered",
+      "resource_after": {
+        "cache_bytes": 12495391256,
+        "disk_free_gb": 1225.759,
+        "disk_used_gb": 680.683,
+        "runtime_bytes": 38035724297,
+        "state_bytes": 196608,
+        "timestamp_utc": "2026-09-02T08:49:23.856796+00:00",
+        "workspace_bytes": 25540136433
+      },
+      "resource_before": {
+        "cache_bytes": 12495391256,
+        "disk_free_gb": 1228.608,
+        "disk_used_gb": 677.833,
+        "runtime_bytes": 34945915631,
+        "state_bytes": 176128,
+        "timestamp_utc": "2026-09-02T08:48:01.920426+00:00",
+        "workspace_bytes": 22450348247
+      },
+      "source_owner": "fl-onboarding",
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3089788186,
+        "job_id": "a01afb5b-6977-4977-afb7-0582b18aa9ee",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\a01afb5b-6977-4977-afb7-0582b18aa9ee"
+      }
+    },
+    {
+      "attempt_id": "bb0d9cbe-ccf1-4103-9431-c1495d2ce6b5",
+      "attempt_state": "failed",
+      "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": "Quality validation failed: arithmetic-addition-17-plus-28:exact_match_failed|relevance_keyword_missing; baseline:baseline_failed_functional_checks",
+      "event_count": 11,
+      "first_failed_classification": "validation_failed",
+      "first_failed_stage": "succeeded",
+      "job_id": "67e5821f-a563-4bb6-a677-7c64ae6e6b54",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "model_index": 5,
+      "next_action": "Resolve quality prompt failures before attempting promotion.",
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference"
+      ],
+      "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+      "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "recipe_registry_status": "unregistered",
+      "resource_after": {
+        "cache_bytes": 13933991121,
+        "disk_free_gb": 1202.0,
+        "disk_used_gb": 704.442,
+        "runtime_bytes": 63502704943,
+        "state_bytes": 217088,
+        "timestamp_utc": "2026-09-02T08:55:43.566094+00:00",
+        "workspace_bytes": 49568422734
+      },
+      "resource_before": {
+        "cache_bytes": 12495391256,
+        "disk_free_gb": 1225.759,
+        "disk_used_gb": 680.683,
+        "runtime_bytes": 38035724297,
+        "state_bytes": 196608,
+        "timestamp_utc": "2026-09-02T08:49:23.917927+00:00",
+        "workspace_bytes": 25540136433
+      },
+      "source_owner": "fl-onboarding",
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 24028286301,
+        "job_id": "67e5821f-a563-4bb6-a677-7c64ae6e6b54",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct",
+        "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\67e5821f-a563-4bb6-a677-7c64ae6e6b54"
+      }
+    }
+  ],
+  "reuse_checks": [],
+  "round_classification": "valid_baseline",
+  "run_id": "r4-20260902T083935Z",
+  "snapshot_cache_seeding": [
+    {
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "copied"
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "copied"
+    },
+    {
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "copied"
+    },
+    {
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "copied"
+    },
+    {
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "copied"
+    }
+  ],
+  "started_utc": "2026-09-02T08:39:35.324524+00:00",
+  "success_rate": "0/5"
+}

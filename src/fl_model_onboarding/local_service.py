@@ -772,6 +772,7 @@ class LocalOnboardingService:
         quality_profile_registry: QualityValidationProfileRegistry | None = None,
         recipe_attempt_store: RecipeAttemptStore | None = None,
         enable_production_runner: bool = False,
+        runtime_python_executable: Path | str | None = None,
     ) -> None:
         data_root = default_data_root() if (db_path is None or model_cache_dir is None) else None
         self._workspace_base = (workspace_base or default_workspace_base()).resolve()
@@ -820,12 +821,16 @@ class LocalOnboardingService:
                 self._process_runner,
                 recipe_registry=self._recipe_registry,
                 recipe_attempt_store=self._recipe_attempt_store,
+                runtime_python_executable=runtime_python_executable,
             )
             if enable_production_runner
             else UnverifiedBuildStageRunner()
         )
         self._text_inference_backend = text_inference_backend or (
-            FoundrySdkTextInferenceBackend(self._process_runner)
+            FoundrySdkTextInferenceBackend(
+                self._process_runner,
+                runtime_python_executable=runtime_python_executable,
+            )
             if enable_production_runner
             else None
         )
