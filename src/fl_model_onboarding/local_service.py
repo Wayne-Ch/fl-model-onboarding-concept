@@ -8,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import threading
+import time
 import uuid
 
 from dataclasses import dataclass, replace
@@ -2243,7 +2244,7 @@ class LocalOnboardingService:
                 evidence_ref=f"{evidence_prefix}/baseline-not-run",
             )
         try:
-            baseline = self._execute_quality_prompts(
+            baseline, baseline_batch_worker = self._execute_quality_prompts(
                 job=job,
                 artifact=baseline_artifact,
                 execution_label="Baseline",
@@ -2256,7 +2257,7 @@ class LocalOnboardingService:
                 evidence_ref=f"{evidence_prefix}/baseline-unavailable",
             )
         try:
-            optimized = self._execute_quality_prompts(
+            optimized, optimized_batch_worker = self._execute_quality_prompts(
                 job=job,
                 artifact=artifact,
                 execution_label="Optimized",
@@ -2282,6 +2283,8 @@ class LocalOnboardingService:
                 baseline_outputs=baseline,
                 optimized_outputs=optimized,
                 quality_result=result,
+                baseline_batch_worker=baseline_batch_worker,
+                optimized_batch_worker=optimized_batch_worker,
             )
         except (OSError, ValueError, TypeError) as exc:
             return QualityValidationOutcome(
@@ -2402,6 +2405,64 @@ class LocalOnboardingService:
             }
         return payload
 
+    @staticmethod
+    def _batch_worker_diagnostics_payload(value: Any) -> dict[str, object] | None:
+        if not isinstance(value, dict):
+            return None
+        payload: dict[str, object] = {}
+
+        request_raw = value.get("request")
+        if isinstance(request_raw, dict):
+            request_payload: dict[str, object] = {}
+            for field in (
+                "mode",
+                "prompt_ids",
+                "prompt_count",
+                "max_tokens",
+                "model_name",
+                "expected_model_load_count",
+                "per_prompt_timeout_seconds",
+                "batch_timeout_seconds",
+                "outer_command_timeout_seconds",
+                "outer_timeout_grace_seconds",
+            ):
+                if field in request_raw:
+                    request_payload[field] = request_raw[field]
+            if request_payload:
+                payload["request"] = request_payload
+
+        response_raw = value.get("response")
+        if isinstance(response_raw, dict):
+            response_payload: dict[str, object] = {}
+            for field in (
+                "ok",
+                "failure_stage",
+                "failed_prompt_id",
+                "completed_prompt_ids",
+                "duration_seconds",
+                "prompt_order_preserved",
+            ):
+                if field in response_raw:
+                    response_payload[field] = response_raw[field]
+            results_raw = response_raw.get("results")
+            if isinstance(results_raw, list):
+                results_payload: list[dict[str, object]] = []
+                for row in results_raw:
+                    if not isinstance(row, dict):
+                        continue
+                    results_payload.append(
+                        {
+                            "prompt_id": row.get("prompt_id"),
+                            "duration_seconds": row.get("duration_seconds"),
+                            "timed_out": row.get("timed_out"),
+                        }
+                    )
+                response_payload["results"] = results_payload
+            if response_payload:
+                payload["response"] = response_payload
+
+        return payload or None
+
     def _persist_quality_validation_metrics(
         self,
         *,
@@ -2409,6 +2470,8 @@ class LocalOnboardingService:
         baseline_outputs: tuple[PromptExecutionRecord, ...],
         optimized_outputs: tuple[PromptExecutionRecord, ...],
         quality_result: Any,
+        baseline_batch_worker: dict[str, object] | None,
+        optimized_batch_worker: dict[str, object] | None,
     ) -> str:
         baseline_by_id = {row.prompt_id: row for row in baseline_outputs}
         optimized_by_id = {row.prompt_id: row for row in optimized_outputs}
@@ -2501,6 +2564,11 @@ class LocalOnboardingService:
                 if baseline_comparison is not None
                 else None
             ),
+            "batch_worker": {
+                "prompt_order": [prompt.prompt_id for prompt in self._quality_profile.prompts],
+                "baseline": self._batch_worker_diagnostics_payload(baseline_batch_worker),
+                "optimized": self._batch_worker_diagnostics_payload(optimized_batch_worker),
+            },
             "per_prompt": prompt_rows,
         }
         evidence_path = job.request.workspace_root / _QUALITY_EVIDENCE_FILENAME
@@ -2581,7 +2649,7 @@ class LocalOnboardingService:
         job: BuildJob,
         artifact: BuildArtifact,
         execution_label: str,
-    ) -> tuple[PromptExecutionRecord, ...]:
+    ) -> tuple[tuple[PromptExecutionRecord, ...], dict[str, object] | None]:
         backend = self._text_inference_backend
         if backend is None:
             raise RuntimeError("Text inference backend is unavailable for quality validation.")
@@ -2607,17 +2675,28 @@ class LocalOnboardingService:
                     f"{execution_label} quality prompt batch returned {len(batch_outputs)} outputs for "
                     f"{len(prompt_rows)} prompts."
                 )
-            return tuple(
-                PromptExecutionRecord(
-                    prompt_id=prompt_id,
-                    output_text=str(output_text),
-                    applied_determinism=self._quality_profile.deterministic_inference,
-                    unsupported_determinism_fields=("temperature", "seed"),
-                )
-                for (prompt_id, _), output_text in zip(prompt_rows, batch_outputs)
+            diagnostics: dict[str, object] | None = None
+            consume_diagnostics = getattr(backend, "consume_last_batch_diagnostics", None)
+            if callable(consume_diagnostics):
+                payload = consume_diagnostics()
+                diagnostics = payload if isinstance(payload, dict) else None
+            return (
+                tuple(
+                    PromptExecutionRecord(
+                        prompt_id=prompt_id,
+                        output_text=str(output_text),
+                        applied_determinism=self._quality_profile.deterministic_inference,
+                        unsupported_determinism_fields=("temperature", "seed"),
+                    )
+                    for (prompt_id, _), output_text in zip(prompt_rows, batch_outputs)
+                ),
+                diagnostics,
             )
         outputs: list[PromptExecutionRecord] = []
+        prompt_timing_rows: list[dict[str, object]] = []
+        batch_started = time.monotonic()
         for prompt in self._quality_profile.prompts:
+            prompt_started = time.monotonic()
             try:
                 response = backend.infer(
                     artifact=artifact,
@@ -2629,6 +2708,14 @@ class LocalOnboardingService:
                 raise RuntimeError(
                     f"{execution_label} quality prompt '{prompt.prompt_id}' failed: {exc}"
                 ) from exc
+            duration_seconds = round(time.monotonic() - prompt_started, 3)
+            prompt_timing_rows.append(
+                {
+                    "prompt_id": prompt.prompt_id,
+                    "duration_seconds": duration_seconds,
+                    "timed_out": False,
+                }
+            )
             outputs.append(
                 PromptExecutionRecord(
                     prompt_id=prompt.prompt_id,
@@ -2637,7 +2724,30 @@ class LocalOnboardingService:
                     unsupported_determinism_fields=("temperature", "seed"),
                 )
             )
-        return tuple(outputs)
+        return (
+            tuple(outputs),
+            {
+                "request": {
+                    "mode": "single-prompt-loop",
+                    "prompt_ids": [prompt_id for prompt_id, _ in prompt_rows],
+                    "prompt_count": len(prompt_rows),
+                    "max_tokens": max_tokens,
+                    "per_prompt_timeout_seconds": None,
+                    "batch_timeout_seconds": None,
+                    "outer_command_timeout_seconds": None,
+                    "outer_timeout_grace_seconds": None,
+                },
+                "response": {
+                    "ok": True,
+                    "failure_stage": None,
+                    "failed_prompt_id": None,
+                    "completed_prompt_ids": [row["prompt_id"] for row in prompt_timing_rows],
+                    "duration_seconds": round(time.monotonic() - batch_started, 3),
+                    "prompt_order_preserved": True,
+                    "results": prompt_timing_rows,
+                },
+            },
+        )
 
     def _promotion_evidence_from_attempt(self, *, attempt: Any) -> PromotionGateEvidence:
         gate_map = {row.gate: row for row in attempt.gate_results}

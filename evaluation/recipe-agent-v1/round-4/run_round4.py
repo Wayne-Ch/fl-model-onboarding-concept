@@ -959,6 +959,7 @@ def _compact_attempt(payload: Any) -> dict[str, Any]:
         "finished_utc": payload.get("finished_utc"),
         "gates": gates,
         "failure": compact_failure,
+        "quality_validation": payload.get("quality_validation"),
     }
 
 
@@ -979,6 +980,9 @@ def _quality_prompt_execution_payload(value: Any) -> dict[str, Any] | None:
     unsupported = value.get("unsupported_determinism_fields")
     if isinstance(unsupported, list):
         payload["unsupported_determinism_fields"] = [str(item) for item in unsupported]
+    duration_seconds = value.get("duration_seconds")
+    if isinstance(duration_seconds, (int, float)) and not isinstance(duration_seconds, bool):
+        payload["duration_seconds"] = float(duration_seconds)
     checks = value.get("checks")
     if isinstance(checks, dict):
         payload["checks"] = checks
@@ -1140,8 +1144,11 @@ def _load_quality_validation_evidence(
         "unsupported_determinism_fields_reported_by_runtime": payload.get(
             "unsupported_determinism_fields_reported_by_runtime"
         ),
+        "recipe_verification": payload.get("recipe_verification"),
+        "model_capability": payload.get("model_capability"),
         "promotion_evidence": payload.get("promotion_evidence"),
         "baseline_comparison": payload.get("baseline_comparison"),
+        "batch_worker": payload.get("batch_worker"),
         "per_prompt": prompt_rows,
         "failure_excerpt": failure_excerpt,
     }
@@ -1747,6 +1754,12 @@ def _run_reuse_checks(
                 )
                 preview = payload.get("generated_recipe") if isinstance(payload, dict) else None
                 verified_reuse = preview.get("verified_reuse") if isinstance(preview, dict) else None
+                reuse_identity_match = (
+                    isinstance(verified_reuse, dict)
+                    and verified_reuse.get("available") is True
+                    and verified_reuse.get("attempt_id") == original_attempt_id
+                    and verified_reuse.get("source_recipe_fingerprint") == original_fingerprint
+                )
                 checks.append(
                     {
                         "model_id": model_id,
@@ -1759,12 +1772,21 @@ def _run_reuse_checks(
                         "verified_reuse": verified_reuse,
                         "expected_attempt_id": original_attempt_id,
                         "expected_fingerprint": original_fingerprint,
-                        "reuse_identity_match": (
-                            isinstance(verified_reuse, dict)
-                            and verified_reuse.get("available") is True
-                            and verified_reuse.get("attempt_id") == original_attempt_id
-                            and verified_reuse.get("source_recipe_fingerprint") == original_fingerprint
+                        "reuse_identity_match": reuse_identity_match,
+                        "reuse_attempt_id": (
+                            verified_reuse.get("attempt_id")
+                            if isinstance(verified_reuse, dict)
+                            else None
                         ),
+                        "reuse_source_recipe_fingerprint": (
+                            verified_reuse.get("source_recipe_fingerprint")
+                            if isinstance(verified_reuse, dict)
+                            else None
+                        ),
+                        "reuse_resolution_mode": (
+                            "preview-verified-reuse-hit" if reuse_identity_match else "preview-miss"
+                        ),
+                        "build_invocation_delta": 0 if reuse_identity_match else None,
                     }
                 )
     finally:
@@ -2420,6 +2442,23 @@ def main() -> int:
         generated_record = row.get("generated_recipe_record")
         generated_preview = row.get("generated_preview", {})
         preflight = row.get("preflight", {})
+        quality_evidence = (
+            row.get("quality_validation_evidence")
+            if isinstance(row.get("quality_validation_evidence"), dict)
+            else {}
+        )
+        attempt_payload = row.get("attempt") if isinstance(row.get("attempt"), dict) else {}
+        attempt_quality = (
+            attempt_payload.get("quality_validation")
+            if isinstance(attempt_payload.get("quality_validation"), dict)
+            else {}
+        )
+        recipe_verification = quality_evidence.get("recipe_verification")
+        if not isinstance(recipe_verification, dict):
+            recipe_verification = attempt_quality.get("recipe_integrity")
+        model_capability = quality_evidence.get("model_capability")
+        if not isinstance(model_capability, dict):
+            model_capability = attempt_quality.get("model_capability")
         model_results_slim.append(
             {
                 "model_index": row.get("model_index"),
@@ -2457,29 +2496,16 @@ def main() -> int:
                     if failure_summary.get("preflight_recipe_unregistered_expected")
                     else None
                 ),
-                "quality_validation_evidence_status": (
-                    row.get("quality_validation_evidence", {}).get("status")
-                    if isinstance(row.get("quality_validation_evidence"), dict)
-                    else None
-                ),
-                "quality_validation_metrics_ref": (
-                    row.get("quality_validation_evidence", {}).get("metrics_ref")
-                    if isinstance(row.get("quality_validation_evidence"), dict)
-                    else None
-                ),
-                "quality_validation_baseline_comparison": (
-                    row.get("quality_validation_evidence", {}).get("baseline_comparison")
-                    if isinstance(row.get("quality_validation_evidence"), dict)
-                    else None
-                ),
-                "quality_validation_failure_excerpt": (
-                    row.get("quality_validation_evidence", {}).get("failure_excerpt")
-                    if isinstance(row.get("quality_validation_evidence"), dict)
-                    else []
-                ),
+                "quality_validation_evidence_status": quality_evidence.get("status"),
+                "quality_validation_metrics_ref": quality_evidence.get("metrics_ref"),
+                "quality_validation_baseline_comparison": quality_evidence.get("baseline_comparison"),
+                "quality_validation_failure_excerpt": quality_evidence.get("failure_excerpt", []),
+                "recipe_verification": recipe_verification,
+                "model_capability": model_capability,
+                "batch_worker": quality_evidence.get("batch_worker"),
                 "job_state": row.get("job", {}).get("state") if isinstance(row.get("job"), dict) else None,
                 "job_id": row.get("job", {}).get("job_id") if isinstance(row.get("job"), dict) else None,
-                "attempt_id": row.get("attempt", {}).get("attempt_id") if isinstance(row.get("attempt"), dict) else None,
+                "attempt_id": attempt_payload.get("attempt_id"),
                 "event_count": row.get("event_count"),
                 "resource_before": row.get("resource_before"),
                 "resource_after": row.get("resource_after"),
@@ -2493,6 +2519,30 @@ def main() -> int:
         )
 
     success_count = sum(1 for row in per_model_results if row.get("failure_summary", {}).get("attempt_state") == "succeeded")
+    recipe_status_counts = {"verified": 0, "blocked": 0, "inconclusive": 0, "unknown": 0}
+    model_capability_all_pass_count = 0
+    for row in model_results_slim:
+        recipe_verification = row.get("recipe_verification")
+        status = (
+            str(recipe_verification.get("status")).lower()
+            if isinstance(recipe_verification, dict) and isinstance(recipe_verification.get("status"), str)
+            else "unknown"
+        )
+        if status not in recipe_status_counts:
+            status = "unknown"
+        recipe_status_counts[status] += 1
+        model_capability = row.get("model_capability")
+        if not isinstance(model_capability, dict):
+            continue
+        checks_passed = model_capability.get("checks_passed")
+        total_checks = model_capability.get("total_checks")
+        if (
+            type(checks_passed) is int
+            and type(total_checks) is int
+            and total_checks > 0
+            and checks_passed == total_checks
+        ):
+            model_capability_all_pass_count += 1
     summary_payload: dict[str, Any] = {
         "run_id": paths.run_id,
         "started_utc": started_utc,
@@ -2509,6 +2559,13 @@ def main() -> int:
         "attempt_success_rate": round_outcome.get("attempt_success_rate"),
         "environment_blockers": round_outcome.get("environment_blockers"),
         "environment_fail_fast_triggered": round_outcome.get("environment_fail_fast_triggered"),
+        "recipe_verified_count": recipe_status_counts["verified"],
+        "recipe_blocked_count": recipe_status_counts["blocked"],
+        "recipe_inconclusive_count": recipe_status_counts["inconclusive"],
+        "recipe_status_unknown_count": recipe_status_counts["unknown"],
+        "recipe_verified_rate": f"{recipe_status_counts['verified']}/{len(per_model_results)}",
+        "model_capability_all_pass_count": model_capability_all_pass_count,
+        "model_capability_all_pass_rate": f"{model_capability_all_pass_count}/{len(per_model_results)}",
         "results": model_results_slim,
         "reuse_checks": reuse_checks,
         "snapshot_cache_seeding": snapshot_seeding,

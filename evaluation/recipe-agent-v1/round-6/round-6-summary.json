@@ -1,0 +1,2580 @@
+{
+  "attempt_success_rate": "4/5",
+  "baseline_valid": true,
+  "branch": "wayne-ch-linus-running-round-6",
+  "commit": "4e07f09f4963db50978e3683a0b796659e84d35a",
+  "current_run_workspace_cleanup": {
+    "blocked_count": 0,
+    "cleaned_count": 1,
+    "details": [
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "4009cbb5-0949-475e-a859-ffe6c65462af",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      },
+      {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3698966337,
+        "job_id": "4afe094a-8d75-4bc2-9ef3-ae32291591fc",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "workspace_path": "scratch://round-6/r6-20260902T172246Z\\workspace\\4afe094a-8d75-4bc2-9ef3-ae32291591fc"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "97ba86c4-e123-42a5-b2e1-5fdee81c3777",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "3316acac-5f84-4b99-a5f3-cbeee0c068d3",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "e4ba2f66-84ae-42d9-984b-836c2ccbf5a8",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct"
+      }
+    ],
+    "freed_bytes": 3698966337,
+    "missing_count": 0,
+    "retain_failed_workspaces": false,
+    "retained_failed_count": 0
+  },
+  "environment_blockers": [],
+  "environment_fail_fast_triggered": false,
+  "failure_category_counts": {
+    "validation_failed": 1
+  },
+  "finished_utc": "2026-09-02T17:46:17.199596+00:00",
+  "invalid_baseline_reason": null,
+  "lingering_process_total": 0,
+  "model_capability_all_pass_count": 0,
+  "model_capability_all_pass_rate": "0/5",
+  "model_success_rate_applicable": true,
+  "models_failed": 1,
+  "models_succeeded": 4,
+  "models_total": 5,
+  "obsolete_failed_workspace_cleanup": {
+    "runs": [],
+    "total_freed_bytes": 0
+  },
+  "per_model_model_capability": [
+    {
+      "all_pass": false,
+      "checks_passed": 0,
+      "confidence": "low",
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure",
+        "factual-red-planet:divergent_capability_failure",
+        "instruction-two-words-blue-river:divergent_capability_failure",
+        "format-json-answer-unit:shared_capability_failure"
+      ]
+    },
+    {
+      "all_pass": false,
+      "checks_passed": 1,
+      "confidence": "low",
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure",
+        "instruction-two-words-blue-river:divergent_capability_failure",
+        "format-json-answer-unit:optimized_regressed_vs_baseline"
+      ]
+    },
+    {
+      "all_pass": false,
+      "checks_passed": 3,
+      "confidence": "low",
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure"
+      ]
+    },
+    {
+      "all_pass": false,
+      "checks_passed": 2,
+      "confidence": "low",
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:divergent_capability_failure",
+        "instruction-two-words-blue-river:shared_capability_failure"
+      ]
+    },
+    {
+      "all_pass": false,
+      "checks_passed": 3,
+      "confidence": "low",
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure"
+      ]
+    }
+  ],
+  "per_model_recipe_status": [
+    {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    {
+      "baseline_available": true,
+      "can_promote": false,
+      "gate_status": "failed",
+      "integrity_failures": [
+        "baseline_passed_optimized_failed:format-json-answer-unit",
+        "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+      ],
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "regression_free": false,
+      "runtime_functional": true,
+      "status": "blocked"
+    },
+    {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    }
+  ],
+  "recipe_blocked_count": 1,
+  "recipe_inconclusive_count": 0,
+  "recipe_status_unknown_count": 0,
+  "recipe_verification_status_counts": {
+    "BLOCKED": 1,
+    "INCONCLUSIVE": 0,
+    "UNKNOWN": 0,
+    "VERIFIED": 4
+  },
+  "recipe_verified_count": 4,
+  "recipe_verified_rate": "4/5",
+  "remaining_path_to_5of5_recipe_verification": [
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "next_action": "Resolve quality prompt failures before attempting promotion.",
+      "recipe_status": "blocked"
+    }
+  ],
+  "results": [
+    {
+      "attempt_id": "5cb1efa6-a052-4e69-a178-e5460ce21502",
+      "attempt_state": "succeeded",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "tinyllama-1-1b-chat-v1-0-onboarding-4009cbb5-094-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 31.656,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 9.672,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.312,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.235,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 3.671,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "tinyllama-1-1b-chat-v1-0-onboarding-1ef0149b9aec:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 11.438,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 1.984,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.406,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.735,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.734,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": null,
+      "event_count": 12,
+      "first_failed_classification": null,
+      "first_failed_stage": null,
+      "job_id": "4009cbb5-0949-475e-a859-ffe6c65462af",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "model_capability": {
+        "checks_passed": 0,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [
+              "allowed_answers_failed",
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "factual-recall",
+            "comparison": "divergent_fail",
+            "optimized_failures": [
+              "allowed_answers_failed"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "factual-red-planet",
+            "warnings": [
+              "divergent_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "instruction-following",
+            "comparison": "divergent_fail",
+            "optimized_failures": [
+              "required_token_missing:blue",
+              "required_token_missing:river",
+              "relevance_keyword_missing",
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": [
+              "divergent_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "baseline_status": "failed",
+            "category": "output-format",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure",
+          "factual-red-planet:divergent_capability_failure",
+          "instruction-two-words-blue-river:divergent_capability_failure",
+          "format-json-answer-unit:shared_capability_failure"
+        ]
+      },
+      "model_capability_all_pass": false,
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "model_index": 1,
+      "next_action": null,
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "profile_fingerprint": "3ba0f69d071bb52253c9dcd2d62030ebd4871fa2e686b5e162fd18597a1d74d9",
+      "quality_validation_baseline_comparison": {
+        "passed": true,
+        "regressions": []
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "17 + 28 = 45\n\nTo answer this question using only digits, we can use the following formula:\n\n45 = 17 + 28\n\nThe answer is: 45.",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "Answer: 35\n\n17 + 28 = 45\n\nExplanation:\n\n1. 17 is added to 28, and the result is 45.\n\n2. 45 is added to 28, and the result is",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        },
+        {
+          "baseline_failures": [
+            "allowed_answers_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "The correct answer is Mars.",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "allowed_answers_failed"
+          ],
+          "optimized_output_text": "Answer: Mars.",
+          "optimized_passed": false,
+          "prompt_id": "factual-red-planet"
+        },
+        {
+          "baseline_failures": [
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "Output: \"Blue River\"",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "required_token_missing:blue",
+            "required_token_missing:river",
+            "relevance_keyword_missing",
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "To output exactly two words, we can use the `split()` function with a regular expression to split the input string into an array of words. Here's the modified program:\n\n```python\nimport re\n\ndef split_words(input_string):\n    \"\"\"\n    This function takes a string",
+          "optimized_passed": false,
+          "prompt_id": "instruction-two-words-blue-river"
+        },
+        {
+          "baseline_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "baseline_output_text": "```\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "optimized_output_text": "```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```\n\nThis is a valid JSON object with keys `answer` and `unit`. The `answer` key contains the value `12`, while the `unit` key contains the value `",
+          "optimized_passed": false,
+          "prompt_id": "format-json-answer-unit"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://4009cbb5-0949-475e-a859-ffe6c65462af/quality-validation-evidence.json",
+      "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "recipe_verification_status": "verified",
+      "resource_after": {
+        "cache_bytes": 12687799260,
+        "disk_free_gb": 1264.127,
+        "disk_used_gb": 642.314,
+        "runtime_bytes": 22670198682,
+        "state_bytes": 143360,
+        "timestamp_utc": "2026-09-02T17:27:48.887536+00:00",
+        "workspace_bytes": 9982153222
+      },
+      "resource_before": {
+        "cache_bytes": 12099957404,
+        "disk_free_gb": 1274.015,
+        "disk_used_gb": 632.426,
+        "runtime_bytes": 12099957404,
+        "state_bytes": 0,
+        "timestamp_utc": "2026-09-02T17:23:58.912325+00:00",
+        "workspace_bytes": 0
+      },
+      "source_owner": null,
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "4009cbb5-0949-475e-a859-ffe6c65462af",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      }
+    },
+    {
+      "attempt_id": "1a59a15d-ee70-4a65-b12e-f387bab47a91",
+      "attempt_state": "failed",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "smollm2-360m-instruct-onboarding-4afe094a-8d7-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 16.125,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 1.266,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.484,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.422,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.813,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "smollm2-360m-instruct-onboarding-034fda2a3a24:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 10.735,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.656,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.328,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.422,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.813,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": "Recipe integrity blocked: baseline_passed_optimized_failed:format-json-answer-unit; optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```; optimized_structural_regression:format-json-answer-unit:json_format_invalid. Model capability advisory: 1/4 checks passed. Warnings: arithmetic-addition-17-plus-28:shared_capability_failure, instruction-two-words-blue-river:divergent_capability_failure, format-json-answer-unit:optimized_regressed_vs_baseline. Confidence: low (determinism support is partial).",
+      "event_count": 12,
+      "first_failed_classification": "validation_failed",
+      "first_failed_stage": "succeeded",
+      "job_id": "4afe094a-8d75-4bc2-9ef3-ae32291591fc",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "model_capability": {
+        "checks_passed": 1,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "factual-recall",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "factual-red-planet",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [
+              "required_token_missing:blue"
+            ],
+            "baseline_status": "failed",
+            "category": "instruction-following",
+            "comparison": "divergent_fail",
+            "optimized_failures": [
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": [
+              "divergent_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "output-format",
+            "comparison": "regressed",
+            "optimized_failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": [
+              "optimized_regressed_vs_baseline"
+            ]
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure",
+          "instruction-two-words-blue-river:divergent_capability_failure",
+          "format-json-answer-unit:optimized_regressed_vs_baseline"
+        ]
+      },
+      "model_capability_all_pass": false,
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "model_index": 2,
+      "next_action": "Resolve quality prompt failures before attempting promotion.",
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference"
+      ],
+      "profile_fingerprint": "32ebdc1fd1a4f5a646626403301350b9b3934035cf66a4e2ea77ab554a2f6986",
+      "quality_validation_baseline_comparison": {
+        "passed": false,
+        "regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ]
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "17 + 28 = 45",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "17 + 28 = 45",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        },
+        {
+          "baseline_failures": [
+            "required_token_missing:blue"
+          ],
+          "baseline_output_text": "River",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "The river is blue.",
+          "optimized_passed": false,
+          "prompt_id": "instruction-two-words-blue-river"
+        },
+        {
+          "baseline_failures": [],
+          "baseline_output_text": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "baseline_passed": true,
+          "optimized_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "optimized_output_text": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "optimized_passed": false,
+          "prompt_id": "format-json-answer-unit"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://4afe094a-8d75-4bc2-9ef3-ae32291591fc/quality-validation-evidence.json",
+      "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": false,
+        "gate_status": "failed",
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "regression_free": false,
+        "runtime_functional": true,
+        "status": "blocked"
+      },
+      "recipe_verification_status": "blocked",
+      "resource_after": {
+        "cache_bytes": 13083152053,
+        "disk_free_gb": 1260.304,
+        "disk_used_gb": 646.137,
+        "runtime_bytes": 26764554820,
+        "state_bytes": 155648,
+        "timestamp_utc": "2026-09-02T17:30:41.078692+00:00",
+        "workspace_bytes": 13681119559
+      },
+      "resource_before": {
+        "cache_bytes": 12687799260,
+        "disk_free_gb": 1264.127,
+        "disk_used_gb": 642.314,
+        "runtime_bytes": 22670095842,
+        "state_bytes": 143360,
+        "timestamp_utc": "2026-09-02T17:27:48.954289+00:00",
+        "workspace_bytes": 9982153222
+      },
+      "source_owner": "fl-onboarding",
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3698966337,
+        "job_id": "4afe094a-8d75-4bc2-9ef3-ae32291591fc",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "workspace_path": "scratch://round-6/r6-20260902T172246Z\\workspace\\4afe094a-8d75-4bc2-9ef3-ae32291591fc"
+      }
+    },
+    {
+      "attempt_id": "50ffeed4-0930-4776-8876-c4e3d5d04fa4",
+      "attempt_state": "succeeded",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "qwen2-1-5b-instruct-onboarding-97ba86c4-e12-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 20.64,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 1.047,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.703,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.734,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 2.625,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "qwen2-1-5b-instruct-onboarding-2994f015802c:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 12.625,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.656,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.547,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.453,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.25,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": null,
+      "event_count": 12,
+      "first_failed_classification": null,
+      "first_failed_stage": null,
+      "job_id": "97ba86c4-e123-42a5-b2e1-5fdee81c3777",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "model_capability": {
+        "checks_passed": 3,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "factual-recall",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "factual-red-planet",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "instruction-following",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "output-format",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": []
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure"
+        ]
+      },
+      "model_capability_all_pass": false,
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "model_index": 3,
+      "next_action": null,
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "profile_fingerprint": "4f80aa828f34f0dbf110443195a7322331b1f88eae67b04431d69dea6178374c",
+      "quality_validation_baseline_comparison": {
+        "passed": true,
+        "regressions": []
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "baseline_output_text": "1728",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "optimized_output_text": "1728",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://97ba86c4-e123-42a5-b2e1-5fdee81c3777/quality-validation-evidence.json",
+      "recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "recipe_verification_status": "verified",
+      "resource_after": {
+        "cache_bytes": 14865873763,
+        "disk_free_gb": 1243.713,
+        "disk_used_gb": 662.729,
+        "runtime_bytes": 44519577824,
+        "state_bytes": 200704,
+        "timestamp_utc": "2026-09-02T17:36:10.159850+00:00",
+        "workspace_bytes": 29653429357
+      },
+      "resource_before": {
+        "cache_bytes": 13083152053,
+        "disk_free_gb": 1260.304,
+        "disk_used_gb": 646.137,
+        "runtime_bytes": 26764427260,
+        "state_bytes": 155648,
+        "timestamp_utc": "2026-09-02T17:30:41.324554+00:00",
+        "workspace_bytes": 13681119559
+      },
+      "source_owner": null,
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "97ba86c4-e123-42a5-b2e1-5fdee81c3777",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct"
+      }
+    },
+    {
+      "attempt_id": "2229def2-7768-4d3a-81b1-97aad9a81b50",
+      "attempt_state": "succeeded",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "qwen2-0-5b-instruct-onboarding-3316acac-5f8-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 11.563,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.234,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.25,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.453,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.985,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "qwen2-0-5b-instruct-onboarding-a60d5ef6d001:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 10.219,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 1.157,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.39,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.672,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.578,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": null,
+      "event_count": 12,
+      "first_failed_classification": null,
+      "first_failed_stage": null,
+      "job_id": "3316acac-5f84-4b99-a5f3-cbeee0c068d3",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "model_capability": {
+        "checks_passed": 2,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "divergent_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "divergent_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "factual-recall",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "factual-red-planet",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "instruction-following",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "output-format",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": []
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:divergent_capability_failure",
+          "instruction-two-words-blue-river:shared_capability_failure"
+        ]
+      },
+      "model_capability_all_pass": false,
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "model_index": 4,
+      "next_action": null,
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "profile_fingerprint": "40148bef0c7133a7aa0441d52f8ce03ecc17c15d85cd292a5834c22432646fb1",
+      "quality_validation_baseline_comparison": {
+        "passed": true,
+        "regressions": []
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "baseline_output_text": "35",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "The sum of 17 and 28 is 45.",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        },
+        {
+          "baseline_failures": [
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "Blue River, River of the Blue Mountains",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "Blue River, River of the Blue.",
+          "optimized_passed": false,
+          "prompt_id": "instruction-two-words-blue-river"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://3316acac-5f84-4b99-a5f3-cbeee0c068d3/quality-validation-evidence.json",
+      "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "recipe_verification_status": "verified",
+      "resource_after": {
+        "cache_bytes": 15693189735,
+        "disk_free_gb": 1237.668,
+        "disk_used_gb": 668.773,
+        "runtime_bytes": 50994053705,
+        "state_bytes": 221184,
+        "timestamp_utc": "2026-09-02T17:38:56.295648+00:00",
+        "workspace_bytes": 35300642786
+      },
+      "resource_before": {
+        "cache_bytes": 14865873763,
+        "disk_free_gb": 1243.713,
+        "disk_used_gb": 662.728,
+        "runtime_bytes": 44519503824,
+        "state_bytes": 200704,
+        "timestamp_utc": "2026-09-02T17:36:10.263314+00:00",
+        "workspace_bytes": 29653429357
+      },
+      "source_owner": null,
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "3316acac-5f84-4b99-a5f3-cbeee0c068d3",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct"
+      }
+    },
+    {
+      "attempt_id": "e60c48c2-b976-4e16-95d1-d3705b6e925f",
+      "attempt_state": "succeeded",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "granite-3-2-2b-instruct-onboarding-e4ba2f66-84a-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 66.938,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 3.61,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 3.875,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 3.719,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 11.656,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "granite-3-2-2b-instruct-onboarding-4338330e9c52:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 16.984,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 2.343,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 2.079,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.859,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 3.656,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": null,
+      "event_count": 12,
+      "first_failed_classification": null,
+      "first_failed_stage": null,
+      "job_id": "e4ba2f66-84ae-42d9-984b-836c2ccbf5a8",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "model_capability": {
+        "checks_passed": 3,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "factual-recall",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "factual-red-planet",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "instruction-following",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "output-format",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": []
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure"
+        ]
+      },
+      "model_capability_all_pass": false,
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "model_index": 5,
+      "next_action": null,
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+      "quality_validation_baseline_comparison": {
+        "passed": true,
+        "regressions": []
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "baseline_output_text": "35",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "optimized_output_text": "25",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/quality-validation-evidence.json",
+      "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "recipe_verification_status": "verified",
+      "resource_after": {
+        "cache_bytes": 17131789589,
+        "disk_free_gb": 1213.85,
+        "disk_used_gb": 692.592,
+        "runtime_bytes": 76461064033,
+        "state_bytes": 241664,
+        "timestamp_utc": "2026-09-02T17:46:15.065036+00:00",
+        "workspace_bytes": 59328942300
+      },
+      "resource_before": {
+        "cache_bytes": 15693189735,
+        "disk_free_gb": 1237.668,
+        "disk_used_gb": 668.773,
+        "runtime_bytes": 50994053705,
+        "state_bytes": 221184,
+        "timestamp_utc": "2026-09-02T17:38:56.393788+00:00",
+        "workspace_bytes": 35300642786
+      },
+      "source_owner": null,
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "workspace_retention": {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "e4ba2f66-84ae-42d9-984b-836c2ccbf5a8",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct"
+      }
+    }
+  ],
+  "reuse_checks": [
+    {
+      "build_invocation_delta": 0,
+      "eligible_for_automatic_recipe_attempt": false,
+      "expected_attempt_id": "5cb1efa6-a052-4e69-a178-e5460ce21502",
+      "expected_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "http_status": 200,
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "reuse_attempt_id": "5cb1efa6-a052-4e69-a178-e5460ce21502",
+      "reuse_identity_match": true,
+      "reuse_resolution_mode": "preview-verified-reuse-hit",
+      "reuse_source_recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "verified_reuse": {
+        "attempt_id": "5cb1efa6-a052-4e69-a178-e5460ce21502",
+        "available": true,
+        "promoted_utc": "2026-09-02T17:27:36.262207+00:00",
+        "recipe": {
+          "fingerprint": "e243ad8b37666df1b477a8e0a95a1980f5b10d54a4259c04b5972c456ba7b5b8",
+          "pinned_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+          "provenance": {
+            "argument_provenance": {
+              "contains_unverified_arguments": false,
+              "mobius_dtype_confidence": "evidence-pinned",
+              "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+              "olive_precision_confidence": "evidence-pinned",
+              "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+            },
+            "capability_id": "llama-text-generation-cpu-int4-v1",
+            "capability_status": "verified",
+            "capability_version": "1.0.0",
+            "compiler_version": "1.0.0",
+            "evidence": [
+              {
+                "evidence_id": "smollm2-llama-model-type",
+                "location": "docs/contract-probe-results.md#verified",
+                "source_type": "repo-doc",
+                "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+              },
+              {
+                "evidence_id": "smollm2-llama-runtime-happy-path",
+                "location": "docs/contract-probe-results.md#verified",
+                "source_type": "repo-doc",
+                "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+              }
+            ],
+            "generation_kind": "deterministic-recipe-agent-v1",
+            "input_metadata": {
+              "architectures": [
+                "LlamaForCausalLM"
+              ],
+              "available_files": [
+                ".gitattributes",
+                "config.json",
+                "eval_results.json",
+                "generation_config.json",
+                "model.safetensors",
+                "README.md",
+                "special_tokens_map.json",
+                "tokenizer.json",
+                "tokenizer.model",
+                "tokenizer_config.json"
+              ],
+              "config_files": [
+                "config.json"
+              ],
+              "is_gated": false,
+              "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+              "model_type": "llama",
+              "requested_device": "cpu",
+              "requested_precision": "auto",
+              "requires_remote_code": false,
+              "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+              "task": "llm",
+              "tokenizer_files": [
+                "tokenizer.json",
+                "tokenizer.model",
+                "tokenizer_config.json"
+              ]
+            },
+            "matched_aliases": [
+              "llama",
+              "llamaforcausallm"
+            ],
+            "promotion": {
+              "gate_evidence": {
+                "fl_sdk_inference": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/fl_sdk_inference/passed",
+                  "passed": true
+                },
+                "mobius_build": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/mobius_build/passed",
+                  "passed": true
+                },
+                "oga_validation": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/oga_validation/passed",
+                  "passed": true
+                },
+                "olive_optimize": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/olive_optimize/passed",
+                  "passed": true
+                },
+                "onnx_validation": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/onnx_validation/passed",
+                  "passed": true
+                },
+                "ort_validation": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/ort_validation/passed",
+                  "passed": true
+                },
+                "quality_validation": {
+                  "evidence": "quality://4009cbb5-0949-475e-a859-ffe6c65462af/quality_validation/baseline-passed",
+                  "metrics_ref": "quality-metrics://4009cbb5-0949-475e-a859-ffe6c65462af/quality-validation-evidence.json",
+                  "passed": true
+                }
+              },
+              "new_version": "1.0.0",
+              "promoted_from_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+              "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence."
+            },
+            "resolution_outcome": "exact",
+            "resolution_reason_code": "resolved",
+            "toolchain": {
+              "foundry_cli_version": "0.11.0",
+              "foundry_sdk_version": "1.2.4",
+              "mobius_version": "0.1.0",
+              "oga_version": "0.15.2",
+              "olive_version": "0.13.0",
+              "onnx_version": "1.22.0",
+              "ort_version": "1.29.0"
+            }
+          },
+          "recipe": {
+            "ancillary_files": [
+              {
+                "relative_path": "genai_config.json",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx.data",
+                "required": false,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "tokenizer.json",
+                "required": true,
+                "source": "olive-output-dir"
+              }
+            ],
+            "artifact_cache_prefix": "tinyllama-1-1b-chat-v1-0",
+            "huggingface_model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "id": "tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4",
+            "inference_modality": "llm",
+            "mobius": {
+              "dtype": "f32",
+              "ep": "cpu",
+              "runtime": "ort-genai",
+              "task": "text-generation"
+            },
+            "modality": "llm",
+            "model_name_prefix": "tinyllama-1-1b-chat-v1-0-onboarding",
+            "olive": {
+              "device": "cpu",
+              "input_source": "mobius-output-dir",
+              "log_level": "1",
+              "precision": "int4",
+              "provider": "CPUExecutionProvider",
+              "task": "text-generation-with-past"
+            },
+            "optimization_choices": [
+              {
+                "default": true,
+                "precision": "int4",
+                "skip_olive": false,
+                "strategy": "mobius-olive",
+                "task_profile": "llm-cpu-int4"
+              }
+            ],
+            "preferred_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+            "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+            "status": "verified",
+            "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence.",
+            "success_message": "Verified recipe promoted after Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality validation gates passed.",
+            "task_profile": "llm-cpu-int4",
+            "verified_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+            "version": "1.0.0"
+          },
+          "schema_version": "1.0.0"
+        },
+        "source_recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+        "verified_fingerprint": "e243ad8b37666df1b477a8e0a95a1980f5b10d54a4259c04b5972c456ba7b5b8"
+      }
+    },
+    {
+      "build_invocation_delta": 0,
+      "eligible_for_automatic_recipe_attempt": false,
+      "expected_attempt_id": "50ffeed4-0930-4776-8876-c4e3d5d04fa4",
+      "expected_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+      "http_status": 200,
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "reuse_attempt_id": "50ffeed4-0930-4776-8876-c4e3d5d04fa4",
+      "reuse_identity_match": true,
+      "reuse_resolution_mode": "preview-verified-reuse-hit",
+      "reuse_source_recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+      "verified_reuse": {
+        "attempt_id": "50ffeed4-0930-4776-8876-c4e3d5d04fa4",
+        "available": true,
+        "promoted_utc": "2026-09-02T17:36:00.861252+00:00",
+        "recipe": {
+          "fingerprint": "7c79c0d2fb788817190ac5f01ee2dc5a2647b969e10e7ebd47af1e7674a5784f",
+          "pinned_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+          "provenance": {
+            "argument_provenance": {
+              "contains_unverified_arguments": true,
+              "mobius_dtype_confidence": "candidate-unverified",
+              "mobius_dtype_rule": "Round 4 runtime diagnostics observed BF16-scale INT4 contrib-op failures in current ORT/OGA; candidate policy pins Mobius dtype to f32 while preserving Olive INT4.",
+              "olive_precision_confidence": "candidate-unverified",
+              "olive_precision_rule": "Candidate path only; not yet FL verified."
+            },
+            "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+            "capability_status": "tool-supported-unverified",
+            "capability_version": "1.0.0",
+            "compiler_version": "1.0.0",
+            "evidence": [
+              {
+                "evidence_id": "mobius-doc-qwen-support",
+                "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+                "source_type": "upstream-doc",
+                "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+              },
+              {
+                "evidence_id": "oga-config-qwen-type",
+                "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+                "source_type": "upstream-doc",
+                "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+              },
+              {
+                "evidence_id": "round4-runtime-qwen-f32-int4-candidate",
+                "location": "docs/recipe-agent-runtime-diagnostics.md#qwen2-diagnosis-rebuilt-variant-qwen2-0-5b",
+                "source_type": "repo-doc",
+                "summary": "Round 4 runtime diagnostics showed Mobius dtype f32 plus Olive INT4 passes current runtime while default candidate path failed."
+              }
+            ],
+            "generation_kind": "deterministic-recipe-agent-v1",
+            "input_metadata": {
+              "architectures": [
+                "Qwen2ForCausalLM"
+              ],
+              "available_files": [
+                ".gitattributes",
+                "config.json",
+                "generation_config.json",
+                "LICENSE",
+                "merges.txt",
+                "model.safetensors",
+                "README.md",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "vocab.json"
+              ],
+              "config_files": [
+                "config.json"
+              ],
+              "is_gated": false,
+              "model_id": "Qwen/Qwen2-1.5B-Instruct",
+              "model_type": "qwen2",
+              "requested_device": "cpu",
+              "requested_precision": "auto",
+              "requires_remote_code": false,
+              "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+              "task": "llm",
+              "tokenizer_files": [
+                "tokenizer.json",
+                "tokenizer_config.json"
+              ]
+            },
+            "matched_aliases": [
+              "qwen2",
+              "qwen2forcausallm"
+            ],
+            "promotion": {
+              "gate_evidence": {
+                "fl_sdk_inference": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/fl_sdk_inference/passed",
+                  "passed": true
+                },
+                "mobius_build": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/mobius_build/passed",
+                  "passed": true
+                },
+                "oga_validation": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/oga_validation/passed",
+                  "passed": true
+                },
+                "olive_optimize": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/olive_optimize/passed",
+                  "passed": true
+                },
+                "onnx_validation": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/onnx_validation/passed",
+                  "passed": true
+                },
+                "ort_validation": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/ort_validation/passed",
+                  "passed": true
+                },
+                "quality_validation": {
+                  "evidence": "quality://97ba86c4-e123-42a5-b2e1-5fdee81c3777/quality_validation/baseline-passed",
+                  "metrics_ref": "quality-metrics://97ba86c4-e123-42a5-b2e1-5fdee81c3777/quality-validation-evidence.json",
+                  "passed": true
+                }
+              },
+              "new_version": "1.0.0",
+              "promoted_from_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+              "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence."
+            },
+            "resolution_outcome": "exact",
+            "resolution_reason_code": "resolved",
+            "toolchain": {
+              "foundry_cli_version": "0.11.0",
+              "foundry_sdk_version": "1.2.4",
+              "mobius_version": "0.1.0",
+              "oga_version": "0.15.2",
+              "olive_version": "0.13.0",
+              "onnx_version": "1.22.0",
+              "ort_version": "1.29.0"
+            }
+          },
+          "recipe": {
+            "ancillary_files": [
+              {
+                "relative_path": "genai_config.json",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "tokenizer.json",
+                "required": true,
+                "source": "olive-output-dir"
+              }
+            ],
+            "artifact_cache_prefix": "qwen2-1-5b-instruct",
+            "huggingface_model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "id": "qwen-qwen2-1-5b-instruct-llm-cpu-int4",
+            "inference_modality": "llm",
+            "mobius": {
+              "dtype": "f32",
+              "ep": "cpu",
+              "runtime": "ort-genai",
+              "task": "text-generation"
+            },
+            "modality": "llm",
+            "model_name_prefix": "qwen2-1-5b-instruct-onboarding",
+            "olive": {
+              "device": "cpu",
+              "input_source": "mobius-output-dir",
+              "log_level": "1",
+              "precision": "int4",
+              "provider": "CPUExecutionProvider",
+              "task": "text-generation-with-past"
+            },
+            "optimization_choices": [
+              {
+                "default": true,
+                "precision": "int4",
+                "skip_olive": false,
+                "strategy": "mobius-olive",
+                "task_profile": "llm-cpu-int4"
+              }
+            ],
+            "preferred_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+            "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+            "status": "verified",
+            "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence.",
+            "success_message": "Verified recipe promoted after Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality validation gates passed.",
+            "task_profile": "llm-cpu-int4",
+            "verified_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+            "version": "1.0.0"
+          },
+          "schema_version": "1.0.0"
+        },
+        "source_recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+        "verified_fingerprint": "7c79c0d2fb788817190ac5f01ee2dc5a2647b969e10e7ebd47af1e7674a5784f"
+      }
+    },
+    {
+      "build_invocation_delta": 0,
+      "eligible_for_automatic_recipe_attempt": false,
+      "expected_attempt_id": "2229def2-7768-4d3a-81b1-97aad9a81b50",
+      "expected_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "http_status": 200,
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "reuse_attempt_id": "2229def2-7768-4d3a-81b1-97aad9a81b50",
+      "reuse_identity_match": true,
+      "reuse_resolution_mode": "preview-verified-reuse-hit",
+      "reuse_source_recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "verified_reuse": {
+        "attempt_id": "2229def2-7768-4d3a-81b1-97aad9a81b50",
+        "available": true,
+        "promoted_utc": "2026-09-02T17:38:55.027669+00:00",
+        "recipe": {
+          "fingerprint": "0d1772155fc4f3d7bb890e0eead266a57b69a8e3093ba5562db0fef50e64f862",
+          "pinned_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "provenance": {
+            "argument_provenance": {
+              "contains_unverified_arguments": true,
+              "mobius_dtype_confidence": "candidate-unverified",
+              "mobius_dtype_rule": "Round 4 runtime diagnostics observed BF16-scale INT4 contrib-op failures in current ORT/OGA; candidate policy pins Mobius dtype to f32 while preserving Olive INT4.",
+              "olive_precision_confidence": "candidate-unverified",
+              "olive_precision_rule": "Candidate path only; not yet FL verified."
+            },
+            "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+            "capability_status": "tool-supported-unverified",
+            "capability_version": "1.0.0",
+            "compiler_version": "1.0.0",
+            "evidence": [
+              {
+                "evidence_id": "mobius-doc-qwen-support",
+                "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+                "source_type": "upstream-doc",
+                "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+              },
+              {
+                "evidence_id": "oga-config-qwen-type",
+                "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+                "source_type": "upstream-doc",
+                "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+              },
+              {
+                "evidence_id": "round4-runtime-qwen-f32-int4-candidate",
+                "location": "docs/recipe-agent-runtime-diagnostics.md#qwen2-diagnosis-rebuilt-variant-qwen2-0-5b",
+                "source_type": "repo-doc",
+                "summary": "Round 4 runtime diagnostics showed Mobius dtype f32 plus Olive INT4 passes current runtime while default candidate path failed."
+              }
+            ],
+            "generation_kind": "deterministic-recipe-agent-v1",
+            "input_metadata": {
+              "architectures": [
+                "Qwen2ForCausalLM"
+              ],
+              "available_files": [
+                ".gitattributes",
+                "config.json",
+                "generation_config.json",
+                "LICENSE",
+                "merges.txt",
+                "model.safetensors",
+                "README.md",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "vocab.json"
+              ],
+              "config_files": [
+                "config.json"
+              ],
+              "is_gated": false,
+              "model_id": "Qwen/Qwen2-0.5B-Instruct",
+              "model_type": "qwen2",
+              "requested_device": "cpu",
+              "requested_precision": "auto",
+              "requires_remote_code": false,
+              "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+              "task": "llm",
+              "tokenizer_files": [
+                "tokenizer.json",
+                "tokenizer_config.json"
+              ]
+            },
+            "matched_aliases": [
+              "qwen2",
+              "qwen2forcausallm"
+            ],
+            "promotion": {
+              "gate_evidence": {
+                "fl_sdk_inference": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/fl_sdk_inference/passed",
+                  "passed": true
+                },
+                "mobius_build": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/mobius_build/passed",
+                  "passed": true
+                },
+                "oga_validation": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/oga_validation/passed",
+                  "passed": true
+                },
+                "olive_optimize": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/olive_optimize/passed",
+                  "passed": true
+                },
+                "onnx_validation": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/onnx_validation/passed",
+                  "passed": true
+                },
+                "ort_validation": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/ort_validation/passed",
+                  "passed": true
+                },
+                "quality_validation": {
+                  "evidence": "quality://3316acac-5f84-4b99-a5f3-cbeee0c068d3/quality_validation/baseline-passed",
+                  "metrics_ref": "quality-metrics://3316acac-5f84-4b99-a5f3-cbeee0c068d3/quality-validation-evidence.json",
+                  "passed": true
+                }
+              },
+              "new_version": "1.0.0",
+              "promoted_from_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+              "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence."
+            },
+            "resolution_outcome": "exact",
+            "resolution_reason_code": "resolved",
+            "toolchain": {
+              "foundry_cli_version": "0.11.0",
+              "foundry_sdk_version": "1.2.4",
+              "mobius_version": "0.1.0",
+              "oga_version": "0.15.2",
+              "olive_version": "0.13.0",
+              "onnx_version": "1.22.0",
+              "ort_version": "1.29.0"
+            }
+          },
+          "recipe": {
+            "ancillary_files": [
+              {
+                "relative_path": "genai_config.json",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "tokenizer.json",
+                "required": true,
+                "source": "olive-output-dir"
+              }
+            ],
+            "artifact_cache_prefix": "qwen2-0-5b-instruct",
+            "huggingface_model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+            "inference_modality": "llm",
+            "mobius": {
+              "dtype": "f32",
+              "ep": "cpu",
+              "runtime": "ort-genai",
+              "task": "text-generation"
+            },
+            "modality": "llm",
+            "model_name_prefix": "qwen2-0-5b-instruct-onboarding",
+            "olive": {
+              "device": "cpu",
+              "input_source": "mobius-output-dir",
+              "log_level": "1",
+              "precision": "int4",
+              "provider": "CPUExecutionProvider",
+              "task": "text-generation-with-past"
+            },
+            "optimization_choices": [
+              {
+                "default": true,
+                "precision": "int4",
+                "skip_olive": false,
+                "strategy": "mobius-olive",
+                "task_profile": "llm-cpu-int4"
+              }
+            ],
+            "preferred_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+            "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+            "status": "verified",
+            "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence.",
+            "success_message": "Verified recipe promoted after Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality validation gates passed.",
+            "task_profile": "llm-cpu-int4",
+            "verified_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+            "version": "1.0.0"
+          },
+          "schema_version": "1.0.0"
+        },
+        "source_recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+        "verified_fingerprint": "0d1772155fc4f3d7bb890e0eead266a57b69a8e3093ba5562db0fef50e64f862"
+      }
+    },
+    {
+      "build_invocation_delta": 0,
+      "eligible_for_automatic_recipe_attempt": false,
+      "expected_attempt_id": "e60c48c2-b976-4e16-95d1-d3705b6e925f",
+      "expected_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "http_status": 200,
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "reuse_attempt_id": "e60c48c2-b976-4e16-95d1-d3705b6e925f",
+      "reuse_identity_match": true,
+      "reuse_resolution_mode": "preview-verified-reuse-hit",
+      "reuse_source_recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "verified_reuse": {
+        "attempt_id": "e60c48c2-b976-4e16-95d1-d3705b6e925f",
+        "available": true,
+        "promoted_utc": "2026-09-02T17:46:13.632621+00:00",
+        "recipe": {
+          "fingerprint": "3b54d29f6bceab2aecf915e18bcb7d623921ab0f68d7137ce6413f9a13ac00a8",
+          "pinned_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+          "provenance": {
+            "argument_provenance": {
+              "contains_unverified_arguments": false,
+              "mobius_dtype_confidence": "evidence-pinned",
+              "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+              "olive_precision_confidence": "evidence-pinned",
+              "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+            },
+            "capability_id": "granite-text-generation-cpu-int4-v1",
+            "capability_status": "verified",
+            "capability_version": "1.0.0",
+            "compiler_version": "1.0.0",
+            "evidence": [
+              {
+                "evidence_id": "granite-model-type",
+                "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+                "source_type": "repo-doc",
+                "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+              },
+              {
+                "evidence_id": "granite-runtime-happy-path",
+                "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+                "source_type": "repo-doc",
+                "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+              }
+            ],
+            "generation_kind": "deterministic-recipe-agent-v1",
+            "input_metadata": {
+              "architectures": [
+                "GraniteForCausalLM"
+              ],
+              "available_files": [
+                ".gitattributes",
+                "added_tokens.json",
+                "config.json",
+                "generation_config.json",
+                "merges.txt",
+                "model-00001-of-00002.safetensors",
+                "model-00002-of-00002.safetensors",
+                "model.safetensors.index.json",
+                "README.md",
+                "special_tokens_map.json",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "vocab.json"
+              ],
+              "config_files": [
+                "config.json"
+              ],
+              "is_gated": false,
+              "model_id": "ibm-granite/granite-3.2-2b-instruct",
+              "model_type": "granite",
+              "requested_device": "cpu",
+              "requested_precision": "auto",
+              "requires_remote_code": false,
+              "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+              "task": "llm",
+              "tokenizer_files": [
+                "tokenizer.json",
+                "tokenizer_config.json"
+              ]
+            },
+            "matched_aliases": [
+              "granite",
+              "graniteforcausallm"
+            ],
+            "promotion": {
+              "gate_evidence": {
+                "fl_sdk_inference": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/fl_sdk_inference/passed",
+                  "passed": true
+                },
+                "mobius_build": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/mobius_build/passed",
+                  "passed": true
+                },
+                "oga_validation": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/oga_validation/passed",
+                  "passed": true
+                },
+                "olive_optimize": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/olive_optimize/passed",
+                  "passed": true
+                },
+                "onnx_validation": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/onnx_validation/passed",
+                  "passed": true
+                },
+                "ort_validation": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/ort_validation/passed",
+                  "passed": true
+                },
+                "quality_validation": {
+                  "evidence": "quality://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/quality_validation/baseline-passed",
+                  "metrics_ref": "quality-metrics://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/quality-validation-evidence.json",
+                  "passed": true
+                }
+              },
+              "new_version": "1.0.0",
+              "promoted_from_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+              "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence."
+            },
+            "resolution_outcome": "exact",
+            "resolution_reason_code": "resolved",
+            "toolchain": {
+              "foundry_cli_version": "0.11.0",
+              "foundry_sdk_version": "1.2.4",
+              "mobius_version": "0.1.0",
+              "oga_version": "0.15.2",
+              "olive_version": "0.13.0",
+              "onnx_version": "1.22.0",
+              "ort_version": "1.29.0"
+            }
+          },
+          "recipe": {
+            "ancillary_files": [
+              {
+                "relative_path": "genai_config.json",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "tokenizer.json",
+                "required": true,
+                "source": "olive-output-dir"
+              }
+            ],
+            "artifact_cache_prefix": "granite-3-2-2b-instruct",
+            "huggingface_model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+            "inference_modality": "llm",
+            "mobius": {
+              "dtype": "f32",
+              "ep": "cpu",
+              "runtime": "ort-genai",
+              "task": "text-generation"
+            },
+            "modality": "llm",
+            "model_name_prefix": "granite-3-2-2b-instruct-onboarding",
+            "olive": {
+              "device": "cpu",
+              "input_source": "mobius-output-dir",
+              "log_level": "1",
+              "precision": "int4",
+              "provider": "CPUExecutionProvider",
+              "task": "text-generation-with-past"
+            },
+            "optimization_choices": [
+              {
+                "default": true,
+                "precision": "int4",
+                "skip_olive": false,
+                "strategy": "mobius-olive",
+                "task_profile": "llm-cpu-int4"
+              }
+            ],
+            "preferred_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+            "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+            "status": "verified",
+            "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence.",
+            "success_message": "Verified recipe promoted after Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality validation gates passed.",
+            "task_profile": "llm-cpu-int4",
+            "verified_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+            "version": "1.0.0"
+          },
+          "schema_version": "1.0.0"
+        },
+        "source_recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+        "verified_fingerprint": "3b54d29f6bceab2aecf915e18bcb7d623921ab0f68d7137ce6413f9a13ac00a8"
+      }
+    }
+  ],
+  "round5_delta": {
+    "round5_attempt_success_rate": "0/5",
+    "round5_models_succeeded": 0,
+    "round5_models_total": 5,
+    "round5_quality_gate_outcome": "valid_baseline",
+    "round5_recipe_verified_rate": null,
+    "round5_semantics": "legacy quality-gate outcome",
+    "round5_success_rate": "0/5",
+    "round6_model_capability_all_pass_rate": "0/5",
+    "round6_recipe_verified_rate": "4/5",
+    "semantics_change_note": "Round 6 reports split outcomes by product decision: Recipe Verification is blocking/promotion integrity, while Model Capability is non-blocking absolute task quality."
+  },
+  "round_classification": "valid_baseline",
+  "run_id": "r6-20260902T172246Z",
+  "snapshot_cache_seeding": [
+    {
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    }
+  ],
+  "started_utc": "2026-09-02T17:22:46.199587+00:00",
+  "success_rate": "4/5",
+  "valid_baseline": true
+}

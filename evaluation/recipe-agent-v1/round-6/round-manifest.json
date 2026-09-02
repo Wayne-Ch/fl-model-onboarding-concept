@@ -1,0 +1,1435 @@
+{
+  "branch": "wayne-ch-linus-running-round-6",
+  "commit": "4e07f09f4963db50978e3683a0b796659e84d35a",
+  "current_run_workspace_cleanup": {
+    "blocked_count": 0,
+    "cleaned_count": 1,
+    "details": [
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "4009cbb5-0949-475e-a859-ffe6c65462af",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      },
+      {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3698966337,
+        "job_id": "4afe094a-8d75-4bc2-9ef3-ae32291591fc",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "workspace_path": "scratch://round-6/r6-20260902T172246Z\\workspace\\4afe094a-8d75-4bc2-9ef3-ae32291591fc"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "97ba86c4-e123-42a5-b2e1-5fdee81c3777",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "3316acac-5f84-4b99-a5f3-cbeee0c068d3",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "e4ba2f66-84ae-42d9-984b-836c2ccbf5a8",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct"
+      }
+    ],
+    "freed_bytes": 3698966337,
+    "missing_count": 0,
+    "retain_failed_workspaces": false,
+    "retained_failed_count": 0
+  },
+  "final_snapshot": {
+    "cache_bytes": 17131789589,
+    "disk_free_gb": 1217.295,
+    "disk_used_gb": 689.147,
+    "runtime_bytes": 72762007216,
+    "state_bytes": 241664,
+    "timestamp_utc": "2026-09-02T17:46:17.199596+00:00",
+    "workspace_bytes": 55629975963
+  },
+  "finished_utc": "2026-09-02T17:46:17.199596+00:00",
+  "frozen_cli": {
+    "frozen_dry_run": {
+      "command": [
+        "<python-exe>",
+        "-m",
+        "fl_model_onboarding.cli",
+        "recipe-agent",
+        "frozen-dry-run",
+        "--path",
+        "<repo-root>\\evaluation\\recipe-agent-v1\\models.json"
+      ],
+      "exit_code": 0,
+      "json": {
+        "manifest_path": "<repo-root>\\evaluation\\recipe-agent-v1\\models.json",
+        "outcomes": [
+          {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "llama-text-generation-cpu-int4-v1",
+              "matched_aliases": [
+                "llama",
+                "llamaforcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.",
+              "reason_code": "resolved",
+              "status": "verified"
+            },
+            "catalog_present": false,
+            "fingerprint": "b43810229af32be49c7fb206b5583724a0e0513a04778afce458d2116ad03bb2",
+            "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "model_type": "llama",
+            "recipe_id": "tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          },
+          {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "llama-text-generation-cpu-int4-v1",
+              "matched_aliases": [
+                "llama",
+                "llamaforcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.",
+              "reason_code": "resolved",
+              "status": "verified"
+            },
+            "catalog_present": false,
+            "fingerprint": "9c621c981470570952a48cdc1a0694d663894e37a0ae72e2af3f9229cb2f2a36",
+            "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+            "model_type": "llama",
+            "recipe_id": "huggingfacetb-smollm2-360m-instruct-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          },
+          {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+              "matched_aliases": [
+                "qwen2",
+                "qwen2forcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.",
+              "reason_code": "resolved",
+              "status": "tool-supported-unverified"
+            },
+            "catalog_present": false,
+            "fingerprint": "92d6376239bb129302870e25c472c14a787303ba7b7312d94d1596141c71625d",
+            "model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "model_type": "qwen2",
+            "recipe_id": "qwen-qwen2-1-5b-instruct-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          },
+          {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+              "matched_aliases": [
+                "qwen2",
+                "qwen2forcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.",
+              "reason_code": "resolved",
+              "status": "tool-supported-unverified"
+            },
+            "catalog_present": false,
+            "fingerprint": "575fc8616767e0d719750eb1fc367415ea798f9b73fd3c58caec06b40c02930a",
+            "model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "model_type": "qwen2",
+            "recipe_id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          },
+          {
+            "architectures": [
+              "GraniteForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "granite-text-generation-cpu-int4-v1",
+              "matched_aliases": [
+                "granite",
+                "graniteforcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'granite-text-generation-cpu-int4-v1' (verified) via alias(es): granite, graniteforcausallm.",
+              "reason_code": "resolved",
+              "status": "verified"
+            },
+            "catalog_present": false,
+            "fingerprint": "14f2e069f299cfc16857de6f56fac08292b1c801d888da1103c86b8e4545e941",
+            "model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "model_type": "granite",
+            "recipe_id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          }
+        ],
+        "summary": {
+          "compiled_models": 5,
+          "non_compiled_models": 0,
+          "total_models": 5
+        },
+        "tool_execution": "disabled",
+        "valid": true
+      },
+      "stderr": "",
+      "stdout": "{\n  \"manifest_path\": \"<redacted-absolute-path>\",\n  \"valid\": true,\n  \"tool_execution\": \"disabled\",\n  \"summary\": {\n    \"total_models\": 5,\n    \"compiled_models\": 5,\n    \"non_compiled_models\": 0\n  },\n  \"outcomes\": [\n    {\n      \"model_id\": \"TinyLlama/TinyLlama-1.1B-Chat-v1.0\",\n      \"sha\": \"fe8a4ea1ffedaf415f4da2f062534de366a451e6\",\n      \"model_type\": \"llama\",\n      \"architectures\": [\n        \"LlamaForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.\",\n        \"matched_aliases\": [\n          \"llama\",\n          \"llamaforcausallm\"\n        ],\n        \"capability_id\": \"llama-text-generation-cpu-int4-v1\",\n        \"status\": \"verified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"b43810229af32be49c7fb206b5583724a0e0513a04778afce458d2116ad03bb2\",\n      \"recipe_id\": \"tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    },\n    {\n      \"model_id\": \"HuggingFaceTB/SmolLM2-360M-Instruct\",\n      \"sha\": \"a10cc1512eabd3dde888204e902eca88bddb4951\",\n      \"model_type\": \"llama\",\n      \"architectures\": [\n        \"LlamaForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.\",\n        \"matched_aliases\": [\n          \"llama\",\n          \"llamaforcausallm\"\n        ],\n        \"capability_id\": \"llama-text-generation-cpu-int4-v1\",\n        \"status\": \"verified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"9c621c981470570952a48cdc1a0694d663894e37a0ae72e2af3f9229cb2f2a36\",\n      \"recipe_id\": \"huggingfacetb-smollm2-360m-instruct-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    },\n    {\n      \"model_id\": \"Qwen/Qwen2-1.5B-Instruct\",\n      \"sha\": \"ba1cf1846d7df0a0591d6c00649f57e798519da8\",\n      \"model_type\": \"qwen2\",\n      \"architectures\": [\n        \"Qwen2ForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.\",\n        \"matched_aliases\": [\n          \"qwen2\",\n          \"qwen2forcausallm\"\n        ],\n        \"capability_id\": \"qwen-text-generation-cpu-int4-unverified-v1\",\n        \"status\": \"tool-supported-unverified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"92d6376239bb129302870e25c472c14a787303ba7b7312d94d1596141c71625d\",\n      \"recipe_id\": \"qwen-qwen2-1-5b-instruct-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    },\n    {\n      \"model_id\": \"Qwen/Qwen2-0.5B-Instruct\",\n      \"sha\": \"c540970f9e29518b1d8f06ab8b24cba66ad77b6d\",\n      \"model_type\": \"qwen2\",\n      \"architectures\": [\n        \"Qwen2ForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.\",\n        \"matched_aliases\": [\n          \"qwen2\",\n          \"qwen2forcausallm\"\n        ],\n        \"capability_id\": \"qwen-text-generation-cpu-int4-unverified-v1\",\n        \"status\": \"tool-supported-unverified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"575fc8616767e0d719750eb1fc367415ea798f9b73fd3c58caec06b40c02930a\",\n      \"recipe_id\": \"qwen-qwen2-0-5b-instruct-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    },\n    {\n      \"model_id\": \"ibm-granite/granite-3.2-2b-instruct\",\n      \"sha\": \"641593c3b25bec0b1efe9f0f7d7a67f7243f86a3\",\n      \"model_type\": \"granite\",\n      \"architectures\": [\n        \"GraniteForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'granite-text-generation-cpu-int4-v1' (verified) via alias(es): granite, graniteforcausallm.\",\n        \"matched_aliases\": [\n          \"granite\",\n          \"graniteforcausallm\"\n        ],\n        \"capability_id\": \"granite-text-generation-cpu-int4-v1\",\n        \"status\": \"verified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"14f2e069f299cfc16857de6f56fac08292b1c801d888da1103c86b8e4545e941\",\n      \"recipe_id\": \"ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    }\n  ]\n}"
+    },
+    "frozen_list": {
+      "command": [
+        "<python-exe>",
+        "-m",
+        "fl_model_onboarding.cli",
+        "recipe-agent",
+        "frozen-list",
+        "--path",
+        "<repo-root>\\evaluation\\recipe-agent-v1\\models.json"
+      ],
+      "exit_code": 0,
+      "json": {
+        "count": 5,
+        "manifest_path": "<repo-root>\\evaluation\\recipe-agent-v1\\models.json",
+        "models": [
+          {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'"
+            },
+            "index": 1,
+            "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "model_type": "llama",
+            "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6"
+          },
+          {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'smollm2-360m-instruct'"
+            },
+            "index": 2,
+            "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+            "model_type": "llama",
+            "sha": "a10cc1512eabd3dde888204e902eca88bddb4951"
+          },
+          {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'"
+            },
+            "index": 3,
+            "model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "model_type": "qwen2",
+            "sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8"
+          },
+          {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'"
+            },
+            "index": 4,
+            "model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "model_type": "qwen2",
+            "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d"
+          },
+          {
+            "architectures": [
+              "GraniteForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'granite-3-2-2b-instruct'"
+            },
+            "index": 5,
+            "model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "model_type": "granite",
+            "sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3"
+          }
+        ],
+        "schema_version": "1.0.0",
+        "selection_timestamp": "2026-08-31T23:47:14.488462+00:00"
+      },
+      "stderr": "",
+      "stdout": "{\n  \"manifest_path\": \"<redacted-absolute-path>\",\n  \"schema_version\": \"1.0.0\",\n  \"selection_timestamp\": \"2026-08-31T23:47:14.488462+00:00\",\n  \"count\": 5,\n  \"models\": [\n    {\n      \"index\": 1,\n      \"model_id\": \"TinyLlama/TinyLlama-1.1B-Chat-v1.0\",\n      \"sha\": \"fe8a4ea1ffedaf415f4da2f062534de366a451e6\",\n      \"model_type\": \"llama\",\n      \"architectures\": [\n        \"LlamaForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'\",\n        \"matched_entry\": null\n      }\n    },\n    {\n      \"index\": 2,\n      \"model_id\": \"HuggingFaceTB/SmolLM2-360M-Instruct\",\n      \"sha\": \"a10cc1512eabd3dde888204e902eca88bddb4951\",\n      \"model_type\": \"llama\",\n      \"architectures\": [\n        \"LlamaForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'smollm2-360m-instruct'\",\n        \"matched_entry\": null\n      }\n    },\n    {\n      \"index\": 3,\n      \"model_id\": \"Qwen/Qwen2-1.5B-Instruct\",\n      \"sha\": \"ba1cf1846d7df0a0591d6c00649f57e798519da8\",\n      \"model_type\": \"qwen2\",\n      \"architectures\": [\n        \"Qwen2ForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'\",\n        \"matched_entry\": null\n      }\n    },\n    {\n      \"index\": 4,\n      \"model_id\": \"Qwen/Qwen2-0.5B-Instruct\",\n      \"sha\": \"c540970f9e29518b1d8f06ab8b24cba66ad77b6d\",\n      \"model_type\": \"qwen2\",\n      \"architectures\": [\n        \"Qwen2ForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'\",\n        \"matched_entry\": null\n      }\n    },\n    {\n      \"index\": 5,\n      \"model_id\": \"ibm-granite/granite-3.2-2b-instruct\",\n      \"sha\": \"641593c3b25bec0b1efe9f0f7d7a67f7243f86a3\",\n      \"model_type\": \"granite\",\n      \"architectures\": [\n        \"GraniteForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'granite-3-2-2b-instruct'\",\n        \"matched_entry\": null\n      }\n    }\n  ]\n}"
+    },
+    "frozen_validate": {
+      "command": [
+        "<python-exe>",
+        "-m",
+        "fl_model_onboarding.cli",
+        "recipe-agent",
+        "frozen-validate",
+        "--path",
+        "<repo-root>\\evaluation\\recipe-agent-v1\\models.json"
+      ],
+      "exit_code": 0,
+      "json": {
+        "errors": [],
+        "manifest_path": "<repo-root>\\evaluation\\recipe-agent-v1\\models.json",
+        "model_count": 5,
+        "valid": true
+      },
+      "stderr": "",
+      "stdout": "{\n  \"manifest_path\": \"<redacted-absolute-path>\",\n  \"valid\": true,\n  \"errors\": [],\n  \"model_count\": 5\n}"
+    }
+  },
+  "manifest_invariants": {
+    "actual_order": [
+      "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "Qwen/Qwen2-1.5B-Instruct",
+      "Qwen/Qwen2-0.5B-Instruct",
+      "ibm-granite/granite-3.2-2b-instruct"
+    ],
+    "count": 5,
+    "errors": [],
+    "expected_order": [
+      "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "Qwen/Qwen2-1.5B-Instruct",
+      "Qwen/Qwen2-0.5B-Instruct",
+      "ibm-granite/granite-3.2-2b-instruct"
+    ],
+    "full_sha_lengths": true,
+    "ok": true,
+    "order_matches": true,
+    "sha_matches": true
+  },
+  "manifest_path": "evaluation/recipe-agent-v1/models.json",
+  "manifest_sha256": "cc36baf68c8bbc3d4d3324bf4b1a90e2bac73b35219c73de7554d9cc11b59835",
+  "model_registry_and_catalog_snapshot": [
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'"
+      },
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "recipe_registry_reason": "No recipe is registered for model 'TinyLlama/TinyLlama-1.1B-Chat-v1.0' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    },
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'smollm2-360m-instruct'"
+      },
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "recipe_registry_reason": "No recipe is registered for model 'HuggingFaceTB/SmolLM2-360M-Instruct' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    },
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'"
+      },
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "recipe_registry_reason": "No recipe is registered for model 'Qwen/Qwen2-1.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    },
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'"
+      },
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "recipe_registry_reason": "No recipe is registered for model 'Qwen/Qwen2-0.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    },
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'granite-3-2-2b-instruct'"
+      },
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "recipe_registry_reason": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    }
+  ],
+  "obsolete_failed_workspace_cleanup": {
+    "runs": [],
+    "total_freed_bytes": 0
+  },
+  "python_environment": {
+    "child_path_prefixed_scripts": true,
+    "command_resolution": {
+      "foundry": "path-lookup",
+      "mobius": "venv-scripts-absolute",
+      "olive": "venv-scripts-absolute"
+    },
+    "parent_path_has_scripts": false,
+    "python_executable": "<python-exe>",
+    "python_executable_name": "python.exe",
+    "python_version": "3.11.9",
+    "scripts_dir_name": "Scripts",
+    "scripts_dir_resolution": "sysconfig",
+    "venv_name": "fl-recipe-v1-venv"
+  },
+  "quality_profile": {
+    "deterministic_inference": {
+      "max_tokens": 64,
+      "seed": 17,
+      "temperature": 0.0
+    },
+    "profile_id": "textgen-basic-quality-v1",
+    "prompt_count": 4,
+    "task": "text-generation",
+    "unsupported_determinism_fields_reported_by_runtime": [
+      "temperature",
+      "seed"
+    ],
+    "version": "1.0.0"
+  },
+  "reuse_checks": [
+    {
+      "build_invocation_delta": 0,
+      "eligible_for_automatic_recipe_attempt": false,
+      "expected_attempt_id": "5cb1efa6-a052-4e69-a178-e5460ce21502",
+      "expected_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "http_status": 200,
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "reuse_attempt_id": "5cb1efa6-a052-4e69-a178-e5460ce21502",
+      "reuse_identity_match": true,
+      "reuse_resolution_mode": "preview-verified-reuse-hit",
+      "reuse_source_recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "verified_reuse": {
+        "attempt_id": "5cb1efa6-a052-4e69-a178-e5460ce21502",
+        "available": true,
+        "promoted_utc": "2026-09-02T17:27:36.262207+00:00",
+        "recipe": {
+          "fingerprint": "e243ad8b37666df1b477a8e0a95a1980f5b10d54a4259c04b5972c456ba7b5b8",
+          "pinned_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+          "provenance": {
+            "argument_provenance": {
+              "contains_unverified_arguments": false,
+              "mobius_dtype_confidence": "evidence-pinned",
+              "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+              "olive_precision_confidence": "evidence-pinned",
+              "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+            },
+            "capability_id": "llama-text-generation-cpu-int4-v1",
+            "capability_status": "verified",
+            "capability_version": "1.0.0",
+            "compiler_version": "1.0.0",
+            "evidence": [
+              {
+                "evidence_id": "smollm2-llama-model-type",
+                "location": "docs/contract-probe-results.md#verified",
+                "source_type": "repo-doc",
+                "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+              },
+              {
+                "evidence_id": "smollm2-llama-runtime-happy-path",
+                "location": "docs/contract-probe-results.md#verified",
+                "source_type": "repo-doc",
+                "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+              }
+            ],
+            "generation_kind": "deterministic-recipe-agent-v1",
+            "input_metadata": {
+              "architectures": [
+                "LlamaForCausalLM"
+              ],
+              "available_files": [
+                ".gitattributes",
+                "config.json",
+                "eval_results.json",
+                "generation_config.json",
+                "model.safetensors",
+                "README.md",
+                "special_tokens_map.json",
+                "tokenizer.json",
+                "tokenizer.model",
+                "tokenizer_config.json"
+              ],
+              "config_files": [
+                "config.json"
+              ],
+              "is_gated": false,
+              "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+              "model_type": "llama",
+              "requested_device": "cpu",
+              "requested_precision": "auto",
+              "requires_remote_code": false,
+              "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+              "task": "llm",
+              "tokenizer_files": [
+                "tokenizer.json",
+                "tokenizer.model",
+                "tokenizer_config.json"
+              ]
+            },
+            "matched_aliases": [
+              "llama",
+              "llamaforcausallm"
+            ],
+            "promotion": {
+              "gate_evidence": {
+                "fl_sdk_inference": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/fl_sdk_inference/passed",
+                  "passed": true
+                },
+                "mobius_build": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/mobius_build/passed",
+                  "passed": true
+                },
+                "oga_validation": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/oga_validation/passed",
+                  "passed": true
+                },
+                "olive_optimize": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/olive_optimize/passed",
+                  "passed": true
+                },
+                "onnx_validation": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/onnx_validation/passed",
+                  "passed": true
+                },
+                "ort_validation": {
+                  "evidence": "job://4009cbb5-0949-475e-a859-ffe6c65462af/ort_validation/passed",
+                  "passed": true
+                },
+                "quality_validation": {
+                  "evidence": "quality://4009cbb5-0949-475e-a859-ffe6c65462af/quality_validation/baseline-passed",
+                  "metrics_ref": "quality-metrics://4009cbb5-0949-475e-a859-ffe6c65462af/quality-validation-evidence.json",
+                  "passed": true
+                }
+              },
+              "new_version": "1.0.0",
+              "promoted_from_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+              "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence."
+            },
+            "resolution_outcome": "exact",
+            "resolution_reason_code": "resolved",
+            "toolchain": {
+              "foundry_cli_version": "0.11.0",
+              "foundry_sdk_version": "1.2.4",
+              "mobius_version": "0.1.0",
+              "oga_version": "0.15.2",
+              "olive_version": "0.13.0",
+              "onnx_version": "1.22.0",
+              "ort_version": "1.29.0"
+            }
+          },
+          "recipe": {
+            "ancillary_files": [
+              {
+                "relative_path": "genai_config.json",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx.data",
+                "required": false,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "tokenizer.json",
+                "required": true,
+                "source": "olive-output-dir"
+              }
+            ],
+            "artifact_cache_prefix": "tinyllama-1-1b-chat-v1-0",
+            "huggingface_model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "id": "tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4",
+            "inference_modality": "llm",
+            "mobius": {
+              "dtype": "f32",
+              "ep": "cpu",
+              "runtime": "ort-genai",
+              "task": "text-generation"
+            },
+            "modality": "llm",
+            "model_name_prefix": "tinyllama-1-1b-chat-v1-0-onboarding",
+            "olive": {
+              "device": "cpu",
+              "input_source": "mobius-output-dir",
+              "log_level": "1",
+              "precision": "int4",
+              "provider": "CPUExecutionProvider",
+              "task": "text-generation-with-past"
+            },
+            "optimization_choices": [
+              {
+                "default": true,
+                "precision": "int4",
+                "skip_olive": false,
+                "strategy": "mobius-olive",
+                "task_profile": "llm-cpu-int4"
+              }
+            ],
+            "preferred_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+            "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+            "status": "verified",
+            "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence.",
+            "success_message": "Verified recipe promoted after Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality validation gates passed.",
+            "task_profile": "llm-cpu-int4",
+            "verified_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+            "version": "1.0.0"
+          },
+          "schema_version": "1.0.0"
+        },
+        "source_recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+        "verified_fingerprint": "e243ad8b37666df1b477a8e0a95a1980f5b10d54a4259c04b5972c456ba7b5b8"
+      }
+    },
+    {
+      "build_invocation_delta": 0,
+      "eligible_for_automatic_recipe_attempt": false,
+      "expected_attempt_id": "50ffeed4-0930-4776-8876-c4e3d5d04fa4",
+      "expected_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+      "http_status": 200,
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "reuse_attempt_id": "50ffeed4-0930-4776-8876-c4e3d5d04fa4",
+      "reuse_identity_match": true,
+      "reuse_resolution_mode": "preview-verified-reuse-hit",
+      "reuse_source_recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+      "verified_reuse": {
+        "attempt_id": "50ffeed4-0930-4776-8876-c4e3d5d04fa4",
+        "available": true,
+        "promoted_utc": "2026-09-02T17:36:00.861252+00:00",
+        "recipe": {
+          "fingerprint": "7c79c0d2fb788817190ac5f01ee2dc5a2647b969e10e7ebd47af1e7674a5784f",
+          "pinned_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+          "provenance": {
+            "argument_provenance": {
+              "contains_unverified_arguments": true,
+              "mobius_dtype_confidence": "candidate-unverified",
+              "mobius_dtype_rule": "Round 4 runtime diagnostics observed BF16-scale INT4 contrib-op failures in current ORT/OGA; candidate policy pins Mobius dtype to f32 while preserving Olive INT4.",
+              "olive_precision_confidence": "candidate-unverified",
+              "olive_precision_rule": "Candidate path only; not yet FL verified."
+            },
+            "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+            "capability_status": "tool-supported-unverified",
+            "capability_version": "1.0.0",
+            "compiler_version": "1.0.0",
+            "evidence": [
+              {
+                "evidence_id": "mobius-doc-qwen-support",
+                "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+                "source_type": "upstream-doc",
+                "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+              },
+              {
+                "evidence_id": "oga-config-qwen-type",
+                "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+                "source_type": "upstream-doc",
+                "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+              },
+              {
+                "evidence_id": "round4-runtime-qwen-f32-int4-candidate",
+                "location": "docs/recipe-agent-runtime-diagnostics.md#qwen2-diagnosis-rebuilt-variant-qwen2-0-5b",
+                "source_type": "repo-doc",
+                "summary": "Round 4 runtime diagnostics showed Mobius dtype f32 plus Olive INT4 passes current runtime while default candidate path failed."
+              }
+            ],
+            "generation_kind": "deterministic-recipe-agent-v1",
+            "input_metadata": {
+              "architectures": [
+                "Qwen2ForCausalLM"
+              ],
+              "available_files": [
+                ".gitattributes",
+                "config.json",
+                "generation_config.json",
+                "LICENSE",
+                "merges.txt",
+                "model.safetensors",
+                "README.md",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "vocab.json"
+              ],
+              "config_files": [
+                "config.json"
+              ],
+              "is_gated": false,
+              "model_id": "Qwen/Qwen2-1.5B-Instruct",
+              "model_type": "qwen2",
+              "requested_device": "cpu",
+              "requested_precision": "auto",
+              "requires_remote_code": false,
+              "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+              "task": "llm",
+              "tokenizer_files": [
+                "tokenizer.json",
+                "tokenizer_config.json"
+              ]
+            },
+            "matched_aliases": [
+              "qwen2",
+              "qwen2forcausallm"
+            ],
+            "promotion": {
+              "gate_evidence": {
+                "fl_sdk_inference": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/fl_sdk_inference/passed",
+                  "passed": true
+                },
+                "mobius_build": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/mobius_build/passed",
+                  "passed": true
+                },
+                "oga_validation": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/oga_validation/passed",
+                  "passed": true
+                },
+                "olive_optimize": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/olive_optimize/passed",
+                  "passed": true
+                },
+                "onnx_validation": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/onnx_validation/passed",
+                  "passed": true
+                },
+                "ort_validation": {
+                  "evidence": "job://97ba86c4-e123-42a5-b2e1-5fdee81c3777/ort_validation/passed",
+                  "passed": true
+                },
+                "quality_validation": {
+                  "evidence": "quality://97ba86c4-e123-42a5-b2e1-5fdee81c3777/quality_validation/baseline-passed",
+                  "metrics_ref": "quality-metrics://97ba86c4-e123-42a5-b2e1-5fdee81c3777/quality-validation-evidence.json",
+                  "passed": true
+                }
+              },
+              "new_version": "1.0.0",
+              "promoted_from_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+              "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence."
+            },
+            "resolution_outcome": "exact",
+            "resolution_reason_code": "resolved",
+            "toolchain": {
+              "foundry_cli_version": "0.11.0",
+              "foundry_sdk_version": "1.2.4",
+              "mobius_version": "0.1.0",
+              "oga_version": "0.15.2",
+              "olive_version": "0.13.0",
+              "onnx_version": "1.22.0",
+              "ort_version": "1.29.0"
+            }
+          },
+          "recipe": {
+            "ancillary_files": [
+              {
+                "relative_path": "genai_config.json",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "tokenizer.json",
+                "required": true,
+                "source": "olive-output-dir"
+              }
+            ],
+            "artifact_cache_prefix": "qwen2-1-5b-instruct",
+            "huggingface_model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "id": "qwen-qwen2-1-5b-instruct-llm-cpu-int4",
+            "inference_modality": "llm",
+            "mobius": {
+              "dtype": "f32",
+              "ep": "cpu",
+              "runtime": "ort-genai",
+              "task": "text-generation"
+            },
+            "modality": "llm",
+            "model_name_prefix": "qwen2-1-5b-instruct-onboarding",
+            "olive": {
+              "device": "cpu",
+              "input_source": "mobius-output-dir",
+              "log_level": "1",
+              "precision": "int4",
+              "provider": "CPUExecutionProvider",
+              "task": "text-generation-with-past"
+            },
+            "optimization_choices": [
+              {
+                "default": true,
+                "precision": "int4",
+                "skip_olive": false,
+                "strategy": "mobius-olive",
+                "task_profile": "llm-cpu-int4"
+              }
+            ],
+            "preferred_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+            "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+            "status": "verified",
+            "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence.",
+            "success_message": "Verified recipe promoted after Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality validation gates passed.",
+            "task_profile": "llm-cpu-int4",
+            "verified_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+            "version": "1.0.0"
+          },
+          "schema_version": "1.0.0"
+        },
+        "source_recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+        "verified_fingerprint": "7c79c0d2fb788817190ac5f01ee2dc5a2647b969e10e7ebd47af1e7674a5784f"
+      }
+    },
+    {
+      "build_invocation_delta": 0,
+      "eligible_for_automatic_recipe_attempt": false,
+      "expected_attempt_id": "2229def2-7768-4d3a-81b1-97aad9a81b50",
+      "expected_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "http_status": 200,
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "reuse_attempt_id": "2229def2-7768-4d3a-81b1-97aad9a81b50",
+      "reuse_identity_match": true,
+      "reuse_resolution_mode": "preview-verified-reuse-hit",
+      "reuse_source_recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "verified_reuse": {
+        "attempt_id": "2229def2-7768-4d3a-81b1-97aad9a81b50",
+        "available": true,
+        "promoted_utc": "2026-09-02T17:38:55.027669+00:00",
+        "recipe": {
+          "fingerprint": "0d1772155fc4f3d7bb890e0eead266a57b69a8e3093ba5562db0fef50e64f862",
+          "pinned_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "provenance": {
+            "argument_provenance": {
+              "contains_unverified_arguments": true,
+              "mobius_dtype_confidence": "candidate-unverified",
+              "mobius_dtype_rule": "Round 4 runtime diagnostics observed BF16-scale INT4 contrib-op failures in current ORT/OGA; candidate policy pins Mobius dtype to f32 while preserving Olive INT4.",
+              "olive_precision_confidence": "candidate-unverified",
+              "olive_precision_rule": "Candidate path only; not yet FL verified."
+            },
+            "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+            "capability_status": "tool-supported-unverified",
+            "capability_version": "1.0.0",
+            "compiler_version": "1.0.0",
+            "evidence": [
+              {
+                "evidence_id": "mobius-doc-qwen-support",
+                "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+                "source_type": "upstream-doc",
+                "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+              },
+              {
+                "evidence_id": "oga-config-qwen-type",
+                "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+                "source_type": "upstream-doc",
+                "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+              },
+              {
+                "evidence_id": "round4-runtime-qwen-f32-int4-candidate",
+                "location": "docs/recipe-agent-runtime-diagnostics.md#qwen2-diagnosis-rebuilt-variant-qwen2-0-5b",
+                "source_type": "repo-doc",
+                "summary": "Round 4 runtime diagnostics showed Mobius dtype f32 plus Olive INT4 passes current runtime while default candidate path failed."
+              }
+            ],
+            "generation_kind": "deterministic-recipe-agent-v1",
+            "input_metadata": {
+              "architectures": [
+                "Qwen2ForCausalLM"
+              ],
+              "available_files": [
+                ".gitattributes",
+                "config.json",
+                "generation_config.json",
+                "LICENSE",
+                "merges.txt",
+                "model.safetensors",
+                "README.md",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "vocab.json"
+              ],
+              "config_files": [
+                "config.json"
+              ],
+              "is_gated": false,
+              "model_id": "Qwen/Qwen2-0.5B-Instruct",
+              "model_type": "qwen2",
+              "requested_device": "cpu",
+              "requested_precision": "auto",
+              "requires_remote_code": false,
+              "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+              "task": "llm",
+              "tokenizer_files": [
+                "tokenizer.json",
+                "tokenizer_config.json"
+              ]
+            },
+            "matched_aliases": [
+              "qwen2",
+              "qwen2forcausallm"
+            ],
+            "promotion": {
+              "gate_evidence": {
+                "fl_sdk_inference": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/fl_sdk_inference/passed",
+                  "passed": true
+                },
+                "mobius_build": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/mobius_build/passed",
+                  "passed": true
+                },
+                "oga_validation": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/oga_validation/passed",
+                  "passed": true
+                },
+                "olive_optimize": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/olive_optimize/passed",
+                  "passed": true
+                },
+                "onnx_validation": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/onnx_validation/passed",
+                  "passed": true
+                },
+                "ort_validation": {
+                  "evidence": "job://3316acac-5f84-4b99-a5f3-cbeee0c068d3/ort_validation/passed",
+                  "passed": true
+                },
+                "quality_validation": {
+                  "evidence": "quality://3316acac-5f84-4b99-a5f3-cbeee0c068d3/quality_validation/baseline-passed",
+                  "metrics_ref": "quality-metrics://3316acac-5f84-4b99-a5f3-cbeee0c068d3/quality-validation-evidence.json",
+                  "passed": true
+                }
+              },
+              "new_version": "1.0.0",
+              "promoted_from_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+              "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence."
+            },
+            "resolution_outcome": "exact",
+            "resolution_reason_code": "resolved",
+            "toolchain": {
+              "foundry_cli_version": "0.11.0",
+              "foundry_sdk_version": "1.2.4",
+              "mobius_version": "0.1.0",
+              "oga_version": "0.15.2",
+              "olive_version": "0.13.0",
+              "onnx_version": "1.22.0",
+              "ort_version": "1.29.0"
+            }
+          },
+          "recipe": {
+            "ancillary_files": [
+              {
+                "relative_path": "genai_config.json",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "tokenizer.json",
+                "required": true,
+                "source": "olive-output-dir"
+              }
+            ],
+            "artifact_cache_prefix": "qwen2-0-5b-instruct",
+            "huggingface_model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+            "inference_modality": "llm",
+            "mobius": {
+              "dtype": "f32",
+              "ep": "cpu",
+              "runtime": "ort-genai",
+              "task": "text-generation"
+            },
+            "modality": "llm",
+            "model_name_prefix": "qwen2-0-5b-instruct-onboarding",
+            "olive": {
+              "device": "cpu",
+              "input_source": "mobius-output-dir",
+              "log_level": "1",
+              "precision": "int4",
+              "provider": "CPUExecutionProvider",
+              "task": "text-generation-with-past"
+            },
+            "optimization_choices": [
+              {
+                "default": true,
+                "precision": "int4",
+                "skip_olive": false,
+                "strategy": "mobius-olive",
+                "task_profile": "llm-cpu-int4"
+              }
+            ],
+            "preferred_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+            "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+            "status": "verified",
+            "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence.",
+            "success_message": "Verified recipe promoted after Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality validation gates passed.",
+            "task_profile": "llm-cpu-int4",
+            "verified_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+            "version": "1.0.0"
+          },
+          "schema_version": "1.0.0"
+        },
+        "source_recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+        "verified_fingerprint": "0d1772155fc4f3d7bb890e0eead266a57b69a8e3093ba5562db0fef50e64f862"
+      }
+    },
+    {
+      "build_invocation_delta": 0,
+      "eligible_for_automatic_recipe_attempt": false,
+      "expected_attempt_id": "e60c48c2-b976-4e16-95d1-d3705b6e925f",
+      "expected_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "http_status": 200,
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "reuse_attempt_id": "e60c48c2-b976-4e16-95d1-d3705b6e925f",
+      "reuse_identity_match": true,
+      "reuse_resolution_mode": "preview-verified-reuse-hit",
+      "reuse_source_recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "verified_reuse": {
+        "attempt_id": "e60c48c2-b976-4e16-95d1-d3705b6e925f",
+        "available": true,
+        "promoted_utc": "2026-09-02T17:46:13.632621+00:00",
+        "recipe": {
+          "fingerprint": "3b54d29f6bceab2aecf915e18bcb7d623921ab0f68d7137ce6413f9a13ac00a8",
+          "pinned_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+          "provenance": {
+            "argument_provenance": {
+              "contains_unverified_arguments": false,
+              "mobius_dtype_confidence": "evidence-pinned",
+              "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+              "olive_precision_confidence": "evidence-pinned",
+              "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+            },
+            "capability_id": "granite-text-generation-cpu-int4-v1",
+            "capability_status": "verified",
+            "capability_version": "1.0.0",
+            "compiler_version": "1.0.0",
+            "evidence": [
+              {
+                "evidence_id": "granite-model-type",
+                "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+                "source_type": "repo-doc",
+                "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+              },
+              {
+                "evidence_id": "granite-runtime-happy-path",
+                "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+                "source_type": "repo-doc",
+                "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+              }
+            ],
+            "generation_kind": "deterministic-recipe-agent-v1",
+            "input_metadata": {
+              "architectures": [
+                "GraniteForCausalLM"
+              ],
+              "available_files": [
+                ".gitattributes",
+                "added_tokens.json",
+                "config.json",
+                "generation_config.json",
+                "merges.txt",
+                "model-00001-of-00002.safetensors",
+                "model-00002-of-00002.safetensors",
+                "model.safetensors.index.json",
+                "README.md",
+                "special_tokens_map.json",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "vocab.json"
+              ],
+              "config_files": [
+                "config.json"
+              ],
+              "is_gated": false,
+              "model_id": "ibm-granite/granite-3.2-2b-instruct",
+              "model_type": "granite",
+              "requested_device": "cpu",
+              "requested_precision": "auto",
+              "requires_remote_code": false,
+              "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+              "task": "llm",
+              "tokenizer_files": [
+                "tokenizer.json",
+                "tokenizer_config.json"
+              ]
+            },
+            "matched_aliases": [
+              "granite",
+              "graniteforcausallm"
+            ],
+            "promotion": {
+              "gate_evidence": {
+                "fl_sdk_inference": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/fl_sdk_inference/passed",
+                  "passed": true
+                },
+                "mobius_build": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/mobius_build/passed",
+                  "passed": true
+                },
+                "oga_validation": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/oga_validation/passed",
+                  "passed": true
+                },
+                "olive_optimize": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/olive_optimize/passed",
+                  "passed": true
+                },
+                "onnx_validation": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/onnx_validation/passed",
+                  "passed": true
+                },
+                "ort_validation": {
+                  "evidence": "job://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/ort_validation/passed",
+                  "passed": true
+                },
+                "quality_validation": {
+                  "evidence": "quality://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/quality_validation/baseline-passed",
+                  "metrics_ref": "quality-metrics://e4ba2f66-84ae-42d9-984b-836c2ccbf5a8/quality-validation-evidence.json",
+                  "passed": true
+                }
+              },
+              "new_version": "1.0.0",
+              "promoted_from_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+              "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence."
+            },
+            "resolution_outcome": "exact",
+            "resolution_reason_code": "resolved",
+            "toolchain": {
+              "foundry_cli_version": "0.11.0",
+              "foundry_sdk_version": "1.2.4",
+              "mobius_version": "0.1.0",
+              "oga_version": "0.15.2",
+              "olive_version": "0.13.0",
+              "onnx_version": "1.22.0",
+              "ort_version": "1.29.0"
+            }
+          },
+          "recipe": {
+            "ancillary_files": [
+              {
+                "relative_path": "genai_config.json",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "model.onnx",
+                "required": true,
+                "source": "olive-output-dir"
+              },
+              {
+                "relative_path": "tokenizer.json",
+                "required": true,
+                "source": "olive-output-dir"
+              }
+            ],
+            "artifact_cache_prefix": "granite-3-2-2b-instruct",
+            "huggingface_model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+            "inference_modality": "llm",
+            "mobius": {
+              "dtype": "f32",
+              "ep": "cpu",
+              "runtime": "ort-genai",
+              "task": "text-generation"
+            },
+            "modality": "llm",
+            "model_name_prefix": "granite-3-2-2b-instruct-onboarding",
+            "olive": {
+              "device": "cpu",
+              "input_source": "mobius-output-dir",
+              "log_level": "1",
+              "precision": "int4",
+              "provider": "CPUExecutionProvider",
+              "task": "text-generation-with-past"
+            },
+            "optimization_choices": [
+              {
+                "default": true,
+                "precision": "int4",
+                "skip_olive": false,
+                "strategy": "mobius-olive",
+                "task_profile": "llm-cpu-int4"
+              }
+            ],
+            "preferred_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+            "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+            "status": "verified",
+            "status_reason": "Verified recipe promoted after deterministic generated-attempt gates passed, with recipe integrity verified and model capability advisory recorded in quality evidence.",
+            "success_message": "Verified recipe promoted after Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality validation gates passed.",
+            "task_profile": "llm-cpu-int4",
+            "verified_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+            "version": "1.0.0"
+          },
+          "schema_version": "1.0.0"
+        },
+        "source_recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+        "verified_fingerprint": "3b54d29f6bceab2aecf915e18bcb7d623921ab0f68d7137ce6413f9a13ac00a8"
+      }
+    }
+  ],
+  "round_outcome": {
+    "attempt_success_rate": "4/5",
+    "baseline_valid": true,
+    "environment_blockers": [],
+    "environment_fail_fast_triggered": false,
+    "model_success_rate_applicable": true,
+    "round_classification": "valid_baseline",
+    "success_rate": "4/5"
+  },
+  "run_id": "r6-20260902T172246Z",
+  "scratch_locations": {
+    "cache": "scratch://round-6/r6-20260902T172246Z/cache",
+    "recipe_attempt_db": "scratch://round-6/r6-20260902T172246Z/state/recipe-attempts.sqlite3",
+    "root": "scratch://round-6/r6-20260902T172246Z",
+    "service_db": "scratch://round-6/r6-20260902T172246Z/state/service.sqlite3",
+    "state": "scratch://round-6/r6-20260902T172246Z/state",
+    "workspace": "scratch://round-6/r6-20260902T172246Z/workspace"
+  },
+  "snapshot_cache_seeding": [
+    {
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    }
+  ],
+  "started_utc": "2026-09-02T17:22:46.199587+00:00",
+  "toolchain_probe": {
+    "missing_required": [],
+    "probes": [
+      {
+        "available": true,
+        "kind": "command",
+        "name": "foundry",
+        "probe": "0.11.0",
+        "required": true,
+        "resolution": "path-lookup",
+        "version": "0.11.0"
+      },
+      {
+        "available": true,
+        "kind": "command",
+        "name": "mobius",
+        "probe": "usage: mobius [-h] {build,build-gguf,list,info,convert-comfyui} ...",
+        "required": true,
+        "resolution": "venv-scripts-absolute",
+        "version": null
+      },
+      {
+        "available": true,
+        "kind": "command",
+        "name": "olive",
+        "probe": "usage: olive",
+        "required": true,
+        "resolution": "venv-scripts-absolute",
+        "version": null
+      },
+      {
+        "available": true,
+        "kind": "python-module",
+        "name": "fl_model_onboarding.runtime_worker",
+        "probe": "usage: runtime_worker.py [-h]",
+        "required": true,
+        "resolution": "python-interpreter"
+      },
+      {
+        "available": true,
+        "import_name": "fl_model_onboarding",
+        "kind": "python-package",
+        "name": "fl-model-onboarding",
+        "probe": "{\"version\": \"0.1.0\", \"distribution_root\": \"<redacted-absolute-path>\", \"direct_url\": \"{\\\"dir_info\\\": {\\\"editable\\\": true}, \\\"url\\\": \\\"file:///<repo-root>\\\"}\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "source_identity": {
+          "direct_url": {
+            "dir_info": {
+              "editable": true
+            },
+            "url": "file:///<repo-root>"
+          },
+          "distribution_root": "<redacted-absolute-path>"
+        },
+        "version": "0.1.0"
+      },
+      {
+        "available": true,
+        "import_name": "onnx",
+        "kind": "python-package",
+        "name": "onnx",
+        "probe": "{\"version\": \"1.22.0\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "source_identity": null,
+        "version": "1.22.0"
+      },
+      {
+        "available": true,
+        "import_name": "onnxruntime",
+        "kind": "python-package",
+        "name": "onnxruntime",
+        "probe": "{\"version\": \"1.29.0\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "source_identity": null,
+        "version": "1.29.0"
+      },
+      {
+        "available": true,
+        "import_name": "onnxruntime_genai",
+        "kind": "python-package",
+        "name": "onnxruntime-genai",
+        "probe": "{\"version\": \"0.15.2\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "source_identity": null,
+        "version": "0.15.2"
+      },
+      {
+        "available": true,
+        "import_name": "foundry_local_sdk",
+        "kind": "python-package",
+        "name": "foundry-local-sdk",
+        "probe": "{\"version\": \"1.2.4\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "source_identity": null,
+        "version": "1.2.4"
+      },
+      {
+        "available": true,
+        "import_name": "mobius",
+        "kind": "python-package",
+        "name": "mobius-onnx",
+        "probe": "{\"version\": \"0.1.0\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "source_identity": null,
+        "version": "0.1.0"
+      },
+      {
+        "available": true,
+        "import_name": "olive",
+        "kind": "python-package",
+        "name": "olive-ai",
+        "probe": "{\"version\": \"0.13.0\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "source_identity": null,
+        "version": "0.13.0"
+      }
+    ],
+    "python_runtime": {
+      "child_path_prefixed_scripts": true,
+      "command_resolution": {
+        "foundry": "path-lookup",
+        "mobius": "venv-scripts-absolute",
+        "olive": "venv-scripts-absolute"
+      },
+      "parent_path_has_scripts": false,
+      "python_executable": "<python-exe>",
+      "python_executable_name": "python.exe",
+      "python_version": "3.11.9",
+      "scripts_dir_name": "Scripts",
+      "scripts_dir_resolution": "sysconfig",
+      "venv_name": "fl-recipe-v1-venv"
+    },
+    "ready_for_round": true
+  }
+}

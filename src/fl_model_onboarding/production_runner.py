@@ -813,6 +813,12 @@ class FoundrySdkTextInferenceBackend:
         self._timeout_seconds = timeout_seconds
         self._cancellation_event = cancellation_event
         self._runtime_python_executable = _resolve_python_executable(runtime_python_executable)
+        self._last_batch_diagnostics: dict[str, object] | None = None
+
+    def consume_last_batch_diagnostics(self) -> dict[str, object] | None:
+        diagnostics = self._last_batch_diagnostics
+        self._last_batch_diagnostics = None
+        return diagnostics
 
     def infer(
         self,
@@ -868,6 +874,7 @@ class FoundrySdkTextInferenceBackend:
     ) -> tuple[str, ...]:
         if isinstance(max_tokens, bool) or max_tokens <= 0:
             raise ValueError("Inference max_tokens must be a positive integer.")
+        self._last_batch_diagnostics = None
         prompt_payload: list[dict[str, object]] = []
         for prompt_id, prompt_text in prompts:
             if not isinstance(prompt_id, str) or not prompt_id.strip():
@@ -888,6 +895,18 @@ class FoundrySdkTextInferenceBackend:
         model_name = self._read_model_name(model_dir)
         batch_timeout = self._timeout_seconds * len(prompt_payload)
         command_timeout = batch_timeout + _BATCH_INFERENCE_TIMEOUT_GRACE_SECONDS
+        request_summary: dict[str, object] = {
+            "mode": "single-worker-batch",
+            "prompt_ids": [str(row["prompt_id"]) for row in prompt_payload],
+            "prompt_count": len(prompt_payload),
+            "max_tokens": int(max_tokens),
+            "model_name": model_name,
+            "expected_model_load_count": 1,
+            "per_prompt_timeout_seconds": self._timeout_seconds,
+            "batch_timeout_seconds": batch_timeout,
+            "outer_command_timeout_seconds": command_timeout,
+            "outer_timeout_grace_seconds": _BATCH_INFERENCE_TIMEOUT_GRACE_SECONDS,
+        }
         request_file = job.request.workspace_root / f"inference-{uuid.uuid4().hex}.json"
         request_file.write_text(
             json.dumps(
@@ -921,12 +940,47 @@ class FoundrySdkTextInferenceBackend:
                     cancel_event=self._cancellation_event,
                 )
             except TimeoutError as exc:
+                self._last_batch_diagnostics = {
+                    "request": request_summary,
+                    "response": {
+                        "ok": False,
+                        "failure_stage": "outer_command_timeout",
+                        "error": "Foundry Local batch inference timed out before completing the prompt suite.",
+                        "completed_prompt_ids": [],
+                        "results": [],
+                    },
+                }
                 raise RuntimeError(
                     "Foundry Local batch inference timed out before completing the prompt suite."
                 ) from exc
         finally:
             request_file.unlink(missing_ok=True)
         payload = _result_payload(result)
+        response_results: list[dict[str, object]] = []
+        payload_results = payload.get("results")
+        if isinstance(payload_results, list):
+            for row in payload_results:
+                if not isinstance(row, dict):
+                    continue
+                response_results.append(
+                    {
+                        "prompt_id": row.get("prompt_id"),
+                        "duration_seconds": row.get("duration_seconds"),
+                        "timed_out": row.get("timed_out"),
+                    }
+                )
+        response_summary: dict[str, object] = {
+            "ok": payload.get("ok"),
+            "failure_stage": payload.get("failure_stage"),
+            "failed_prompt_id": payload.get("failed_prompt_id"),
+            "completed_prompt_ids": payload.get("completed_prompt_ids"),
+            "duration_seconds": payload.get("duration_seconds"),
+            "results": response_results,
+        }
+        self._last_batch_diagnostics = {
+            "request": request_summary,
+            "response": response_summary,
+        }
         if not result.ok or payload.get("ok") is not True:
             detail = str(payload.get("error") or "Foundry Local batch inference failed.")
             failure_stage = payload.get("failure_stage")
@@ -950,11 +1004,13 @@ class FoundrySdkTextInferenceBackend:
             expected_prompt_id = str(prompt_payload[index]["prompt_id"])
             actual_prompt_id = row.get("prompt_id")
             if actual_prompt_id != expected_prompt_id:
+                response_summary["prompt_order_preserved"] = False
                 raise RuntimeError(
                     "Foundry Local batch inference response prompt order mismatch "
                     f"(expected '{expected_prompt_id}', got '{actual_prompt_id}')."
                 )
             outputs.append(str(row.get("output") or ""))
+        response_summary["prompt_order_preserved"] = True
         return tuple(outputs)
 
     @staticmethod
