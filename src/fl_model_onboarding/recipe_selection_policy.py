@@ -16,7 +16,17 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER = "retryable_optimized_structural_regression"
+from .quality_validation import QualityRetryDisposition
+
+# Single source of truth for the allowlisted retry trigger string: this is the exact
+# value of `QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION`, imported
+# rather than duplicated, so a future rename of either side cannot silently desynchronize
+# the policy trigger from the disposition that is supposed to activate it. See also the
+# cross-module equality assertion in `recipe_attempt_store.py`, which fails fast at import
+# time if this invariant is ever violated despite the shared source.
+RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER = (
+    QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION.value
+)
 
 _ALLOWED_ELIGIBILITY_TRIGGERS = frozenset({RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER})
 _ALLOWED_QUANTIZATION_OVERRIDE_KEYS = frozenset({"block_size"})

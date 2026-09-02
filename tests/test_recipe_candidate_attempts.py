@@ -1,0 +1,874 @@
+"""Slice 2: durable candidate persistence, migration, fingerprints, and reuse identity.
+
+These tests cover the additive `RecipeAttemptStore` candidate-plan/selection APIs on
+top of the existing (Slice 1, approved) generated-recipe/attempt/verified-recipe
+persistence, without modifying any of that existing behavior. No real model runs
+are performed anywhere in this file: every "recipe" is a deterministically compiled
+`GeneratedRecipe` and every candidate outcome is driven directly through the store's
+typed APIs.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from fl_model_onboarding.architecture_capabilities import (
+    load_architecture_capability_registry,
+    normalize_huggingface_metadata,
+)
+from fl_model_onboarding.quality_validation import (
+    DEFAULT_TEXT_GENERATION_QUALITY_PROFILE,
+    QualityRetryDisposition,
+    QualityRetryEvaluation,
+)
+from fl_model_onboarding.recipe_attempt_store import (
+    ATTEMPT_GATE_ORDER,
+    AttemptFailure,
+    AttemptFailureClassification,
+    AttemptGate,
+    AttemptGateStatus,
+    AttemptState,
+    CandidateAttemptRecord,
+    CandidateInvocationCounters,
+    CandidateLineageSelectionState,
+    CandidatePlanValidationError,
+    CandidateSelectionConflictError,
+    CandidateSelectionReuseQuery,
+    CandidateWinnerStatus,
+    RecipeAttemptMigrationError,
+    RecipeAttemptStore,
+    build_attempt_request_fingerprint,
+    build_attempt_request_from_generated,
+    build_candidate_recipe_fingerprint,
+    deserialize_candidate_attempt_record,
+    serialize_candidate_attempt_record,
+)
+from fl_model_onboarding.recipe_compiler import (
+    RecipeCompilerInput,
+    RecipeCompilerToolchain,
+    compile_generated_recipe,
+)
+from fl_model_onboarding.recipe_selection_policy import (
+    DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY,
+    RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+    RecipeQuantizationOverride,
+)
+
+_REVISION_SHA = "0123456789abcdef0123456789abcdef01234567"
+_QUALITY_PROFILE_FINGERPRINT = DEFAULT_TEXT_GENERATION_QUALITY_PROFILE.fingerprint
+_POLICY = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+_RETRYABLE_EVALUATION = QualityRetryEvaluation(
+    disposition=QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION,
+    reasons=("optimized_structural_regression:prompt-1:invalid_json_output",),
+)
+_NOT_RETRYABLE_EVALUATION = QualityRetryEvaluation(
+    disposition=QualityRetryDisposition.NOT_RETRYABLE,
+    reasons=("baseline_unavailable",),
+)
+
+
+def _toolchain(*, ort_version: str = "1.29.0") -> RecipeCompilerToolchain:
+    return RecipeCompilerToolchain(
+        mobius_version="0.1.0",
+        olive_version="0.13.0",
+        onnx_version="1.22.0",
+        ort_version=ort_version,
+        oga_version="0.15.2",
+        foundry_sdk_version="1.2.4",
+        foundry_cli_version="0.11.0",
+    )
+
+
+def _resolve_capability(*, model_id: str):
+    registry = load_architecture_capability_registry()
+    metadata = normalize_huggingface_metadata(
+        model_id=model_id,
+        config={"model_type": "llama", "architectures": ["LlamaForCausalLM"]},
+        is_gated=False,
+        is_private=False,
+    )
+    return registry.resolve(metadata=metadata, task="llm", device="cpu", requested_precision="auto")
+
+
+def _generated_recipe(*, model_id: str = "example-org/candidate-model", ort_version: str = "1.29.0"):
+    resolution = _resolve_capability(model_id=model_id)
+    return compile_generated_recipe(
+        RecipeCompilerInput(
+            model_id=model_id,
+            revision_sha=_REVISION_SHA,
+            model_type="llama",
+            architectures=("LlamaForCausalLM",),
+            task="llm",
+            requested_device="cpu",
+            requested_precision="auto",
+            is_gated=False,
+            requires_remote_code=False,
+            config_files=("config.json",),
+            tokenizer_files=("tokenizer.json",),
+            available_files=("config.json", "tokenizer.json", "model.safetensors"),
+            capability_resolution=resolution,
+            toolchain=_toolchain(ort_version=ort_version),
+        )
+    )
+
+
+def _create_and_start_attempt(
+    store: RecipeAttemptStore,
+    *,
+    idempotency_key: str,
+    ort_version: str = "1.29.0",
+) -> tuple[object, object]:
+    """Create + start a plain attempt (candidate_index 0 style setup), independent
+    of any candidate-plan registration."""
+    generated = _generated_recipe(ort_version=ort_version)
+    generated_record = store.upsert_generated_recipe(generated)
+    request = build_attempt_request_from_generated(generated_record)
+    request_fingerprint = build_attempt_request_fingerprint(request)
+    attempt, _replay = store.create_attempt(
+        idempotency_key=idempotency_key,
+        request=request,
+        request_fingerprint=request_fingerprint,
+    )
+    store.start_attempt(attempt.attempt_id)
+    return generated, attempt
+
+
+def _fail_attempt_at_first_gate(store: RecipeAttemptStore, attempt_id: str) -> None:
+    store.record_attempt_gate(
+        attempt_id=attempt_id,
+        gate=AttemptGate.MOBIUS_BUILD,
+        status=AttemptGateStatus.FAILED,
+        evidence_ref=f"mobius://{attempt_id}/failed",
+    )
+    store.finish_attempt_failed(
+        attempt_id,
+        failure=AttemptFailure(
+            classification=AttemptFailureClassification.GATE_FAILED,
+            stage="mobius_build",
+            message="Mobius build failed for the default candidate.",
+            evidence_refs=(f"mobius://{attempt_id}/failed",),
+            source_owner="recipe-agent",
+            next_action="Evaluate quality retry disposition.",
+        ),
+    )
+
+
+def _succeed_attempt(store: RecipeAttemptStore, attempt_id: str) -> None:
+    for gate in ATTEMPT_GATE_ORDER:
+        store.record_attempt_gate(
+            attempt_id=attempt_id,
+            gate=gate,
+            status=AttemptGateStatus.PASSED,
+            evidence_ref=f"{gate.value}://{attempt_id}/ok",
+        )
+    store.finish_attempt_succeeded(attempt_id)
+
+
+def _register_default(store: RecipeAttemptStore, attempt_id: str) -> CandidateAttemptRecord:
+    return store.register_candidate_attempt(
+        parent_attempt_id=attempt_id,
+        attempt_id=attempt_id,
+        candidate_index=0,
+        policy=_POLICY,
+        quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+    )
+
+
+def _register_fallback(
+    store: RecipeAttemptStore,
+    *,
+    parent_attempt_id: str,
+    attempt_id: str,
+    retry_evaluation: QualityRetryEvaluation = _RETRYABLE_EVALUATION,
+) -> CandidateAttemptRecord:
+    return store.register_candidate_attempt(
+        parent_attempt_id=parent_attempt_id,
+        attempt_id=attempt_id,
+        candidate_index=1,
+        policy=_POLICY,
+        quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+        trigger=RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+        retry_evaluation=retry_evaluation,
+    )
+
+
+# --------------------------------------------------------------------------
+# Fresh DB: plan / default + fallback persistence / order
+# --------------------------------------------------------------------------
+
+
+def test_fresh_db_candidate_plan_persists_default_and_fallback_in_order(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+
+    default_candidate = _register_default(store, default_attempt.attempt_id)
+    assert default_candidate.candidate_index == 0
+    assert default_candidate.candidate_id == "default-int4"
+    assert default_candidate.quantization_override_block_size is None
+    assert default_candidate.eligibility_trigger is None
+    assert default_candidate.disposition is None
+    assert default_candidate.disposition_reasons == ()
+    assert default_candidate.selection_status == CandidateWinnerStatus.NOT_SELECTED
+
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    assert fallback_candidate.candidate_index == 1
+    assert fallback_candidate.candidate_id == "int4-block-size-64"
+    assert fallback_candidate.quantization_override_block_size == 64
+    assert fallback_candidate.eligibility_trigger == RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER
+    assert fallback_candidate.disposition == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION.value
+    assert fallback_candidate.disposition_reasons == _RETRYABLE_EVALUATION.reasons
+
+    ordered = store.list_candidate_attempts(default_attempt.attempt_id)
+    assert [row.candidate_attempt_id for row in ordered] == [
+        default_candidate.candidate_attempt_id,
+        fallback_candidate.candidate_attempt_id,
+    ]
+    assert [row.candidate_index for row in ordered] == [0, 1]
+
+    lineage = store.get_candidate_lineage(default_attempt.attempt_id)
+    assert lineage is not None
+    assert lineage.policy_id == _POLICY.policy_id
+    assert lineage.policy_version == _POLICY.version
+    assert lineage.policy_fingerprint == _POLICY.fingerprint
+    assert lineage.policy_max_candidates == _POLICY.max_candidates
+    assert lineage.quality_profile_fingerprint == _QUALITY_PROFILE_FINGERPRINT
+    assert lineage.selection_state == CandidateLineageSelectionState.PENDING
+    assert lineage.selected_candidate_attempt_id is None
+
+
+def test_candidate_index_0_must_use_attempt_id_equal_to_parent(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _generated2, other_attempt = _create_and_start_attempt(store, idempotency_key="other", ort_version="1.31.0")
+
+    with pytest.raises(CandidatePlanValidationError):
+        store.register_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=other_attempt.attempt_id,
+            candidate_index=0,
+            policy=_POLICY,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+        )
+
+
+def test_fallback_cannot_be_registered_before_default(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+
+    with pytest.raises(CandidatePlanValidationError):
+        _register_fallback(
+            store,
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=fallback_attempt.attempt_id,
+        )
+
+
+def test_duplicate_candidate_index_and_max_candidates_are_enforced(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+
+    with pytest.raises(CandidatePlanValidationError):
+        _register_default(store, default_attempt.attempt_id)
+
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+    _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+
+    # Policy declares only 2 candidates; a third slot is out of range entirely.
+    _third_generated, third_attempt = _create_and_start_attempt(
+        store, idempotency_key="third", ort_version="1.31.0"
+    )
+    with pytest.raises(CandidatePlanValidationError):
+        store.register_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=third_attempt.attempt_id,
+            candidate_index=2,
+            policy=_POLICY,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+        )
+
+
+def test_mismatched_trigger_and_non_retryable_disposition_are_rejected(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+
+    with pytest.raises(CandidatePlanValidationError):
+        store.register_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=fallback_attempt.attempt_id,
+            candidate_index=1,
+            policy=_POLICY,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+            trigger="some-other-trigger",
+            retry_evaluation=_RETRYABLE_EVALUATION,
+        )
+
+    with pytest.raises(CandidatePlanValidationError):
+        _register_fallback(
+            store,
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=fallback_attempt.attempt_id,
+            retry_evaluation=_NOT_RETRYABLE_EVALUATION,
+        )
+
+    with pytest.raises(CandidatePlanValidationError):
+        # Default candidate cannot carry a trigger/disposition at all.
+        store.register_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=fallback_attempt.attempt_id,
+            candidate_index=0,
+            policy=_POLICY,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+            trigger=RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+        )
+
+
+def test_register_candidate_attempt_rejects_non_allowlisted_trigger(tmp_path: Path) -> None:
+    """A policy candidate that (hypothetically) declared a non-canonical trigger
+    string must still be rejected by the store, independent of policy-file
+    validation -- this is the store-side half of the cross-module trigger
+    boundary enforcement."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+
+    rogue_policy = replace(
+        _POLICY,
+        candidates=(
+            _POLICY.candidates[0],
+            replace(_POLICY.candidates[1], eligibility_trigger="totally-different-trigger"),
+        ),
+    )
+    with pytest.raises(CandidatePlanValidationError):
+        store.register_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=fallback_attempt.attempt_id,
+            candidate_index=1,
+            policy=rogue_policy,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+            trigger="totally-different-trigger",
+            retry_evaluation=_RETRYABLE_EVALUATION,
+        )
+
+
+# --------------------------------------------------------------------------
+# Migration / reopen legacy DB / idempotency
+# --------------------------------------------------------------------------
+
+
+def test_migration_v2_to_v3_is_additive_and_idempotent_on_reopen(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy-v2.sqlite3"
+    # Build a v2 store the normal way, then hand-roll it back down to
+    # user_version=2 with the Slice 2 tables removed, to simulate a database
+    # that predates this migration but already has the v1->v2 profile_fingerprint
+    # columns.
+    seed_store = RecipeAttemptStore(db_path)
+    _generated, attempt = _create_and_start_attempt(seed_store, idempotency_key="seed")
+    _succeed_attempt(seed_store, attempt.attempt_id)
+    del seed_store
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DROP TABLE IF EXISTS candidate_attempts;")
+        connection.execute("DROP TABLE IF EXISTS recipe_candidate_lineages;")
+        connection.execute("PRAGMA user_version = 2;")
+
+    migrated = RecipeAttemptStore(db_path)
+    with sqlite3.connect(db_path) as check:
+        assert int(check.execute("PRAGMA user_version").fetchone()[0]) == 3
+        tables = {
+            row[0] for row in check.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+        }
+        assert "candidate_attempts" in tables
+        assert "recipe_candidate_lineages" in tables
+
+    # The pre-existing succeeded attempt is untouched and still has no lineage.
+    assert migrated.get_attempt(attempt.attempt_id).state == AttemptState.SUCCEEDED
+    assert migrated.get_candidate_lineage(attempt.attempt_id) is None
+
+    # A brand-new candidate plan can now be registered against it.
+    registered = _register_default(migrated, attempt.attempt_id)
+    assert registered.candidate_index == 0
+
+    # Reopening again (migration re-run) is idempotent: no error, same version,
+    # existing lineage/candidate data untouched.
+    reopened = RecipeAttemptStore(db_path)
+    with sqlite3.connect(db_path) as check_again:
+        assert int(check_again.execute("PRAGMA user_version").fetchone()[0]) == 3
+    assert reopened.get_candidate_lineage(attempt.attempt_id) is not None
+    assert len(reopened.list_candidate_attempts(attempt.attempt_id)) == 1
+
+
+def test_store_rejects_unsupported_schema_version_still_works(tmp_path: Path) -> None:
+    db_path = tmp_path / "bad-version.sqlite3"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("PRAGMA user_version = 999;")
+    with pytest.raises(RecipeAttemptMigrationError):
+        RecipeAttemptStore(db_path)
+
+
+# --------------------------------------------------------------------------
+# Immutable failed default + verified fallback + atomic one-winner selection
+# --------------------------------------------------------------------------
+
+
+def test_failed_default_and_verified_fallback_atomic_selection(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    default_candidate = _register_default(store, default_attempt.attempt_id)
+    _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
+
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    _succeed_attempt(store, fallback_attempt.attempt_id)
+
+    refreshed_default = store.get_candidate_attempt(default_candidate.candidate_attempt_id)
+    assert refreshed_default.attempt_state == AttemptState.FAILED
+    assert refreshed_default.is_verified is False
+
+    refreshed_fallback = store.get_candidate_attempt(fallback_candidate.candidate_attempt_id)
+    assert refreshed_fallback.attempt_state == AttemptState.SUCCEEDED
+    assert refreshed_fallback.is_verified is True
+
+    # Selecting the failed default must be rejected (non-verified child).
+    with pytest.raises(CandidateSelectionConflictError):
+        store.select_verified_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            candidate_attempt_id=default_candidate.candidate_attempt_id,
+            reason="attempted incorrect selection",
+        )
+
+    lineage, winner = store.select_verified_candidate_attempt(
+        parent_attempt_id=default_attempt.attempt_id,
+        candidate_attempt_id=fallback_candidate.candidate_attempt_id,
+        reason="fallback passed quality validation after optimized-only structural regression",
+    )
+    assert lineage.selection_state == CandidateLineageSelectionState.SELECTED
+    assert lineage.selected_candidate_attempt_id == fallback_candidate.candidate_attempt_id
+    assert winner.selection_status == CandidateWinnerStatus.SELECTED
+    assert winner.selected_by == "validation"
+    assert winner.has_fully_validated_selection_scope is False  # no Slice 3 scope supplied yet
+
+    # Never overwrite the failed default: it remains failed/not-selected and
+    # fully discoverable alongside the winner.
+    all_candidates = store.list_candidate_attempts(default_attempt.attempt_id)
+    assert len(all_candidates) == 2
+    by_index = {row.candidate_index: row for row in all_candidates}
+    assert by_index[0].attempt_state == AttemptState.FAILED
+    assert by_index[0].selection_status == CandidateWinnerStatus.NOT_SELECTED
+    assert by_index[1].selection_status == CandidateWinnerStatus.SELECTED
+
+    # Only one winner is ever allowed, even for the same candidate again.
+    with pytest.raises(CandidateSelectionConflictError):
+        store.select_verified_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            candidate_attempt_id=fallback_candidate.candidate_attempt_id,
+            reason="duplicate selection attempt",
+        )
+
+    # A finalized lineage cannot accept new candidates either.
+    _third_generated, third_attempt = _create_and_start_attempt(
+        store, idempotency_key="post-selection", ort_version="1.32.0"
+    )
+    with pytest.raises(CandidatePlanValidationError):
+        store.register_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=third_attempt.attempt_id,
+            candidate_index=1,
+            policy=_POLICY,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+            trigger=RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+            retry_evaluation=_RETRYABLE_EVALUATION,
+        )
+
+
+def test_finalize_candidate_attempt_evidence_is_write_once(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    default_candidate = _register_default(store, default_attempt.attempt_id)
+
+    # Cannot finalize evidence while the linked attempt is still running.
+    with pytest.raises(CandidatePlanValidationError):
+        store.finalize_candidate_attempt_evidence(
+            default_candidate.candidate_attempt_id,
+            artifact_ref="artifact://too-early",
+        )
+
+    _succeed_attempt(store, default_attempt.attempt_id)
+    counters = CandidateInvocationCounters(mobius_build_invocation_count=1, olive_optimize_invocation_count=1)
+    finalized = store.finalize_candidate_attempt_evidence(
+        default_candidate.candidate_attempt_id,
+        artifact_ref="artifact://default/onnx",
+        package_ref="package://default/oga",
+        invocation_counters=counters,
+    )
+    assert finalized.artifact_ref == "artifact://default/onnx"
+    assert finalized.package_ref == "package://default/oga"
+    assert finalized.invocation_counters.mobius_build_invocation_count == 1
+    # Untouched counters remain None -- never inferred/coerced to 0.
+    assert finalized.invocation_counters.total_invocation_count is None
+    assert finalized.invocation_counters.wall_clock_seconds is None
+    assert finalized.invocation_counters.estimated_cost_usd is None
+
+    # Idempotent no-op with identical values.
+    same_again = store.finalize_candidate_attempt_evidence(
+        default_candidate.candidate_attempt_id,
+        artifact_ref="artifact://default/onnx",
+        package_ref="package://default/oga",
+        invocation_counters=counters,
+    )
+    assert same_again == finalized
+
+    # Immutable: different values after terminal evidence is recorded raise.
+    with pytest.raises(CandidatePlanValidationError):
+        store.finalize_candidate_attempt_evidence(
+            default_candidate.candidate_attempt_id,
+            artifact_ref="artifact://different",
+        )
+
+
+# --------------------------------------------------------------------------
+# Fallback exhausted / no selection / no third candidate
+# --------------------------------------------------------------------------
+
+
+def test_lineage_can_be_exhausted_when_every_candidate_fails(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+    _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
+
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+    _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    _fail_attempt_at_first_gate(store, fallback_attempt.attempt_id)
+
+    lineage = store.finalize_exhausted_candidate_lineage(
+        default_attempt.attempt_id,
+        reason="both candidates failed; policy exhausted with no verified winner",
+    )
+    assert lineage.selection_state == CandidateLineageSelectionState.EXHAUSTED
+    assert lineage.selected_candidate_attempt_id is None
+
+    # No selection remains possible, and no third candidate can ever be added
+    # (policy only declares 2, and the lineage is finalized regardless).
+    with pytest.raises(CandidateSelectionConflictError):
+        store.select_verified_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            candidate_attempt_id=store.list_candidate_attempts(default_attempt.attempt_id)[0].candidate_attempt_id,
+            reason="cannot select after exhaustion",
+        )
+    _third_generated, third_attempt = _create_and_start_attempt(
+        store, idempotency_key="third", ort_version="1.33.0"
+    )
+    with pytest.raises(CandidatePlanValidationError):
+        store.register_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            attempt_id=third_attempt.attempt_id,
+            candidate_index=1,
+            policy=_POLICY,
+            quality_profile_fingerprint=_QUALITY_PROFILE_FINGERPRINT,
+            trigger=RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+            retry_evaluation=_RETRYABLE_EVALUATION,
+        )
+
+
+def test_cannot_exhaust_lineage_while_a_verified_candidate_is_unselected(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+    _succeed_attempt(store, default_attempt.attempt_id)
+
+    with pytest.raises(CandidateSelectionConflictError):
+        store.finalize_exhausted_candidate_lineage(
+            default_attempt.attempt_id,
+            reason="should not be allowed while candidate 0 is verified but unselected",
+        )
+
+
+def test_cannot_exhaust_lineage_with_a_still_running_candidate(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+
+    with pytest.raises(CandidateSelectionConflictError):
+        store.finalize_exhausted_candidate_lineage(
+            default_attempt.attempt_id,
+            reason="candidate is still running",
+        )
+
+
+# --------------------------------------------------------------------------
+# Fingerprint stability / invalidation
+# --------------------------------------------------------------------------
+
+
+def test_candidate_fingerprint_is_stable_and_invalidated_by_content_changes() -> None:
+    recipe_fingerprint = "a" * 64
+    policy_fingerprint = "b" * 64
+    override = RecipeQuantizationOverride(block_size=64)
+
+    first = build_candidate_recipe_fingerprint(
+        recipe_fingerprint=recipe_fingerprint,
+        quantization_override=override,
+        policy_fingerprint=policy_fingerprint,
+    )
+    second = build_candidate_recipe_fingerprint(
+        recipe_fingerprint=recipe_fingerprint,
+        quantization_override=override,
+        policy_fingerprint=policy_fingerprint,
+    )
+    assert first == second
+
+    different_recipe = build_candidate_recipe_fingerprint(
+        recipe_fingerprint="c" * 64,
+        quantization_override=override,
+        policy_fingerprint=policy_fingerprint,
+    )
+    assert different_recipe != first
+
+    different_override = build_candidate_recipe_fingerprint(
+        recipe_fingerprint=recipe_fingerprint,
+        quantization_override=RecipeQuantizationOverride(block_size=32),
+        policy_fingerprint=policy_fingerprint,
+    )
+    assert different_override != first
+
+    no_override = build_candidate_recipe_fingerprint(
+        recipe_fingerprint=recipe_fingerprint,
+        quantization_override=None,
+        policy_fingerprint=policy_fingerprint,
+    )
+    assert no_override != first
+
+    different_policy = build_candidate_recipe_fingerprint(
+        recipe_fingerprint=recipe_fingerprint,
+        quantization_override=override,
+        policy_fingerprint="d" * 64,
+    )
+    assert different_policy != first
+
+
+def test_candidate_fingerprints_differ_across_a_real_default_and_fallback_pair(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    default_candidate = _register_default(store, default_attempt.attempt_id)
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    assert default_candidate.candidate_fingerprint != fallback_candidate.candidate_fingerprint
+    assert default_candidate.recipe_fingerprint != fallback_candidate.recipe_fingerprint
+
+
+def test_candidate_fingerprint_excludes_timestamps_paths_and_uuids(tmp_path: Path) -> None:
+    """Registering the same candidate slot content at two different real times,
+    under two different candidate_attempt_id UUIDs, must still produce an
+    identical candidate_fingerprint -- it must never depend on created_utc,
+    candidate_attempt_id, or any filesystem path."""
+    store_a = RecipeAttemptStore(tmp_path / "a" / "recipe-attempt.sqlite3")
+    store_b = RecipeAttemptStore(tmp_path / "b" / "recipe-attempt.sqlite3")
+    _generated_a, attempt_a = _create_and_start_attempt(store_a, idempotency_key="default")
+    _generated_b, attempt_b = _create_and_start_attempt(store_b, idempotency_key="default")
+
+    import time as _time
+
+    candidate_a = _register_default(store_a, attempt_a.attempt_id)
+    _time.sleep(0.01)
+    candidate_b = _register_default(store_b, attempt_b.attempt_id)
+
+    assert candidate_a.candidate_attempt_id != candidate_b.candidate_attempt_id
+    assert candidate_a.created_utc != candidate_b.created_utc
+    assert candidate_a.candidate_fingerprint == candidate_b.candidate_fingerprint
+
+
+# --------------------------------------------------------------------------
+# Reuse lookup by complete provenance identity
+# --------------------------------------------------------------------------
+
+
+def _reuse_query_for(
+    *,
+    default_attempt,
+    fallback_attempt,
+    quality_profile_fingerprint: str = _QUALITY_PROFILE_FINGERPRINT,
+    policy_fingerprint: str | None = None,
+) -> CandidateSelectionReuseQuery:
+    return CandidateSelectionReuseQuery(
+        model_id=default_attempt.model_id,
+        revision_sha=default_attempt.revision_sha,
+        requested_device=default_attempt.requested_device,
+        requested_precision=default_attempt.requested_precision,
+        compiler_version=default_attempt.compiler_version,
+        capability_fingerprint=default_attempt.capability_fingerprint,
+        toolchain_fingerprint=default_attempt.toolchain_fingerprint,
+        profile_fingerprint=default_attempt.profile_fingerprint,
+        quality_profile_fingerprint=quality_profile_fingerprint,
+        policy_fingerprint=policy_fingerprint or _POLICY.fingerprint,
+    )
+
+
+def test_reuse_lookup_returns_selected_verified_child_with_full_provenance(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    default_candidate = _register_default(store, default_attempt.attempt_id)
+    _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
+
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", ort_version="1.30.0"
+    )
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    _succeed_attempt(store, fallback_attempt.attempt_id)
+
+    query = _reuse_query_for(default_attempt=default_attempt, fallback_attempt=fallback_attempt)
+
+    # Not yet selected: no reusable winner exists.
+    assert store.find_reusable_candidate_selection(query) is None
+
+    store.select_verified_candidate_attempt(
+        parent_attempt_id=default_attempt.attempt_id,
+        candidate_attempt_id=fallback_candidate.candidate_attempt_id,
+        reason="fallback verified after retryable structural regression",
+    )
+
+    reusable = store.find_reusable_candidate_selection(query)
+    assert reusable is not None
+    assert reusable.candidate_attempt_id == fallback_candidate.candidate_attempt_id
+    assert reusable.selection_status == CandidateWinnerStatus.SELECTED
+    assert reusable.candidate_id == "int4-block-size-64"
+    assert reusable.quantization_override_block_size == 64
+    assert reusable.policy_fingerprint == _POLICY.fingerprint
+
+    # The negative (failed) default candidate remains discoverable alongside
+    # the winner via the ordinary listing API.
+    siblings = store.list_candidate_attempts(default_attempt.attempt_id)
+    sibling_ids = {row.candidate_attempt_id for row in siblings}
+    assert default_candidate.candidate_attempt_id in sibling_ids
+    assert fallback_candidate.candidate_attempt_id in sibling_ids
+
+    # A stale toolchain identity misses, exactly like the Slice 1 verified-recipe
+    # reuse lookup.
+    stale_toolchain = replace(query, toolchain_fingerprint="f" * 64)
+    assert store.find_reusable_candidate_selection(stale_toolchain) is None
+
+    # Quality-profile version changes invalidate reuse.
+    stale_quality_profile = replace(query, quality_profile_fingerprint="e" * 64)
+    assert store.find_reusable_candidate_selection(stale_quality_profile) is None
+
+    # Policy identity changes invalidate reuse.
+    stale_policy = replace(query, policy_fingerprint="9" * 64)
+    assert store.find_reusable_candidate_selection(stale_policy) is None
+
+
+# --------------------------------------------------------------------------
+# Nullable counters remain null, not inferred zero
+# --------------------------------------------------------------------------
+
+
+def test_nullable_invocation_counters_are_never_inferred_as_zero(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    default_candidate = _register_default(store, default_attempt.attempt_id)
+
+    assert default_candidate.invocation_counters == CandidateInvocationCounters()
+    payload = serialize_candidate_attempt_record(default_candidate)
+    assert payload["mobius_build_invocation_count"] is None
+    assert payload["olive_optimize_invocation_count"] is None
+    assert payload["total_invocation_count"] is None
+    assert payload["wall_clock_seconds"] is None
+    assert payload["estimated_cost_usd"] is None
+
+    round_tripped = deserialize_candidate_attempt_record(payload)
+    assert round_tripped.invocation_counters == CandidateInvocationCounters()
+
+
+# --------------------------------------------------------------------------
+# Cross-module trigger identity enforcement
+# --------------------------------------------------------------------------
+
+
+def test_retry_trigger_constant_matches_quality_retry_disposition_value() -> None:
+    """Explicit boundary regression test: if either constant is ever renamed or
+    redefined independently, this test (not just the module-level assertion in
+    recipe_attempt_store.py) fails, so CI catches the drift even if the
+    assertion import path changes."""
+    assert (
+        RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER
+        == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION.value
+    )
+
+
+def test_unknown_or_non_verified_candidate_selection_is_rejected(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+
+    with pytest.raises(KeyError):
+        store.get_candidate_attempt("unknown-candidate-attempt-id")
+
+    with pytest.raises(CandidateSelectionConflictError):
+        store.select_verified_candidate_attempt(
+            parent_attempt_id=default_attempt.attempt_id,
+            candidate_attempt_id="unknown-candidate-attempt-id",
+            reason="unknown child should never be selectable",
+        )
+
+
+# --------------------------------------------------------------------------
+# Existing attempt-store behavior is unaffected (spot check; full suite also run)
+# --------------------------------------------------------------------------
+
+
+def test_plain_attempts_without_any_candidate_plan_are_unaffected(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _generated, attempt = _create_and_start_attempt(store, idempotency_key="no-policy")
+    _succeed_attempt(store, attempt.attempt_id)
+    assert store.get_attempt(attempt.attempt_id).state == AttemptState.SUCCEEDED
+    assert store.get_candidate_lineage(attempt.attempt_id) is None
+    assert store.list_candidate_attempts(attempt.attempt_id) == ()

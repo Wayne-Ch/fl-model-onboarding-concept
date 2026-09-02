@@ -50,3 +50,17 @@ unknown/malformed evidence) resolves to `not_retryable`.
 This module is metadata and disposition-derivation only. Wiring the retry disposition into
 an actual recipe re-attempt (choosing candidate 1's override and re-running the recipe) is
 explicit follow-up work and is out of scope here.
+
+## Slice 2 follow-up: durable candidate persistence
+
+`recipe_attempt_store.py`'s `register_candidate_attempt`/`select_verified_candidate_attempt`/
+`finalize_exhausted_candidate_lineage` APIs (see `docs/recipe-attempt-store.md`) durably
+persist which candidate from this policy was actually attempted, its actual resolved
+recipe/quantization, and which one (if any) was selected as the verified winner. The
+trigger constant here (`RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER`) is imported
+directly from `QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION.value`
+(single source, not a duplicated string), and `recipe_attempt_store.py` asserts the two
+stay equal at import time in addition to re-checking the exact value at registration
+time -- so a future rename on either side fails fast instead of silently disabling the
+fallback candidate. Actually invoking Mobius/Olive for a fallback candidate and
+populating real invocation counters/cost remains Slice 3 scope.

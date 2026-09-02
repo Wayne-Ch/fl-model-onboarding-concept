@@ -667,7 +667,7 @@ def test_migration_v1_to_v2_adds_profile_fingerprint_columns(tmp_path: Path) -> 
     with sqlite3.connect(db_path) as check:
         check.row_factory = sqlite3.Row
         user_version = int(check.execute("PRAGMA user_version").fetchone()[0])
-        assert user_version == 2
+        assert user_version == 3
         generated_columns = {
             row["name"] for row in check.execute("PRAGMA table_info(generated_recipes)").fetchall()
         }
@@ -680,9 +680,21 @@ def test_migration_v1_to_v2_adds_profile_fingerprint_columns(tmp_path: Path) -> 
         assert "profile_fingerprint" in generated_columns
         assert "profile_fingerprint" in attempt_columns
         assert "profile_fingerprint" in verified_columns
+        candidate_tables = {
+            row["name"]
+            for row in check.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        assert "candidate_attempts" in candidate_tables
+        assert "recipe_candidate_lineages" in candidate_tables
 
     attempt = migrated.get_attempt("attempt-legacy")
     assert attempt.profile_fingerprint == LEGACY_PROFILE_FINGERPRINT
+    # Legacy attempts predate Slice 2 and carry no candidate lineage/plan at all;
+    # they remain fully readable and retain their old (pre-policy) behavior.
+    assert migrated.get_candidate_lineage("attempt-legacy") is None
+    assert migrated.list_candidate_attempts("attempt-legacy") == ()
     reusable = migrated.find_reusable_verified_recipe(
         RecipeReuseQuery(
             model_id="legacy/model",
@@ -714,6 +726,14 @@ def test_migration_v1_to_v2_adds_profile_fingerprint_columns(tmp_path: Path) -> 
         )
         is None
     )
+
+    # Reopening (re-running migration) repeatedly against an already-migrated
+    # database is idempotent: no error, same schema version, same data.
+    reopened = RecipeAttemptStore(db_path)
+    with sqlite3.connect(db_path) as check_again:
+        assert int(check_again.execute("PRAGMA user_version").fetchone()[0]) == 3
+    assert reopened.get_attempt("attempt-legacy").attempt_id == "attempt-legacy"
+    assert reopened.get_candidate_lineage("attempt-legacy") is None
 
 
 def test_concurrent_duplicate_idempotency_returns_single_attempt(tmp_path: Path) -> None:

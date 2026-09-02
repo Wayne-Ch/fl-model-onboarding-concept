@@ -14,6 +14,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from .quality_validation import QualityRetryDisposition, QualityRetryEvaluation
 from .recipe_compiler import (
     GeneratedRecipe,
     PromotionGateCheck,
@@ -22,10 +23,34 @@ from .recipe_compiler import (
     RecipeGenerationProvenance,
     RecipeInputMetadata,
 )
+from .recipe_selection_policy import (
+    RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+    RecipeQuantizationOverride,
+    RecipeSelectionPolicy,
+)
 from .recipes import ModelRecipe, RecipeStatus
 
+# Cross-module boundary enforcement (Slice 2 reviewer follow-up): the policy trigger
+# string and the QualityRetryDisposition value it must match are defined in two
+# different modules for layering reasons (policy metadata vs. quality-gate evidence
+# derivation). `recipe_selection_policy` already imports its constant directly from
+# `QualityRetryDisposition`, so this can only fail if that import is ever removed or a
+# constant is renamed inconsistently. Assert here too, at recipe-attempt-store import
+# time, so any future drift fails fast and loudly instead of silently disabling the
+# fallback candidate. See also `tests/test_recipe_attempt_store.py::
+# test_retry_trigger_constant_matches_quality_retry_disposition_value` for an explicit
+# regression test of this exact invariant.
+assert (
+    RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER
+    == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION.value
+), (
+    "recipe_selection_policy.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER has "
+    "diverged from QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION; "
+    "the fallback candidate trigger would silently stop matching quality-retry disposition."
+)
+
 RECIPE_ATTEMPT_SCHEMA_VERSION = "1.0.0"
-RECIPE_ATTEMPT_STORE_SCHEMA_VERSION = 2
+RECIPE_ATTEMPT_STORE_SCHEMA_VERSION = 3
 LEGACY_PROFILE_FINGERPRINT = hashlib.sha256(b"legacy-profile-missing-v1").hexdigest()
 
 _HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -72,6 +97,19 @@ class RecipePromotionConflictError(RecipeAttemptStoreError):
 
 class RecipeAttemptSecurityError(RecipeAttemptStoreError):
     """Raised when evidence or failure payloads contain unsafe content."""
+
+
+class CandidatePlanValidationError(RecipeAttemptStoreError):
+    """Raised when candidate-plan registration is malformed, duplicated, out of
+    order, exceeds the policy's max_candidates, or conflicts with an already
+    registered policy/quality-profile identity for the same parent lineage."""
+
+
+class CandidateSelectionConflictError(RecipeAttemptStoreError):
+    """Raised when selecting or exhausting a candidate lineage would violate the
+    single-winner, verified-only selection contract (for example: selecting a
+    non-verified or unknown child, selecting a second winner, or exhausting a
+    lineage that still has an unselected verified candidate)."""
 
 
 class AttemptState(StrEnum):
@@ -125,6 +163,167 @@ class AttemptFailureClassification(StrEnum):
     INTERRUPTED = "interrupted"
     CANCELLED = "cancelled"
     INTERNAL_ERROR = "internal_error"
+
+
+class CandidateLineageSelectionState(StrEnum):
+    """Lifecycle of a parent attempt's candidate-selection lineage.
+
+    ``PENDING`` means at least one candidate slot is registered and no winner has
+    been chosen yet. ``SELECTED`` and ``EXHAUSTED`` are terminal: exactly one of
+    them applies once a lineage is finalized, and a finalized lineage never
+    accepts new candidates or a different winner.
+    """
+
+    PENDING = "pending"
+    SELECTED = "selected"
+    EXHAUSTED = "exhausted"
+
+
+TERMINAL_CANDIDATE_LINEAGE_SELECTION_STATES = frozenset(
+    {
+        CandidateLineageSelectionState.SELECTED,
+        CandidateLineageSelectionState.EXHAUSTED,
+    }
+)
+
+
+class CandidateWinnerStatus(StrEnum):
+    """Per-candidate selection flag. At most one candidate per lineage may be
+    ``SELECTED``, and only a candidate whose linked attempt has reached
+    ``AttemptState.SUCCEEDED`` (i.e. it passed every required gate including
+    quality validation) may ever transition to ``SELECTED``."""
+
+    NOT_SELECTED = "not_selected"
+    SELECTED = "selected"
+
+
+@dataclass(frozen=True)
+class CandidateInvocationCounters:
+    """Nullable, typed placeholders for real Mobius/Olive invocation counts and
+    cost/performance metrics.
+
+    Every field defaults to ``None`` and stays ``None`` until a later slice
+    actually instruments a real recipe run and supplies a measurement. ``None``
+    must never be coerced to or serialized as ``0``: it means "not yet
+    instrumented", never "zero invocations occurred".
+    """
+
+    mobius_build_invocation_count: int | None = None
+    olive_optimize_invocation_count: int | None = None
+    total_invocation_count: int | None = None
+    wall_clock_seconds: float | None = None
+    estimated_cost_usd: float | None = None
+
+
+_NULL_CANDIDATE_INVOCATION_COUNTERS = CandidateInvocationCounters()
+
+
+@dataclass(frozen=True)
+class CandidateAttemptRecord:
+    """A durable, immutable-once-terminal child candidate under a recipe-selection
+    lineage. Each row reuses an existing :class:`RecipeAttempt` (via ``attempt_id``)
+    for its own gate/state execution record instead of duplicating that state
+    machine; this record only carries candidate-plan and selection metadata.
+    """
+
+    candidate_attempt_id: str
+    parent_attempt_id: str
+    attempt_id: str
+    candidate_index: int
+    candidate_id: str
+    policy_id: str
+    policy_version: str
+    policy_fingerprint: str
+    quality_profile_fingerprint: str
+    quantization_override_block_size: int | None
+    eligibility_trigger: str | None
+    disposition: str | None
+    disposition_reasons: tuple[str, ...]
+    recipe_fingerprint: str
+    candidate_fingerprint: str
+    created_utc: datetime
+    attempt_state: AttemptState
+    artifact_ref: str | None
+    package_ref: str | None
+    invocation_counters: CandidateInvocationCounters
+    selection_status: CandidateWinnerStatus
+    selected_by: str | None
+    selection_reason: str | None
+    selected_utc: datetime | None
+    validated_target_device: str | None
+    validated_target_ep: str | None
+    validated_toolchain_fingerprint: str | None
+    validated_environment_scope: str | None
+
+    @property
+    def is_default(self) -> bool:
+        return self.candidate_index == 0
+
+    @property
+    def is_verified(self) -> bool:
+        """Whether this candidate's linked attempt reached the terminal
+        succeeded state (the closest existing analog to "verified": it passed
+        every required gate including quality validation)."""
+        return self.attempt_state == AttemptState.SUCCEEDED
+
+    @property
+    def has_fully_validated_selection_scope(self) -> bool:
+        """True only when this candidate is selected *and* every validated-scope
+        field is present. Absence of any single validated-scope field must never
+        be treated as an implicit match for that scope: callers must not assume
+        "verified for all scopes" merely because a selection provenance field is
+        missing/null (for example, before Slice 3 supplies real validated
+        target/EP/toolchain/environment data)."""
+        return (
+            self.selection_status == CandidateWinnerStatus.SELECTED
+            and self.validated_target_device is not None
+            and self.validated_target_ep is not None
+            and self.validated_toolchain_fingerprint is not None
+            and self.validated_environment_scope is not None
+        )
+
+
+@dataclass(frozen=True)
+class RecipeCandidateLineage:
+    """The parent-level selection record for one recipe-attempt's candidate plan."""
+
+    parent_attempt_id: str
+    policy_id: str
+    policy_version: str
+    policy_fingerprint: str
+    policy_max_candidates: int
+    quality_profile_fingerprint: str
+    created_utc: datetime
+    selection_state: CandidateLineageSelectionState
+    selected_candidate_attempt_id: str | None
+    selection_reason: str | None
+    finalized_utc: datetime | None
+
+
+@dataclass(frozen=True)
+class CandidateSelectionReuseQuery:
+    """Complete policy-aware reuse identity for a selected candidate winner.
+
+    Extends the existing generated-recipe identity fields (model/revision/device/
+    precision/compiler/capability/toolchain/profile) with the two additional
+    identities Slice 2 introduces: the quality-validation profile fingerprint
+    (so a quality-profile version bump invalidates reuse) and the selection
+    policy fingerprint (so a policy id/version/candidate-set change invalidates
+    reuse). This is intentionally a separate type from the existing
+    :class:`RecipeReuseQuery` so Slice 1 callers (`local_service.py`) are
+    unaffected.
+    """
+
+    model_id: str
+    revision_sha: str
+    requested_device: str
+    requested_precision: str
+    compiler_version: str
+    capability_fingerprint: str
+    toolchain_fingerprint: str
+    profile_fingerprint: str
+    quality_profile_fingerprint: str
+    policy_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -321,6 +520,43 @@ def build_profile_fingerprint(recipe: ModelRecipe, input_metadata: RecipeInputMe
             }
             for row in recipe.optimization_choices
         ],
+    }
+    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def build_candidate_recipe_fingerprint(
+    *,
+    recipe_fingerprint: str,
+    quantization_override: RecipeQuantizationOverride | None,
+    policy_fingerprint: str,
+) -> str:
+    """Deterministic identity for one candidate's actual resolved recipe.
+
+    Includes only the actual fully-resolved recipe fingerprint, the actual
+    quantization override applied (or ``None`` for the default candidate), and
+    the selection-policy identity fingerprint. Deliberately excludes
+    timestamps, filesystem paths, and candidate-attempt UUIDs so the same
+    candidate always produces the same fingerprint regardless of when or where
+    it was registered.
+    """
+    normalized_recipe_fingerprint = _normalize_hex(
+        recipe_fingerprint,
+        expected_len=64,
+        path="candidate.recipe_fingerprint",
+    )
+    normalized_policy_fingerprint = _normalize_hex(
+        policy_fingerprint,
+        expected_len=64,
+        path="candidate.policy_fingerprint",
+    )
+    payload: dict[str, object] = {
+        "recipe_fingerprint": normalized_recipe_fingerprint,
+        "quantization_override": (
+            {"block_size": quantization_override.block_size}
+            if quantization_override is not None
+            else None
+        ),
+        "policy_fingerprint": normalized_policy_fingerprint,
     }
     return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
@@ -745,6 +981,263 @@ def deserialize_verified_recipe_record(
         path="verified_recipe_record.canonical_json",
     )
     return record
+
+
+def serialize_candidate_attempt_record(record: CandidateAttemptRecord) -> dict[str, object]:
+    return {
+        "record_type": "candidate_attempt_record",
+        "candidate_attempt_id": record.candidate_attempt_id,
+        "parent_attempt_id": record.parent_attempt_id,
+        "attempt_id": record.attempt_id,
+        "candidate_index": record.candidate_index,
+        "candidate_id": record.candidate_id,
+        "policy_id": record.policy_id,
+        "policy_version": record.policy_version,
+        "policy_fingerprint": record.policy_fingerprint,
+        "quality_profile_fingerprint": record.quality_profile_fingerprint,
+        "quantization_override_block_size": record.quantization_override_block_size,
+        "eligibility_trigger": record.eligibility_trigger,
+        "disposition": record.disposition,
+        "disposition_reasons": list(record.disposition_reasons),
+        "recipe_fingerprint": record.recipe_fingerprint,
+        "candidate_fingerprint": record.candidate_fingerprint,
+        "created_utc": _format_datetime(record.created_utc),
+        "attempt_state": record.attempt_state.value,
+        "artifact_ref": record.artifact_ref,
+        "package_ref": record.package_ref,
+        "mobius_build_invocation_count": record.invocation_counters.mobius_build_invocation_count,
+        "olive_optimize_invocation_count": record.invocation_counters.olive_optimize_invocation_count,
+        "total_invocation_count": record.invocation_counters.total_invocation_count,
+        "wall_clock_seconds": record.invocation_counters.wall_clock_seconds,
+        "estimated_cost_usd": record.invocation_counters.estimated_cost_usd,
+        "selection_status": record.selection_status.value,
+        "selected_by": record.selected_by,
+        "selection_reason": record.selection_reason,
+        "selected_utc": _format_datetime(record.selected_utc) if record.selected_utc is not None else None,
+        "validated_target_device": record.validated_target_device,
+        "validated_target_ep": record.validated_target_ep,
+        "validated_toolchain_fingerprint": record.validated_toolchain_fingerprint,
+        "validated_environment_scope": record.validated_environment_scope,
+    }
+
+
+def deserialize_candidate_attempt_record(
+    payload: dict[str, object],
+    *,
+    schema_root: dict[str, object] | None = None,
+) -> CandidateAttemptRecord:
+    _validate_record_payload(payload, record_def="candidate_attempt_record", schema_root=schema_root)
+    disposition_reasons_raw = _coerce_schema_array(
+        payload.get("disposition_reasons"),
+        "candidate_attempt_record.disposition_reasons",
+    )
+    disposition_reasons = tuple(
+        _sanitize_reference(
+            _coerce_str(value, f"candidate_attempt_record.disposition_reasons[{idx}]"),
+            path=f"candidate_attempt_record.disposition_reasons[{idx}]",
+        )
+        for idx, value in enumerate(disposition_reasons_raw, start=1)
+    )
+    quantization_override_block_size = payload.get("quantization_override_block_size")
+    if quantization_override_block_size is not None:
+        quantization_override_block_size = _coerce_int(
+            quantization_override_block_size,
+            "candidate_attempt_record.quantization_override_block_size",
+        )
+    invocation_counters = CandidateInvocationCounters(
+        mobius_build_invocation_count=_coerce_optional_int(
+            payload.get("mobius_build_invocation_count"),
+            "candidate_attempt_record.mobius_build_invocation_count",
+        ),
+        olive_optimize_invocation_count=_coerce_optional_int(
+            payload.get("olive_optimize_invocation_count"),
+            "candidate_attempt_record.olive_optimize_invocation_count",
+        ),
+        total_invocation_count=_coerce_optional_int(
+            payload.get("total_invocation_count"),
+            "candidate_attempt_record.total_invocation_count",
+        ),
+        wall_clock_seconds=_coerce_optional_float(
+            payload.get("wall_clock_seconds"),
+            "candidate_attempt_record.wall_clock_seconds",
+        ),
+        estimated_cost_usd=_coerce_optional_float(
+            payload.get("estimated_cost_usd"),
+            "candidate_attempt_record.estimated_cost_usd",
+        ),
+    )
+    record = CandidateAttemptRecord(
+        candidate_attempt_id=_coerce_str(
+            payload.get("candidate_attempt_id"), "candidate_attempt_record.candidate_attempt_id"
+        ),
+        parent_attempt_id=_coerce_str(
+            payload.get("parent_attempt_id"), "candidate_attempt_record.parent_attempt_id"
+        ),
+        attempt_id=_coerce_str(payload.get("attempt_id"), "candidate_attempt_record.attempt_id"),
+        candidate_index=_coerce_int(payload.get("candidate_index"), "candidate_attempt_record.candidate_index"),
+        candidate_id=_coerce_str(payload.get("candidate_id"), "candidate_attempt_record.candidate_id"),
+        policy_id=_coerce_str(payload.get("policy_id"), "candidate_attempt_record.policy_id"),
+        policy_version=_coerce_str(payload.get("policy_version"), "candidate_attempt_record.policy_version"),
+        policy_fingerprint=_normalize_hex(
+            _coerce_str(payload.get("policy_fingerprint"), "candidate_attempt_record.policy_fingerprint"),
+            expected_len=64,
+            path="candidate_attempt_record.policy_fingerprint",
+        ),
+        quality_profile_fingerprint=_normalize_hex(
+            _coerce_str(
+                payload.get("quality_profile_fingerprint"),
+                "candidate_attempt_record.quality_profile_fingerprint",
+            ),
+            expected_len=64,
+            path="candidate_attempt_record.quality_profile_fingerprint",
+        ),
+        quantization_override_block_size=quantization_override_block_size,
+        eligibility_trigger=_coerce_optional_str(
+            payload.get("eligibility_trigger"), "candidate_attempt_record.eligibility_trigger"
+        ),
+        disposition=_coerce_optional_str(payload.get("disposition"), "candidate_attempt_record.disposition"),
+        disposition_reasons=disposition_reasons,
+        recipe_fingerprint=_normalize_hex(
+            _coerce_str(payload.get("recipe_fingerprint"), "candidate_attempt_record.recipe_fingerprint"),
+            expected_len=64,
+            path="candidate_attempt_record.recipe_fingerprint",
+        ),
+        candidate_fingerprint=_normalize_hex(
+            _coerce_str(payload.get("candidate_fingerprint"), "candidate_attempt_record.candidate_fingerprint"),
+            expected_len=64,
+            path="candidate_attempt_record.candidate_fingerprint",
+        ),
+        created_utc=_parse_datetime(
+            _coerce_str(payload.get("created_utc"), "candidate_attempt_record.created_utc"),
+            "candidate_attempt_record.created_utc",
+        ),
+        attempt_state=AttemptState(_coerce_str(payload.get("attempt_state"), "candidate_attempt_record.attempt_state")),
+        artifact_ref=_sanitize_optional_reference(
+            payload.get("artifact_ref"), path="candidate_attempt_record.artifact_ref"
+        ),
+        package_ref=_sanitize_optional_reference(
+            payload.get("package_ref"), path="candidate_attempt_record.package_ref"
+        ),
+        invocation_counters=invocation_counters,
+        selection_status=CandidateWinnerStatus(
+            _coerce_str(payload.get("selection_status"), "candidate_attempt_record.selection_status")
+        ),
+        selected_by=_coerce_optional_str(payload.get("selected_by"), "candidate_attempt_record.selected_by"),
+        selection_reason=_coerce_optional_str(
+            payload.get("selection_reason"), "candidate_attempt_record.selection_reason"
+        ),
+        selected_utc=_parse_optional_datetime(
+            payload.get("selected_utc"), "candidate_attempt_record.selected_utc"
+        ),
+        validated_target_device=_coerce_optional_str(
+            payload.get("validated_target_device"), "candidate_attempt_record.validated_target_device"
+        ),
+        validated_target_ep=_coerce_optional_str(
+            payload.get("validated_target_ep"), "candidate_attempt_record.validated_target_ep"
+        ),
+        validated_toolchain_fingerprint=_coerce_optional_str(
+            payload.get("validated_toolchain_fingerprint"),
+            "candidate_attempt_record.validated_toolchain_fingerprint",
+        ),
+        validated_environment_scope=_coerce_optional_str(
+            payload.get("validated_environment_scope"),
+            "candidate_attempt_record.validated_environment_scope",
+        ),
+    )
+    if record.candidate_index == 0 and record.attempt_id != record.parent_attempt_id:
+        raise RecipeAttemptSchemaError(
+            "candidate_attempt_record.candidate_index 0 must use attempt_id == parent_attempt_id."
+        )
+    if (record.selection_status == CandidateWinnerStatus.SELECTED) != (record.selected_by is not None):
+        raise RecipeAttemptSchemaError(
+            "candidate_attempt_record.selected_by must be set if and only if selection_status is 'selected'."
+        )
+    return record
+
+
+def serialize_recipe_candidate_lineage(lineage: RecipeCandidateLineage) -> dict[str, object]:
+    return {
+        "record_type": "recipe_candidate_lineage_record",
+        "parent_attempt_id": lineage.parent_attempt_id,
+        "policy_id": lineage.policy_id,
+        "policy_version": lineage.policy_version,
+        "policy_fingerprint": lineage.policy_fingerprint,
+        "policy_max_candidates": lineage.policy_max_candidates,
+        "quality_profile_fingerprint": lineage.quality_profile_fingerprint,
+        "created_utc": _format_datetime(lineage.created_utc),
+        "selection_state": lineage.selection_state.value,
+        "selected_candidate_attempt_id": lineage.selected_candidate_attempt_id,
+        "selection_reason": lineage.selection_reason,
+        "finalized_utc": _format_datetime(lineage.finalized_utc) if lineage.finalized_utc is not None else None,
+    }
+
+
+def deserialize_recipe_candidate_lineage(
+    payload: dict[str, object],
+    *,
+    schema_root: dict[str, object] | None = None,
+) -> RecipeCandidateLineage:
+    _validate_record_payload(payload, record_def="recipe_candidate_lineage_record", schema_root=schema_root)
+    lineage = RecipeCandidateLineage(
+        parent_attempt_id=_coerce_str(
+            payload.get("parent_attempt_id"), "recipe_candidate_lineage_record.parent_attempt_id"
+        ),
+        policy_id=_coerce_str(payload.get("policy_id"), "recipe_candidate_lineage_record.policy_id"),
+        policy_version=_coerce_str(payload.get("policy_version"), "recipe_candidate_lineage_record.policy_version"),
+        policy_fingerprint=_normalize_hex(
+            _coerce_str(payload.get("policy_fingerprint"), "recipe_candidate_lineage_record.policy_fingerprint"),
+            expected_len=64,
+            path="recipe_candidate_lineage_record.policy_fingerprint",
+        ),
+        policy_max_candidates=_coerce_int(
+            payload.get("policy_max_candidates"), "recipe_candidate_lineage_record.policy_max_candidates"
+        ),
+        quality_profile_fingerprint=_normalize_hex(
+            _coerce_str(
+                payload.get("quality_profile_fingerprint"),
+                "recipe_candidate_lineage_record.quality_profile_fingerprint",
+            ),
+            expected_len=64,
+            path="recipe_candidate_lineage_record.quality_profile_fingerprint",
+        ),
+        created_utc=_parse_datetime(
+            _coerce_str(payload.get("created_utc"), "recipe_candidate_lineage_record.created_utc"),
+            "recipe_candidate_lineage_record.created_utc",
+        ),
+        selection_state=CandidateLineageSelectionState(
+            _coerce_str(payload.get("selection_state"), "recipe_candidate_lineage_record.selection_state")
+        ),
+        selected_candidate_attempt_id=_coerce_optional_str(
+            payload.get("selected_candidate_attempt_id"),
+            "recipe_candidate_lineage_record.selected_candidate_attempt_id",
+        ),
+        selection_reason=_coerce_optional_str(
+            payload.get("selection_reason"), "recipe_candidate_lineage_record.selection_reason"
+        ),
+        finalized_utc=_parse_optional_datetime(
+            payload.get("finalized_utc"), "recipe_candidate_lineage_record.finalized_utc"
+        ),
+    )
+    if lineage.selection_state == CandidateLineageSelectionState.PENDING:
+        if lineage.selected_candidate_attempt_id is not None or lineage.finalized_utc is not None:
+            raise RecipeAttemptSchemaError(
+                "recipe_candidate_lineage_record.selected_candidate_attempt_id/finalized_utc must be null while pending."
+            )
+    if lineage.selection_state == CandidateLineageSelectionState.SELECTED:
+        if lineage.selected_candidate_attempt_id is None or lineage.finalized_utc is None:
+            raise RecipeAttemptSchemaError(
+                "recipe_candidate_lineage_record.selected_candidate_attempt_id/finalized_utc are required once selected."
+            )
+    if lineage.selection_state == CandidateLineageSelectionState.EXHAUSTED:
+        if lineage.selected_candidate_attempt_id is not None:
+            raise RecipeAttemptSchemaError(
+                "recipe_candidate_lineage_record.selected_candidate_attempt_id must be null when exhausted."
+            )
+        if lineage.finalized_utc is None:
+            raise RecipeAttemptSchemaError(
+                "recipe_candidate_lineage_record.finalized_utc is required once exhausted."
+            )
+    return lineage
 
 
 class RecipeAttemptStore:
@@ -1420,6 +1913,570 @@ class RecipeAttemptStore:
             ).fetchall()
             return tuple(self._verified_record_from_row(row) for row in rows)
 
+    # -- Slice 2: candidate plan / selection ------------------------------------
+
+    def register_candidate_attempt(
+        self,
+        *,
+        parent_attempt_id: str,
+        attempt_id: str,
+        candidate_index: int,
+        policy: RecipeSelectionPolicy,
+        quality_profile_fingerprint: str,
+        trigger: str | None = None,
+        retry_evaluation: QualityRetryEvaluation | None = None,
+        created_utc: datetime | None = None,
+    ) -> CandidateAttemptRecord:
+        """Create/validate one candidate-plan slot from an approved policy.
+
+        Callable once per ``candidate_index`` for a given ``parent_attempt_id``.
+        Candidate index 0 (the always-eligible default) must be registered
+        first, using ``attempt_id == parent_attempt_id`` (the default candidate
+        *is* the parent's own existing :class:`RecipeAttempt`). Any further
+        candidate (index >= 1) must reuse a distinct, already-created attempt
+        (via the existing ``create_attempt``), and must supply the exact
+        ``trigger``/``retry_evaluation`` that the policy declares for that
+        candidate index -- fail-closed on any mismatch, duplicate, ordering
+        violation, or `max_candidates` overrun.
+        """
+        parent_id = _coerce_str(parent_attempt_id, "parent_attempt_id")
+        child_id = _coerce_str(attempt_id, "attempt_id")
+        normalized_quality_profile_fingerprint = _normalize_hex(
+            quality_profile_fingerprint,
+            expected_len=64,
+            path="quality_profile_fingerprint",
+        )
+        if candidate_index < 0 or candidate_index >= len(policy.candidates):
+            raise CandidatePlanValidationError(
+                f"candidate_index {candidate_index} is out of range for policy '{policy.policy_id}'."
+            )
+        candidate = policy.candidates[candidate_index]
+        if candidate.candidate_index != candidate_index:
+            raise CandidatePlanValidationError(
+                "Policy candidate_index does not match its declared position; malformed policy."
+            )
+
+        if candidate_index == 0:
+            if child_id != parent_id:
+                raise CandidatePlanValidationError(
+                    "Candidate index 0 (the default) must be registered with attempt_id == parent_attempt_id."
+                )
+            if trigger is not None:
+                raise CandidatePlanValidationError("Candidate index 0 (the default) cannot declare a trigger.")
+            if retry_evaluation is not None:
+                raise CandidatePlanValidationError(
+                    "Candidate index 0 (the default) cannot carry a quality retry evaluation."
+                )
+        else:
+            if child_id == parent_id:
+                raise CandidatePlanValidationError(
+                    f"Candidate index {candidate_index} must use a distinct attempt_id from the parent."
+                )
+            if candidate.eligibility_trigger is None:
+                raise CandidatePlanValidationError(
+                    f"Policy candidate at index {candidate_index} has no eligibility_trigger; malformed policy."
+                )
+            if trigger != candidate.eligibility_trigger:
+                raise CandidatePlanValidationError(
+                    f"Supplied trigger '{trigger}' does not match policy candidate eligibility_trigger "
+                    f"'{candidate.eligibility_trigger}'."
+                )
+            if trigger != RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER:
+                raise CandidatePlanValidationError(
+                    f"Trigger '{trigger}' is not an allowlisted retry trigger."
+                )
+            if retry_evaluation is None:
+                raise CandidatePlanValidationError(
+                    f"Candidate index {candidate_index} requires a quality retry evaluation."
+                )
+            if retry_evaluation.disposition != QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION:
+                raise CandidatePlanValidationError(
+                    "Quality retry evaluation must be retryable to register a non-default candidate."
+                )
+            if retry_evaluation.disposition.value != trigger:
+                # Cross-module boundary re-check: even though both constants share one
+                # source today, never trust that silently -- verify the exact value used
+                # to justify *this* registration matches the trigger actually supplied.
+                raise CandidatePlanValidationError(
+                    "Quality retry disposition value does not match the supplied policy eligibility "
+                    "trigger; refusing to register a fallback candidate on a mismatched trigger."
+                )
+
+        disposition_value = retry_evaluation.disposition.value if retry_evaluation is not None else None
+        disposition_reasons = retry_evaluation.reasons if retry_evaluation is not None else ()
+        sanitized_reasons = tuple(
+            _sanitize_reference(reason, path=f"candidate_attempt.disposition_reasons[{idx}]")
+            for idx, reason in enumerate(disposition_reasons, start=1)
+        )
+
+        created_value = _ensure_utc(created_utc or datetime.now(timezone.utc), "created_utc")
+        quantization_override = candidate.quantization_override
+        policy_fingerprint = policy.fingerprint
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            child_attempt = self._load_attempt(connection, child_id)
+            recipe_fingerprint = child_attempt.recipe_fingerprint
+
+            lineage_row = connection.execute(
+                """
+                SELECT policy_id, policy_version, policy_fingerprint, policy_max_candidates,
+                       quality_profile_fingerprint, selection_state
+                FROM recipe_candidate_lineages
+                WHERE parent_attempt_id = ?
+                """,
+                (parent_id,),
+            ).fetchone()
+
+            if lineage_row is None:
+                if candidate_index != 0:
+                    raise CandidatePlanValidationError(
+                        "A candidate lineage must be created starting with candidate_index 0 (the default)."
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO recipe_candidate_lineages (
+                        parent_attempt_id, policy_id, policy_version, policy_fingerprint,
+                        policy_max_candidates, quality_profile_fingerprint, created_utc,
+                        selection_state, selected_candidate_attempt_id, selection_reason, finalized_utc
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+                    """,
+                    (
+                        parent_id,
+                        policy.policy_id,
+                        policy.version,
+                        policy_fingerprint,
+                        policy.max_candidates,
+                        normalized_quality_profile_fingerprint,
+                        _format_datetime(created_value),
+                        CandidateLineageSelectionState.PENDING.value,
+                    ),
+                )
+            else:
+                if (
+                    lineage_row["policy_id"] != policy.policy_id
+                    or lineage_row["policy_version"] != policy.version
+                    or lineage_row["policy_fingerprint"] != policy_fingerprint
+                    or lineage_row["policy_max_candidates"] != policy.max_candidates
+                ):
+                    raise CandidatePlanValidationError(
+                        f"Parent attempt '{parent_id}' is already registered under a different selection policy."
+                    )
+                if lineage_row["quality_profile_fingerprint"] != normalized_quality_profile_fingerprint:
+                    raise CandidatePlanValidationError(
+                        f"Parent attempt '{parent_id}' is already registered under a different quality profile."
+                    )
+                if lineage_row["selection_state"] != CandidateLineageSelectionState.PENDING.value:
+                    raise CandidatePlanValidationError(
+                        f"Parent attempt '{parent_id}' candidate lineage is already finalized "
+                        f"('{lineage_row['selection_state']}') and cannot accept new candidates."
+                    )
+
+            existing_candidates = connection.execute(
+                """
+                SELECT candidate_index FROM candidate_attempts WHERE parent_attempt_id = ?
+                """,
+                (parent_id,),
+            ).fetchall()
+            if len(existing_candidates) >= policy.max_candidates:
+                raise CandidatePlanValidationError(
+                    f"Parent attempt '{parent_id}' already has the maximum of {policy.max_candidates} "
+                    "planned candidates."
+                )
+            if candidate_index != 0 and not any(row["candidate_index"] == 0 for row in existing_candidates):
+                raise CandidatePlanValidationError(
+                    f"Candidate index {candidate_index} cannot be registered before candidate index 0."
+                )
+
+            candidate_fingerprint = build_candidate_recipe_fingerprint(
+                recipe_fingerprint=recipe_fingerprint,
+                quantization_override=quantization_override,
+                policy_fingerprint=policy_fingerprint,
+            )
+            candidate_attempt_id = str(uuid.uuid4())
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO candidate_attempts (
+                        candidate_attempt_id, parent_attempt_id, attempt_id, candidate_index, candidate_id,
+                        policy_id, policy_version, policy_fingerprint, quality_profile_fingerprint,
+                        quantization_override_block_size, eligibility_trigger, disposition,
+                        disposition_reasons_json, recipe_fingerprint, candidate_fingerprint, created_utc,
+                        artifact_ref, package_ref,
+                        mobius_build_invocation_count, olive_optimize_invocation_count,
+                        total_invocation_count, wall_clock_seconds, estimated_cost_usd,
+                        selection_status, selected_by, selection_reason, selected_utc,
+                        validated_target_device, validated_target_ep, validated_toolchain_fingerprint,
+                        validated_environment_scope
+                    )
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
+                    """,
+                    (
+                        candidate_attempt_id,
+                        parent_id,
+                        child_id,
+                        candidate_index,
+                        candidate.candidate_id,
+                        policy.policy_id,
+                        policy.version,
+                        policy_fingerprint,
+                        normalized_quality_profile_fingerprint,
+                        quantization_override.block_size if quantization_override is not None else None,
+                        candidate.eligibility_trigger,
+                        disposition_value,
+                        json.dumps(list(sanitized_reasons), separators=(",", ":")),
+                        recipe_fingerprint,
+                        candidate_fingerprint,
+                        _format_datetime(created_value),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        CandidateWinnerStatus.NOT_SELECTED.value,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise CandidatePlanValidationError(
+                    f"Candidate index {candidate_index} or candidate_id '{candidate.candidate_id}' is "
+                    f"already registered for parent attempt '{parent_id}'."
+                ) from exc
+
+            return self._load_candidate_attempt(connection, candidate_attempt_id)
+
+    def finalize_candidate_attempt_evidence(
+        self,
+        candidate_attempt_id: str,
+        *,
+        artifact_ref: str | None = None,
+        package_ref: str | None = None,
+        invocation_counters: CandidateInvocationCounters | None = None,
+    ) -> CandidateAttemptRecord:
+        """Atomically attach terminal evidence/counters to a candidate slot.
+
+        Requires the candidate's linked attempt to already be terminal
+        (succeeded/failed/cancelled). Write-once: calling again with identical
+        values is a no-op; calling again with different values raises, because
+        terminal candidate evidence is immutable.
+        """
+        candidate_id_value = _coerce_str(candidate_attempt_id, "candidate_attempt_id")
+        normalized_artifact_ref = _sanitize_optional_reference(artifact_ref, path="artifact_ref")
+        normalized_package_ref = _sanitize_optional_reference(package_ref, path="package_ref")
+        counters = invocation_counters or _NULL_CANDIDATE_INVOCATION_COUNTERS
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            existing = self._load_candidate_attempt(connection, candidate_id_value)
+            if existing.attempt_state not in TERMINAL_ATTEMPT_STATES:
+                raise CandidatePlanValidationError(
+                    f"Candidate attempt '{candidate_id_value}' cannot record terminal evidence while its "
+                    f"linked attempt is '{existing.attempt_state.value}'."
+                )
+            proposed = CandidateInvocationCounters(
+                mobius_build_invocation_count=counters.mobius_build_invocation_count,
+                olive_optimize_invocation_count=counters.olive_optimize_invocation_count,
+                total_invocation_count=counters.total_invocation_count,
+                wall_clock_seconds=counters.wall_clock_seconds,
+                estimated_cost_usd=counters.estimated_cost_usd,
+            )
+            already_recorded = (
+                existing.artifact_ref is not None
+                or existing.package_ref is not None
+                or existing.invocation_counters != _NULL_CANDIDATE_INVOCATION_COUNTERS
+            )
+            if already_recorded:
+                if (
+                    existing.artifact_ref != normalized_artifact_ref
+                    or existing.package_ref != normalized_package_ref
+                    or existing.invocation_counters != proposed
+                ):
+                    raise CandidatePlanValidationError(
+                        f"Candidate attempt '{candidate_id_value}' already has terminal evidence recorded "
+                        "and cannot be mutated with different values."
+                    )
+                return existing
+            connection.execute(
+                """
+                UPDATE candidate_attempts
+                SET artifact_ref = ?, package_ref = ?,
+                    mobius_build_invocation_count = ?, olive_optimize_invocation_count = ?,
+                    total_invocation_count = ?, wall_clock_seconds = ?, estimated_cost_usd = ?
+                WHERE candidate_attempt_id = ?
+                """,
+                (
+                    normalized_artifact_ref,
+                    normalized_package_ref,
+                    proposed.mobius_build_invocation_count,
+                    proposed.olive_optimize_invocation_count,
+                    proposed.total_invocation_count,
+                    proposed.wall_clock_seconds,
+                    proposed.estimated_cost_usd,
+                    candidate_id_value,
+                ),
+            )
+            return self._load_candidate_attempt(connection, candidate_id_value)
+
+    def select_verified_candidate_attempt(
+        self,
+        *,
+        parent_attempt_id: str,
+        candidate_attempt_id: str,
+        reason: str,
+        selected_utc: datetime | None = None,
+        validated_target_device: str | None = None,
+        validated_target_ep: str | None = None,
+        validated_toolchain_fingerprint: str | None = None,
+        validated_environment_scope: str | None = None,
+    ) -> tuple[RecipeCandidateLineage, CandidateAttemptRecord]:
+        """Atomically select the single verified winner for a candidate lineage.
+
+        Fails closed unless: the lineage exists and is still ``PENDING``; the
+        candidate belongs to that lineage; and the candidate's linked attempt
+        is ``SUCCEEDED`` (the only state that counts as "verified" here --
+        it means every required gate, including quality validation, passed).
+        ``selected_by`` is always persisted as the literal ``"validation"``:
+        selection in this store is only ever performed once a candidate has
+        passed quality validation. The validated target/EP/toolchain/
+        environment-scope fields are nullable until a later slice actually
+        supplies them; leaving them null never masquerades as a verified scope
+        (see :attr:`CandidateAttemptRecord.has_fully_validated_selection_scope`).
+        """
+        parent_id = _coerce_str(parent_attempt_id, "parent_attempt_id")
+        candidate_id_value = _coerce_str(candidate_attempt_id, "candidate_attempt_id")
+        normalized_reason = _sanitize_reference(reason, path="selection_reason")
+        selected_value = _ensure_utc(selected_utc or datetime.now(timezone.utc), "selected_utc")
+        normalized_target_device = _coerce_optional_str(validated_target_device, "validated_target_device")
+        normalized_target_ep = _coerce_optional_str(validated_target_ep, "validated_target_ep")
+        normalized_toolchain_fingerprint = _coerce_optional_str(
+            validated_toolchain_fingerprint, "validated_toolchain_fingerprint"
+        )
+        normalized_environment_scope = _coerce_optional_str(
+            validated_environment_scope, "validated_environment_scope"
+        )
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            lineage = self._load_candidate_lineage(connection, parent_id)
+            if lineage is None:
+                raise CandidateSelectionConflictError(
+                    f"Parent attempt '{parent_id}' has no candidate lineage to select from."
+                )
+            if lineage.selection_state != CandidateLineageSelectionState.PENDING:
+                raise CandidateSelectionConflictError(
+                    f"Parent attempt '{parent_id}' lineage is already finalized "
+                    f"('{lineage.selection_state.value}'); only one winner is ever allowed."
+                )
+            try:
+                candidate = self._load_candidate_attempt(connection, candidate_id_value)
+            except KeyError as exc:
+                raise CandidateSelectionConflictError(
+                    f"Candidate attempt '{candidate_id_value}' is unknown and cannot be selected."
+                ) from exc
+            if candidate.parent_attempt_id != parent_id:
+                raise CandidateSelectionConflictError(
+                    f"Candidate attempt '{candidate_id_value}' does not belong to parent '{parent_id}'."
+                )
+            if not candidate.is_verified:
+                raise CandidateSelectionConflictError(
+                    f"Candidate attempt '{candidate_id_value}' is not verified "
+                    f"(linked attempt state is '{candidate.attempt_state.value}') and cannot be selected."
+                )
+            connection.execute(
+                """
+                UPDATE candidate_attempts
+                SET selection_status = ?, selected_by = ?, selection_reason = ?, selected_utc = ?,
+                    validated_target_device = ?, validated_target_ep = ?,
+                    validated_toolchain_fingerprint = ?, validated_environment_scope = ?
+                WHERE candidate_attempt_id = ?
+                """,
+                (
+                    CandidateWinnerStatus.SELECTED.value,
+                    "validation",
+                    normalized_reason,
+                    _format_datetime(selected_value),
+                    normalized_target_device,
+                    normalized_target_ep,
+                    normalized_toolchain_fingerprint,
+                    normalized_environment_scope,
+                    candidate_id_value,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE recipe_candidate_lineages
+                SET selection_state = ?, selected_candidate_attempt_id = ?, selection_reason = ?,
+                    finalized_utc = ?
+                WHERE parent_attempt_id = ?
+                """,
+                (
+                    CandidateLineageSelectionState.SELECTED.value,
+                    candidate_id_value,
+                    normalized_reason,
+                    _format_datetime(selected_value),
+                    parent_id,
+                ),
+            )
+            refreshed_lineage = self._load_candidate_lineage(connection, parent_id)
+            assert refreshed_lineage is not None
+            refreshed_candidate = self._load_candidate_attempt(connection, candidate_id_value)
+            return refreshed_lineage, refreshed_candidate
+
+    def finalize_exhausted_candidate_lineage(
+        self,
+        parent_attempt_id: str,
+        *,
+        reason: str,
+        finished_utc: datetime | None = None,
+    ) -> RecipeCandidateLineage:
+        """Atomically mark a lineage exhausted: no candidate is selected.
+
+        Fails closed unless the lineage is still ``PENDING``, every registered
+        candidate is terminal (its linked attempt is succeeded/failed/
+        cancelled), and -- critically -- no candidate is verified-but-unselected
+        (a verified candidate must be selected, never silently dropped by
+        exhausting the lineage around it).
+        """
+        parent_id = _coerce_str(parent_attempt_id, "parent_attempt_id")
+        normalized_reason = _sanitize_reference(reason, path="selection_reason")
+        finished_value = _ensure_utc(finished_utc or datetime.now(timezone.utc), "finished_utc")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            lineage = self._load_candidate_lineage(connection, parent_id)
+            if lineage is None:
+                raise CandidateSelectionConflictError(
+                    f"Parent attempt '{parent_id}' has no candidate lineage to exhaust."
+                )
+            if lineage.selection_state != CandidateLineageSelectionState.PENDING:
+                raise CandidateSelectionConflictError(
+                    f"Parent attempt '{parent_id}' lineage is already finalized "
+                    f"('{lineage.selection_state.value}')."
+                )
+            candidates = self._list_candidate_attempts_locked(connection, parent_id)
+            if not candidates:
+                raise CandidateSelectionConflictError(
+                    f"Parent attempt '{parent_id}' has no registered candidates to exhaust."
+                )
+            for row in candidates:
+                if row.attempt_state not in TERMINAL_ATTEMPT_STATES:
+                    raise CandidateSelectionConflictError(
+                        f"Candidate '{row.candidate_attempt_id}' is still '{row.attempt_state.value}'; "
+                        "a lineage cannot be exhausted while a candidate is not yet terminal."
+                    )
+                if row.is_verified:
+                    raise CandidateSelectionConflictError(
+                        f"Candidate '{row.candidate_attempt_id}' is verified but not selected; "
+                        "select it instead of exhausting the lineage."
+                    )
+            connection.execute(
+                """
+                UPDATE recipe_candidate_lineages
+                SET selection_state = ?, selected_candidate_attempt_id = NULL, selection_reason = ?,
+                    finalized_utc = ?
+                WHERE parent_attempt_id = ?
+                """,
+                (
+                    CandidateLineageSelectionState.EXHAUSTED.value,
+                    normalized_reason,
+                    _format_datetime(finished_value),
+                    parent_id,
+                ),
+            )
+            refreshed = self._load_candidate_lineage(connection, parent_id)
+            assert refreshed is not None
+            return refreshed
+
+    def list_candidate_attempts(self, parent_attempt_id: str) -> tuple[CandidateAttemptRecord, ...]:
+        parent_id = _coerce_str(parent_attempt_id, "parent_attempt_id")
+        with self._connect() as connection:
+            return self._list_candidate_attempts_locked(connection, parent_id)
+
+    def get_candidate_attempt(self, candidate_attempt_id: str) -> CandidateAttemptRecord:
+        candidate_id_value = _coerce_str(candidate_attempt_id, "candidate_attempt_id")
+        with self._connect() as connection:
+            return self._load_candidate_attempt(connection, candidate_id_value)
+
+    def get_candidate_lineage(self, parent_attempt_id: str) -> RecipeCandidateLineage | None:
+        parent_id = _coerce_str(parent_attempt_id, "parent_attempt_id")
+        with self._connect() as connection:
+            return self._load_candidate_lineage(connection, parent_id)
+
+    def find_reusable_candidate_selection(
+        self,
+        query: CandidateSelectionReuseQuery,
+    ) -> CandidateAttemptRecord | None:
+        """Read-only lookup of a previously-selected verified candidate winner
+        by complete provenance identity. Never executes anything and never
+        infers invocation counts: it only returns durable rows already
+        persisted by :meth:`select_verified_candidate_attempt`.
+        """
+        normalized = _normalize_candidate_selection_reuse_query(query)
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT winner.candidate_attempt_id
+                FROM recipe_candidate_lineages AS lineage
+                JOIN attempts AS parent_attempt ON parent_attempt.attempt_id = lineage.parent_attempt_id
+                JOIN candidate_attempts AS winner
+                    ON winner.candidate_attempt_id = lineage.selected_candidate_attempt_id
+                WHERE lineage.selection_state = ?
+                  AND parent_attempt.model_id = ?
+                  AND parent_attempt.revision_sha = ?
+                  AND parent_attempt.requested_device = ?
+                  AND parent_attempt.requested_precision = ?
+                  AND parent_attempt.compiler_version = ?
+                  AND parent_attempt.capability_fingerprint = ?
+                  AND parent_attempt.toolchain_fingerprint = ?
+                  AND parent_attempt.profile_fingerprint = ?
+                  AND lineage.quality_profile_fingerprint = ?
+                  AND lineage.policy_fingerprint = ?
+                ORDER BY lineage.finalized_utc DESC, winner.candidate_attempt_id DESC
+                LIMIT 1
+                """,
+                (
+                    CandidateLineageSelectionState.SELECTED.value,
+                    normalized.model_id,
+                    normalized.revision_sha,
+                    normalized.requested_device,
+                    normalized.requested_precision,
+                    normalized.compiler_version,
+                    normalized.capability_fingerprint,
+                    normalized.toolchain_fingerprint,
+                    normalized.profile_fingerprint,
+                    normalized.quality_profile_fingerprint,
+                    normalized.policy_fingerprint,
+                ),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._load_candidate_attempt(connection, row["candidate_attempt_id"])
+
+    def _list_candidate_attempts_locked(
+        self,
+        connection: sqlite3.Connection,
+        parent_attempt_id: str,
+    ) -> tuple[CandidateAttemptRecord, ...]:
+        rows = connection.execute(
+            """
+            SELECT candidate_attempt_id
+            FROM candidate_attempts
+            WHERE parent_attempt_id = ?
+            ORDER BY candidate_index ASC
+            """,
+            (parent_attempt_id,),
+        ).fetchall()
+        return tuple(self._load_candidate_attempt(connection, row["candidate_attempt_id"]) for row in rows)
+
     def _finish_terminal_with_failure(
         self,
         *,
@@ -1500,11 +2557,16 @@ class RecipeAttemptStore:
             self._migrate_v1_to_v2(connection)
             connection.execute("PRAGMA user_version = 2;")
             current = 2
+        if current < 3:
+            self._migrate_v2_to_v3(connection)
+            connection.execute("PRAGMA user_version = 3;")
+            current = 3
         if current != RECIPE_ATTEMPT_STORE_SCHEMA_VERSION:
             raise RecipeAttemptMigrationError(
                 f"Unsupported recipe-attempt store schema version {current}; "
                 f"expected {RECIPE_ATTEMPT_STORE_SCHEMA_VERSION}."
             )
+
 
     def _create_schema_v1(self, connection: sqlite3.Connection) -> None:
         connection.executescript(
@@ -1609,6 +2671,85 @@ class RecipeAttemptStore:
                     profile_fingerprint,
                     promoted_utc DESC
                 )
+            """
+        )
+
+    def _migrate_v2_to_v3(self, connection: sqlite3.Connection) -> None:
+        """Additive Slice 2 migration: new candidate-plan/selection tables only.
+
+        No existing table (`generated_recipes`, `attempts`, `attempt_gates`,
+        `verified_recipes`) is altered, recreated, or dropped. Legacy parent
+        attempts created before this migration simply have no lineage row and
+        no candidate rows, and behave exactly as before (no policy attached).
+        Re-running this migration against an already-migrated database is a
+        no-op because every statement uses `IF NOT EXISTS`.
+        """
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS recipe_candidate_lineages (
+                parent_attempt_id TEXT PRIMARY KEY,
+                policy_id TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                policy_fingerprint TEXT NOT NULL,
+                policy_max_candidates INTEGER NOT NULL,
+                quality_profile_fingerprint TEXT NOT NULL,
+                created_utc TEXT NOT NULL,
+                selection_state TEXT NOT NULL DEFAULT 'pending',
+                selected_candidate_attempt_id TEXT,
+                selection_reason TEXT,
+                finalized_utc TEXT,
+                FOREIGN KEY(parent_attempt_id) REFERENCES attempts(attempt_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS candidate_attempts (
+                candidate_attempt_id TEXT PRIMARY KEY,
+                parent_attempt_id TEXT NOT NULL,
+                attempt_id TEXT NOT NULL UNIQUE,
+                candidate_index INTEGER NOT NULL,
+                candidate_id TEXT NOT NULL,
+                policy_id TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                policy_fingerprint TEXT NOT NULL,
+                quality_profile_fingerprint TEXT NOT NULL,
+                quantization_override_block_size INTEGER,
+                eligibility_trigger TEXT,
+                disposition TEXT,
+                disposition_reasons_json TEXT NOT NULL DEFAULT '[]',
+                recipe_fingerprint TEXT NOT NULL,
+                candidate_fingerprint TEXT NOT NULL,
+                created_utc TEXT NOT NULL,
+                artifact_ref TEXT,
+                package_ref TEXT,
+                mobius_build_invocation_count INTEGER,
+                olive_optimize_invocation_count INTEGER,
+                total_invocation_count INTEGER,
+                wall_clock_seconds REAL,
+                estimated_cost_usd REAL,
+                selection_status TEXT NOT NULL DEFAULT 'not_selected',
+                selected_by TEXT,
+                selection_reason TEXT,
+                selected_utc TEXT,
+                validated_target_device TEXT,
+                validated_target_ep TEXT,
+                validated_toolchain_fingerprint TEXT,
+                validated_environment_scope TEXT,
+                UNIQUE (parent_attempt_id, candidate_index),
+                UNIQUE (parent_attempt_id, candidate_id),
+                FOREIGN KEY(parent_attempt_id) REFERENCES recipe_candidate_lineages(parent_attempt_id),
+                FOREIGN KEY(attempt_id) REFERENCES attempts(attempt_id),
+                FOREIGN KEY(recipe_fingerprint) REFERENCES generated_recipes(recipe_fingerprint)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_candidate_attempts_parent
+                ON candidate_attempts (parent_attempt_id, candidate_index);
+
+            CREATE INDEX IF NOT EXISTS idx_candidate_selection_reuse_lookup
+                ON recipe_candidate_lineages (
+                    policy_fingerprint,
+                    quality_profile_fingerprint,
+                    selection_state,
+                    finalized_utc DESC
+                );
             """
         )
 
@@ -1799,6 +2940,111 @@ class RecipeAttemptStore:
         }
         return deserialize_verified_recipe_record(payload, schema_root=self._schema())
 
+    def _load_candidate_attempt(
+        self,
+        connection: sqlite3.Connection,
+        candidate_attempt_id: str,
+    ) -> CandidateAttemptRecord:
+        row = connection.execute(
+            """
+            SELECT candidate_attempt_id, parent_attempt_id, attempt_id, candidate_index, candidate_id,
+                   policy_id, policy_version, policy_fingerprint, quality_profile_fingerprint,
+                   quantization_override_block_size, eligibility_trigger, disposition,
+                   disposition_reasons_json, recipe_fingerprint, candidate_fingerprint, created_utc,
+                   artifact_ref, package_ref,
+                   mobius_build_invocation_count, olive_optimize_invocation_count,
+                   total_invocation_count, wall_clock_seconds, estimated_cost_usd,
+                   selection_status, selected_by, selection_reason, selected_utc,
+                   validated_target_device, validated_target_ep, validated_toolchain_fingerprint,
+                   validated_environment_scope
+            FROM candidate_attempts
+            WHERE candidate_attempt_id = ?
+            """,
+            (candidate_attempt_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(candidate_attempt_id)
+        attempt_state_row = connection.execute(
+            "SELECT state FROM attempts WHERE attempt_id = ?",
+            (row["attempt_id"],),
+        ).fetchone()
+        if attempt_state_row is None:
+            raise RecipeAttemptSchemaError(
+                f"Candidate attempt '{candidate_attempt_id}' references a missing linked attempt."
+            )
+        disposition_reasons = json.loads(row["disposition_reasons_json"])
+        if not isinstance(disposition_reasons, list):
+            raise RecipeAttemptSchemaError("disposition_reasons_json must be a JSON array.")
+        payload = {
+            "record_type": "candidate_attempt_record",
+            "candidate_attempt_id": row["candidate_attempt_id"],
+            "parent_attempt_id": row["parent_attempt_id"],
+            "attempt_id": row["attempt_id"],
+            "candidate_index": row["candidate_index"],
+            "candidate_id": row["candidate_id"],
+            "policy_id": row["policy_id"],
+            "policy_version": row["policy_version"],
+            "policy_fingerprint": row["policy_fingerprint"],
+            "quality_profile_fingerprint": row["quality_profile_fingerprint"],
+            "quantization_override_block_size": row["quantization_override_block_size"],
+            "eligibility_trigger": row["eligibility_trigger"],
+            "disposition": row["disposition"],
+            "disposition_reasons": disposition_reasons,
+            "recipe_fingerprint": row["recipe_fingerprint"],
+            "candidate_fingerprint": row["candidate_fingerprint"],
+            "created_utc": row["created_utc"],
+            "attempt_state": attempt_state_row["state"],
+            "artifact_ref": row["artifact_ref"],
+            "package_ref": row["package_ref"],
+            "mobius_build_invocation_count": row["mobius_build_invocation_count"],
+            "olive_optimize_invocation_count": row["olive_optimize_invocation_count"],
+            "total_invocation_count": row["total_invocation_count"],
+            "wall_clock_seconds": row["wall_clock_seconds"],
+            "estimated_cost_usd": row["estimated_cost_usd"],
+            "selection_status": row["selection_status"],
+            "selected_by": row["selected_by"],
+            "selection_reason": row["selection_reason"],
+            "selected_utc": row["selected_utc"],
+            "validated_target_device": row["validated_target_device"],
+            "validated_target_ep": row["validated_target_ep"],
+            "validated_toolchain_fingerprint": row["validated_toolchain_fingerprint"],
+            "validated_environment_scope": row["validated_environment_scope"],
+        }
+        return deserialize_candidate_attempt_record(payload, schema_root=self._schema())
+
+    def _load_candidate_lineage(
+        self,
+        connection: sqlite3.Connection,
+        parent_attempt_id: str,
+    ) -> RecipeCandidateLineage | None:
+        row = connection.execute(
+            """
+            SELECT parent_attempt_id, policy_id, policy_version, policy_fingerprint,
+                   policy_max_candidates, quality_profile_fingerprint, created_utc,
+                   selection_state, selected_candidate_attempt_id, selection_reason, finalized_utc
+            FROM recipe_candidate_lineages
+            WHERE parent_attempt_id = ?
+            """,
+            (parent_attempt_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        payload = {
+            "record_type": "recipe_candidate_lineage_record",
+            "parent_attempt_id": row["parent_attempt_id"],
+            "policy_id": row["policy_id"],
+            "policy_version": row["policy_version"],
+            "policy_fingerprint": row["policy_fingerprint"],
+            "policy_max_candidates": row["policy_max_candidates"],
+            "quality_profile_fingerprint": row["quality_profile_fingerprint"],
+            "created_utc": row["created_utc"],
+            "selection_state": row["selection_state"],
+            "selected_candidate_attempt_id": row["selected_candidate_attempt_id"],
+            "selection_reason": row["selection_reason"],
+            "finalized_utc": row["finalized_utc"],
+        }
+        return deserialize_recipe_candidate_lineage(payload, schema_root=self._schema())
+
 
 @dataclass(frozen=True)
 class _GeneratedIdentity:
@@ -1912,6 +3158,47 @@ def _normalize_reuse_query(query: RecipeReuseQuery) -> RecipeReuseQuery:
             _coerce_str(query.profile_fingerprint, "query.profile_fingerprint"),
             expected_len=64,
             path="query.profile_fingerprint",
+        ),
+    )
+
+
+def _normalize_candidate_selection_reuse_query(
+    query: CandidateSelectionReuseQuery,
+) -> CandidateSelectionReuseQuery:
+    return CandidateSelectionReuseQuery(
+        model_id=_coerce_str(query.model_id, "query.model_id"),
+        revision_sha=_normalize_hex(
+            _coerce_str(query.revision_sha, "query.revision_sha"),
+            expected_len=40,
+            path="query.revision_sha",
+        ),
+        requested_device=_coerce_str(query.requested_device, "query.requested_device").lower(),
+        requested_precision=_coerce_str(query.requested_precision, "query.requested_precision").lower(),
+        compiler_version=_coerce_str(query.compiler_version, "query.compiler_version"),
+        capability_fingerprint=_normalize_hex(
+            _coerce_str(query.capability_fingerprint, "query.capability_fingerprint"),
+            expected_len=64,
+            path="query.capability_fingerprint",
+        ),
+        toolchain_fingerprint=_normalize_hex(
+            _coerce_str(query.toolchain_fingerprint, "query.toolchain_fingerprint"),
+            expected_len=64,
+            path="query.toolchain_fingerprint",
+        ),
+        profile_fingerprint=_normalize_hex(
+            _coerce_str(query.profile_fingerprint, "query.profile_fingerprint"),
+            expected_len=64,
+            path="query.profile_fingerprint",
+        ),
+        quality_profile_fingerprint=_normalize_hex(
+            _coerce_str(query.quality_profile_fingerprint, "query.quality_profile_fingerprint"),
+            expected_len=64,
+            path="query.quality_profile_fingerprint",
+        ),
+        policy_fingerprint=_normalize_hex(
+            _coerce_str(query.policy_fingerprint, "query.policy_fingerprint"),
+            expected_len=64,
+            path="query.policy_fingerprint",
         ),
     )
 
@@ -2235,6 +3522,20 @@ def _coerce_int(value: object, path: str) -> int:
     return value
 
 
+def _coerce_optional_int(value: object, path: str) -> int | None:
+    if value is None:
+        return None
+    return _coerce_int(value, path)
+
+
+def _coerce_optional_float(value: object, path: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RecipeAttemptSchemaError(f"{path} must be a number or null.")
+    return float(value)
+
+
 def _coerce_str(value: object, path: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise RecipeAttemptSchemaError(f"{path} must be a non-empty string.")
@@ -2433,6 +3734,8 @@ def _coerce_schema_array(value: object, path: str) -> list[object]:
 
 __all__ = [
     "ATTEMPT_GATE_ORDER",
+    "TERMINAL_ATTEMPT_STATES",
+    "TERMINAL_CANDIDATE_LINEAGE_SELECTION_STATES",
     "AttemptFailure",
     "AttemptFailureClassification",
     "AttemptGate",
@@ -2442,6 +3745,13 @@ __all__ = [
     "AttemptIdempotencyConflictError",
     "AttemptState",
     "AttemptStateTransitionError",
+    "CandidateAttemptRecord",
+    "CandidateInvocationCounters",
+    "CandidateLineageSelectionState",
+    "CandidatePlanValidationError",
+    "CandidateSelectionConflictError",
+    "CandidateSelectionReuseQuery",
+    "CandidateWinnerStatus",
     "GeneratedRecipeRecord",
     "LEGACY_PROFILE_FINGERPRINT",
     "RECIPE_ATTEMPT_SCHEMA_VERSION",
@@ -2453,25 +3763,31 @@ __all__ = [
     "RecipeAttemptSecurityError",
     "RecipeAttemptStore",
     "RecipeAttemptStoreError",
+    "RecipeCandidateLineage",
     "RecipePromotionConflictError",
     "RecipeReuseQuery",
     "VerifiedRecipeRecord",
     "build_attempt_request_fingerprint",
     "build_attempt_request_from_generated",
+    "build_candidate_recipe_fingerprint",
     "build_capability_fingerprint",
     "build_profile_fingerprint",
     "build_reuse_query_from_generated",
     "build_toolchain_fingerprint",
     "deserialize_attempt_failure",
     "deserialize_attempt_gate_result",
+    "deserialize_candidate_attempt_record",
     "deserialize_generated_recipe_record",
     "deserialize_recipe_attempt",
+    "deserialize_recipe_candidate_lineage",
     "deserialize_verified_recipe_record",
     "load_recipe_attempt_schema",
     "recipe_attempt_schema_path",
     "serialize_attempt_failure",
     "serialize_attempt_gate_result",
+    "serialize_candidate_attempt_record",
     "serialize_generated_recipe_record",
     "serialize_recipe_attempt",
+    "serialize_recipe_candidate_lineage",
     "serialize_verified_recipe_record",
 ]

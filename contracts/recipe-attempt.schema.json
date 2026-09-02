@@ -13,6 +13,12 @@
     },
     {
       "$ref": "#/$defs/verified_recipe_record"
+    },
+    {
+      "$ref": "#/$defs/candidate_attempt_record"
+    },
+    {
+      "$ref": "#/$defs/recipe_candidate_lineage_record"
     }
   ],
   "$defs": {
@@ -468,6 +474,284 @@
         },
         "canonical_json": {
           "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "candidate_selection_status": {
+      "type": "string",
+      "enum": [
+        "not_selected",
+        "selected"
+      ]
+    },
+    "candidate_lineage_selection_state": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "selected",
+        "exhausted"
+      ]
+    },
+    "candidate_attempt_record": {
+      "type": "object",
+      "description": "Slice 2: a durable child candidate under a recipe-selection lineage. Reuses an existing recipe_attempt (via attempt_id) for its own gate/state execution instead of duplicating it.",
+      "required": [
+        "record_type",
+        "candidate_attempt_id",
+        "parent_attempt_id",
+        "attempt_id",
+        "candidate_index",
+        "candidate_id",
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "quality_profile_fingerprint",
+        "quantization_override_block_size",
+        "eligibility_trigger",
+        "disposition",
+        "disposition_reasons",
+        "recipe_fingerprint",
+        "candidate_fingerprint",
+        "created_utc",
+        "attempt_state",
+        "artifact_ref",
+        "package_ref",
+        "mobius_build_invocation_count",
+        "olive_optimize_invocation_count",
+        "total_invocation_count",
+        "wall_clock_seconds",
+        "estimated_cost_usd",
+        "selection_status",
+        "selected_by",
+        "selection_reason",
+        "selected_utc",
+        "validated_target_device",
+        "validated_target_ep",
+        "validated_toolchain_fingerprint",
+        "validated_environment_scope"
+      ],
+      "properties": {
+        "record_type": {
+          "type": "string",
+          "const": "candidate_attempt_record"
+        },
+        "candidate_attempt_id": {
+          "type": "string"
+        },
+        "parent_attempt_id": {
+          "type": "string"
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "candidate_index": {
+          "type": "integer"
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "policy_id": {
+          "type": "string"
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "policy_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "quality_profile_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "quantization_override_block_size": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "eligibility_trigger": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disposition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disposition_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recipe_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "candidate_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "created_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        },
+        "attempt_state": {
+          "$ref": "#/$defs/attempt_state"
+        },
+        "artifact_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mobius_build_invocation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "olive_optimize_invocation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "total_invocation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "wall_clock_seconds": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "estimated_cost_usd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "selection_status": {
+          "$ref": "#/$defs/candidate_selection_status"
+        },
+        "selected_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selection_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selected_utc": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validated_target_device": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validated_target_ep": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validated_toolchain_fingerprint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validated_environment_scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "recipe_candidate_lineage_record": {
+      "type": "object",
+      "description": "Slice 2: the parent-level selection record for one recipe-attempt's candidate plan.",
+      "required": [
+        "record_type",
+        "parent_attempt_id",
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "policy_max_candidates",
+        "quality_profile_fingerprint",
+        "created_utc",
+        "selection_state",
+        "selected_candidate_attempt_id",
+        "selection_reason",
+        "finalized_utc"
+      ],
+      "properties": {
+        "record_type": {
+          "type": "string",
+          "const": "recipe_candidate_lineage_record"
+        },
+        "parent_attempt_id": {
+          "type": "string"
+        },
+        "policy_id": {
+          "type": "string"
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "policy_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "policy_max_candidates": {
+          "type": "integer"
+        },
+        "quality_profile_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "created_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        },
+        "selection_state": {
+          "$ref": "#/$defs/candidate_lineage_selection_state"
+        },
+        "selected_candidate_attempt_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selection_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finalized_utc": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false

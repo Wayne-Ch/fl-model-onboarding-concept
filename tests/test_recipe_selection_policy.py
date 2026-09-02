@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from fl_model_onboarding.quality_validation import QualityRetryDisposition
 from fl_model_onboarding.recipe_selection_policy import (
     DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY,
     DEFAULT_RECIPE_SELECTION_POLICY_REGISTRY,
@@ -16,6 +17,20 @@ from fl_model_onboarding.recipe_selection_policy import (
     recipe_selection_policies_path,
     recipe_selection_policy_schema_path,
 )
+
+
+def test_retry_trigger_constant_is_sourced_from_quality_retry_disposition() -> None:
+    """Cross-module boundary test (Slice 2 reviewer follow-up): the policy trigger
+    string must be the exact same value as QualityRetryDisposition's retryable
+    member, not merely an equal-looking duplicate string. A future rename on
+    either side must fail this test (and the module-level assertion in
+    recipe_attempt_store.py) rather than silently disabling the fallback
+    candidate.
+    """
+    assert (
+        RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER
+        == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION.value
+    )
 
 
 def _load_payload() -> dict[str, object]:
