@@ -1,20 +1,20 @@
 {
-  "branch": "wayne-ch-basher-running-five-models",
-  "commit": "2da550d44d2d93bb679091149011a4dd91d5af23",
+  "branch": "wayne-ch-basher-rerunning-baseline",
+  "commit": "06243701ed3d79359cab2d33dd4bea7033770c9e",
   "final_snapshot": {
     "cache_bytes": 0,
-    "disk_free_gb": 1402.85,
-    "disk_used_gb": 503.592,
-    "runtime_bytes": 385904,
-    "state_bytes": 385904,
-    "timestamp_utc": "2026-09-02T00:33:21.408961+00:00",
+    "disk_free_gb": 1403.209,
+    "disk_used_gb": 503.233,
+    "runtime_bytes": 196608,
+    "state_bytes": 196608,
+    "timestamp_utc": "2026-09-02T00:53:24.991508+00:00",
     "workspace_bytes": 0
   },
-  "finished_utc": "2026-09-02T00:33:21.408961+00:00",
+  "finished_utc": "2026-09-02T00:53:24.991508+00:00",
   "frozen_cli": {
     "frozen_dry_run": {
       "command": [
-        "<redacted-absolute-path>",
+        "<python-exe>",
         "-m",
         "fl_model_onboarding.cli",
         "recipe-agent",
@@ -170,7 +170,7 @@
     },
     "frozen_list": {
       "command": [
-        "<redacted-absolute-path>",
+        "<python-exe>",
         "-m",
         "fl_model_onboarding.cli",
         "recipe-agent",
@@ -267,7 +267,7 @@
     },
     "frozen_validate": {
       "command": [
-        "<redacted-absolute-path>",
+        "<python-exe>",
         "-m",
         "fl_model_onboarding.cli",
         "recipe-agent",
@@ -378,18 +378,18 @@
     }
   ],
   "python_environment": {
-    "child_path_prefixed_scripts": false,
+    "child_path_prefixed_scripts": true,
     "command_resolution": {
       "foundry": "path-lookup",
-      "mobius": "path-lookup",
-      "olive": "path-lookup"
+      "mobius": "venv-scripts-absolute",
+      "olive": "venv-scripts-absolute"
     },
     "parent_path_has_scripts": false,
     "python_executable_name": "python.exe",
-    "python_version": null,
+    "python_version": "3.11.9",
     "scripts_dir_name": "Scripts",
-    "scripts_dir_resolution": "unknown",
-    "venv_name": "unknown"
+    "scripts_dir_resolution": "sysconfig",
+    "venv_name": "fl-recipe-v1-venv"
   },
   "quality_profile": {
     "deterministic_inference": {
@@ -409,31 +409,25 @@
   "reuse_checks": [],
   "round_outcome": {
     "attempt_success_rate": "0/5",
-    "baseline_valid": false,
-    "environment_blockers": [
-      "command:mobius",
-      "command:olive"
-    ],
+    "baseline_valid": true,
+    "environment_blockers": [],
     "environment_fail_fast_triggered": false,
-    "model_success_rate_applicable": false,
-    "round_classification": "invalid_environment",
-    "success_rate": "not_applicable"
+    "model_success_rate_applicable": true,
+    "round_classification": "valid_baseline",
+    "success_rate": "0/5"
   },
-  "run_id": "r1-20260902T003139Z",
+  "run_id": "r1-20260902T004920Z",
   "scratch_locations": {
-    "cache": "scratch://round-1/r1-20260902T003139Z/cache",
-    "recipe_attempt_db": "scratch://round-1/r1-20260902T003139Z/state/recipe-attempts.sqlite3",
-    "root": "scratch://round-1/r1-20260902T003139Z",
-    "service_db": "scratch://round-1/r1-20260902T003139Z/state/service.sqlite3",
-    "state": "scratch://round-1/r1-20260902T003139Z/state",
-    "workspace": "scratch://round-1/r1-20260902T003139Z/workspace"
+    "cache": "scratch://round-1/r1-20260902T004920Z/cache",
+    "recipe_attempt_db": "scratch://round-1/r1-20260902T004920Z/state/recipe-attempts.sqlite3",
+    "root": "scratch://round-1/r1-20260902T004920Z",
+    "service_db": "scratch://round-1/r1-20260902T004920Z/state/service.sqlite3",
+    "state": "scratch://round-1/r1-20260902T004920Z/state",
+    "workspace": "scratch://round-1/r1-20260902T004920Z/workspace"
   },
-  "started_utc": "2026-09-02T00:31:39.620882+00:00",
+  "started_utc": "2026-09-02T00:49:20.114620+00:00",
   "toolchain_probe": {
-    "missing_required": [
-      "command:mobius",
-      "command:olive"
-    ],
+    "missing_required": [],
     "probes": [
       {
         "available": true,
@@ -445,21 +439,21 @@
         "version": "0.11.0"
       },
       {
-        "available": false,
+        "available": true,
         "kind": "command",
         "name": "mobius",
-        "probe": "command-not-found",
+        "probe": "usage: mobius [-h] {build,build-gguf,list,info,convert-comfyui} ...",
         "required": true,
-        "resolution": "path-lookup",
+        "resolution": "venv-scripts-absolute",
         "version": null
       },
       {
-        "available": false,
+        "available": true,
         "kind": "command",
         "name": "olive",
-        "probe": "command-not-found",
+        "probe": "usage: olive",
         "required": true,
-        "resolution": "path-lookup",
+        "resolution": "venv-scripts-absolute",
         "version": null
       },
       {
@@ -524,19 +518,19 @@
       }
     ],
     "python_runtime": {
-      "child_path_prefixed_scripts": false,
+      "child_path_prefixed_scripts": true,
       "command_resolution": {
         "foundry": "path-lookup",
-        "mobius": "path-lookup",
-        "olive": "path-lookup"
+        "mobius": "venv-scripts-absolute",
+        "olive": "venv-scripts-absolute"
       },
       "parent_path_has_scripts": false,
       "python_executable_name": "python.exe",
-      "python_version": null,
+      "python_version": "3.11.9",
       "scripts_dir_name": "Scripts",
-      "scripts_dir_resolution": "unknown",
-      "venv_name": "unknown"
+      "scripts_dir_resolution": "sysconfig",
+      "venv_name": "fl-recipe-v1-venv"
     },
-    "ready_for_round": false
+    "ready_for_round": true
   }
 }

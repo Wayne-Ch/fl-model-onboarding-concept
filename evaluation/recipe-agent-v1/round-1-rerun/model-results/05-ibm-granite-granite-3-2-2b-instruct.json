@@ -1,0 +1,627 @@
+{
+  "attempt": {
+    "attempt_id": "147247c0-f2cf-4438-93c2-33bdf8b892b9",
+    "build_job_id": "b1c221b4-ddcc-42d9-993f-bac8c4bd75ad",
+    "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-02T00:52:54.337004+00:00",
+    "failure": {
+      "classification": "gate_failed",
+      "evidence_refs": [
+        "job://b1c221b4-ddcc-42d9-993f-bac8c4bd75ad"
+      ],
+      "message": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+      "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+      "source_owner": "fl-onboarding",
+      "stage": "preflight"
+    },
+    "finished_utc": "2026-09-02T00:53:22.529881+00:00",
+    "gates": [
+      {
+        "evidence_ref": "job://b1c221b4-ddcc-42d9-993f-bac8c4bd75ad/mobius_build/failed",
+        "finished_utc": "2026-09-02T00:53:22.524001+00:00",
+        "gate": "mobius_build",
+        "metrics_ref": null,
+        "sequence": 1,
+        "started_utc": "2026-09-02T00:53:22.524001+00:00",
+        "status": "failed"
+      }
+    ],
+    "idempotency_key": "r1-20260902T004920Z-05",
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+    "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+    "request_fingerprint": "af9dffd5ae0622b615a7e83b6b8256ebd76ad52ecb321f24a76dcb544e7f7026",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+    "state": "failed",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "attempt_create": {
+    "payload": {
+      "attempt": {
+        "attempt_id": "147247c0-f2cf-4438-93c2-33bdf8b892b9",
+        "build_job_id": "b1c221b4-ddcc-42d9-993f-bac8c4bd75ad",
+        "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+        "compiler_version": "1.0.0",
+        "created_utc": "2026-09-02T00:52:54.337004+00:00",
+        "failure": null,
+        "finished_utc": null,
+        "gates": [],
+        "idempotency_key": "r1-20260902T004920Z-05",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct",
+        "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+        "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+        "request_fingerprint": "af9dffd5ae0622b615a7e83b6b8256ebd76ad52ecb321f24a76dcb544e7f7026",
+        "requested_device": "cpu",
+        "requested_precision": "auto",
+        "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+        "state": "running",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+      },
+      "idempotent_replay": false,
+      "job": {
+        "artifacts": [],
+        "events": [
+          {
+            "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+            "sequence": 1,
+            "state": "queued",
+            "timestamp_utc": "2026-09-02T00:52:54.366826+00:00"
+          }
+        ],
+        "failure": null,
+        "finished_utc": null,
+        "job_id": "b1c221b4-ddcc-42d9-993f-bac8c4bd75ad",
+        "request": {
+          "allow_experimental": true,
+          "candidate": {
+            "huggingface_model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "key": "llm-ibm-granite-granite-3.2-2b-instruct",
+            "modality": "llm",
+            "notes": "Compiled from verified architecture capability 'granite-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+            "recommended_mobius_dtype": "f32",
+            "recommended_olive_precision": "int4"
+          },
+          "dry_run": false,
+          "enforce_cpu_target": true,
+          "external_data_format": "safetensors",
+          "hf_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+          "max_shard_size": "5GB",
+          "model_cache_dir": "scratch://round-1/r1-20260902T004920Z\\cache",
+          "optimization_precision": "int4",
+          "optimization_strategy": "mobius-olive",
+          "output_dir": "scratch://round-1/r1-20260902T004920Z\\workspace\\b1c221b4-ddcc-42d9-993f-bac8c4bd75ad\\output",
+          "recipe_id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+          "recipe_reason": "generated_recipe_attempt:147247c0-f2cf-4438-93c2-33bdf8b892b9:ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+          "recipe_status": "experimental",
+          "recipe_version": "0.1.0",
+          "runtime": "ort-genai",
+          "skip_olive": false,
+          "task_profile": "llm-cpu-int4",
+          "workspace_root": "scratch://round-1/r1-20260902T004920Z\\workspace\\b1c221b4-ddcc-42d9-993f-bac8c4bd75ad"
+        },
+        "result_artifact_id": null,
+        "started_utc": "2026-09-02T00:52:54.366826+00:00",
+        "state": "queued",
+        "validations": []
+      }
+    },
+    "status_code": 200
+  },
+  "attempt_http_status": 200,
+  "event_count": 3,
+  "events_http_status": 200,
+  "failure_summary": {
+    "attempt_state": "failed",
+    "error_signature": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+    "evidence_refs": [
+      "job://b1c221b4-ddcc-42d9-993f-bac8c4bd75ad"
+    ],
+    "first_failed_classification": "gate_failed",
+    "first_failed_gate": {
+      "evidence_ref": "job://b1c221b4-ddcc-42d9-993f-bac8c4bd75ad/mobius_build/failed",
+      "finished_utc": "2026-09-02T00:53:22.524001+00:00",
+      "gate": "mobius_build",
+      "metrics_ref": null,
+      "sequence": 1,
+      "started_utc": "2026-09-02T00:53:22.524001+00:00",
+      "status": "failed"
+    },
+    "first_failed_stage": "preflight",
+    "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+    "preflight_recipe_status": "unregistered",
+    "preflight_recipe_unregistered_expected": true,
+    "prior_successful_gates": [],
+    "source_owner": "fl-onboarding"
+  },
+  "finished_utc": "2026-09-02T00:53:24.991508+00:00",
+  "generated_preview": {
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "argument_confidence": {
+        "contains_unverified_arguments": false,
+        "mobius_dtype_confidence": "evidence-pinned",
+        "olive_precision_confidence": "evidence-pinned"
+      },
+      "capability": {
+        "capability": {
+          "capability_id": "granite-text-generation-cpu-int4-v1",
+          "family": "granite",
+          "known_blockers": [],
+          "modality": "llm",
+          "status": "verified",
+          "supported_devices": [
+            "cpu"
+          ],
+          "supported_request_precisions": [
+            "auto",
+            "int4"
+          ],
+          "supported_tasks": [
+            "llm"
+          ],
+          "version": "1.0.0"
+        },
+        "evidence": [
+          {
+            "evidence_id": "granite-model-type",
+            "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+            "source_type": "repo-doc",
+            "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+          },
+          {
+            "evidence_id": "granite-runtime-happy-path",
+            "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+            "source_type": "repo-doc",
+            "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+          }
+        ],
+        "matched_aliases": [
+          "granite",
+          "graniteforcausallm"
+        ],
+        "outcome": "exact",
+        "reason": "Resolved to capability 'granite-text-generation-cpu-int4-v1' (verified) via alias(es): granite, graniteforcausallm.",
+        "reason_code": "resolved"
+      },
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "experimental_until_verified": true,
+      "fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "recipe": {
+        "fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+        "pinned_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+        "provenance": {
+          "argument_provenance": {
+            "contains_unverified_arguments": false,
+            "mobius_dtype_confidence": "evidence-pinned",
+            "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+            "olive_precision_confidence": "evidence-pinned",
+            "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+          },
+          "capability_id": "granite-text-generation-cpu-int4-v1",
+          "capability_status": "verified",
+          "capability_version": "1.0.0",
+          "compiler_version": "1.0.0",
+          "evidence": [
+            {
+              "evidence_id": "granite-model-type",
+              "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+              "source_type": "repo-doc",
+              "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+            },
+            {
+              "evidence_id": "granite-runtime-happy-path",
+              "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+              "source_type": "repo-doc",
+              "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+            }
+          ],
+          "generation_kind": "deterministic-recipe-agent-v1",
+          "input_metadata": {
+            "architectures": [
+              "GraniteForCausalLM"
+            ],
+            "available_files": [
+              ".gitattributes",
+              "added_tokens.json",
+              "config.json",
+              "generation_config.json",
+              "merges.txt",
+              "model-00001-of-00002.safetensors",
+              "model-00002-of-00002.safetensors",
+              "model.safetensors.index.json",
+              "README.md",
+              "special_tokens_map.json",
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "vocab.json"
+            ],
+            "config_files": [
+              "config.json"
+            ],
+            "is_gated": false,
+            "model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "model_type": "granite",
+            "requested_device": "cpu",
+            "requested_precision": "auto",
+            "requires_remote_code": false,
+            "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+            "task": "llm",
+            "tokenizer_files": [
+              "tokenizer.json",
+              "tokenizer_config.json"
+            ]
+          },
+          "matched_aliases": [
+            "granite",
+            "graniteforcausallm"
+          ],
+          "promotion": null,
+          "resolution_outcome": "exact",
+          "resolution_reason_code": "resolved",
+          "toolchain": {
+            "foundry_cli_version": "0.11.0",
+            "foundry_sdk_version": "1.2.4",
+            "mobius_version": "0.1.0",
+            "oga_version": "0.15.2",
+            "olive_version": "0.13.0",
+            "onnx_version": "1.22.0",
+            "ort_version": "1.29.0"
+          }
+        },
+        "recipe": {
+          "ancillary_files": [
+            {
+              "relative_path": "genai_config.json",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "tokenizer.json",
+              "required": true,
+              "source": "olive-output-dir"
+            }
+          ],
+          "artifact_cache_prefix": "granite-3-2-2b-instruct",
+          "huggingface_model_id": "ibm-granite/granite-3.2-2b-instruct",
+          "id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+          "inference_modality": "llm",
+          "mobius": {
+            "dtype": "f32",
+            "ep": "cpu",
+            "runtime": "ort-genai",
+            "task": "text-generation"
+          },
+          "modality": "llm",
+          "model_name_prefix": "granite-3-2-2b-instruct-onboarding",
+          "olive": {
+            "device": "cpu",
+            "input_source": "mobius-output-dir",
+            "log_level": "1",
+            "precision": "int4",
+            "provider": "CPUExecutionProvider",
+            "task": "text-generation-with-past"
+          },
+          "optimization_choices": [
+            {
+              "default": true,
+              "precision": "int4",
+              "skip_olive": false,
+              "strategy": "mobius-olive",
+              "task_profile": "llm-cpu-int4"
+            }
+          ],
+          "preferred_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+          "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+          "status": "experimental",
+          "status_reason": "Compiled from verified architecture capability 'granite-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+          "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+          "task_profile": "llm-cpu-int4",
+          "verified_revision": null,
+          "version": "0.1.0"
+        },
+        "schema_version": "1.0.0"
+      },
+      "requires_explicit_attempt_confirmation": true,
+      "toolchain": {
+        "foundry_cli_version": "0.11.0",
+        "foundry_sdk_version": "1.2.4",
+        "mobius_version": "0.1.0",
+        "oga_version": "0.15.2",
+        "olive_version": "0.13.0",
+        "onnx_version": "1.22.0",
+        "ort_version": "1.29.0"
+      },
+      "validation_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "verified_reuse": null
+    },
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3"
+  },
+  "generated_recipe_record": {
+    "canonical_payload": {
+      "fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "pinned_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "provenance": {
+        "argument_provenance": {
+          "contains_unverified_arguments": false,
+          "mobius_dtype_confidence": "evidence-pinned",
+          "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+          "olive_precision_confidence": "evidence-pinned",
+          "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+        },
+        "capability_id": "granite-text-generation-cpu-int4-v1",
+        "capability_status": "verified",
+        "capability_version": "1.0.0",
+        "compiler_version": "1.0.0",
+        "evidence": [
+          {
+            "evidence_id": "granite-model-type",
+            "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+            "source_type": "repo-doc",
+            "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+          },
+          {
+            "evidence_id": "granite-runtime-happy-path",
+            "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+            "source_type": "repo-doc",
+            "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+          }
+        ],
+        "generation_kind": "deterministic-recipe-agent-v1",
+        "input_metadata": {
+          "architectures": [
+            "GraniteForCausalLM"
+          ],
+          "available_files": [
+            ".gitattributes",
+            "added_tokens.json",
+            "config.json",
+            "generation_config.json",
+            "merges.txt",
+            "model-00001-of-00002.safetensors",
+            "model-00002-of-00002.safetensors",
+            "model.safetensors.index.json",
+            "README.md",
+            "special_tokens_map.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "vocab.json"
+          ],
+          "config_files": [
+            "config.json"
+          ],
+          "is_gated": false,
+          "model_id": "ibm-granite/granite-3.2-2b-instruct",
+          "model_type": "granite",
+          "requested_device": "cpu",
+          "requested_precision": "auto",
+          "requires_remote_code": false,
+          "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+          "task": "llm",
+          "tokenizer_files": [
+            "tokenizer.json",
+            "tokenizer_config.json"
+          ]
+        },
+        "matched_aliases": [
+          "granite",
+          "graniteforcausallm"
+        ],
+        "promotion": null,
+        "resolution_outcome": "exact",
+        "resolution_reason_code": "resolved",
+        "toolchain": {
+          "foundry_cli_version": "0.11.0",
+          "foundry_sdk_version": "1.2.4",
+          "mobius_version": "0.1.0",
+          "oga_version": "0.15.2",
+          "olive_version": "0.13.0",
+          "onnx_version": "1.22.0",
+          "ort_version": "1.29.0"
+        }
+      },
+      "recipe": {
+        "ancillary_files": [
+          {
+            "relative_path": "genai_config.json",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "tokenizer.json",
+            "required": true,
+            "source": "olive-output-dir"
+          }
+        ],
+        "artifact_cache_prefix": "granite-3-2-2b-instruct",
+        "huggingface_model_id": "ibm-granite/granite-3.2-2b-instruct",
+        "id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+        "inference_modality": "llm",
+        "mobius": {
+          "dtype": "f32",
+          "ep": "cpu",
+          "runtime": "ort-genai",
+          "task": "text-generation"
+        },
+        "modality": "llm",
+        "model_name_prefix": "granite-3-2-2b-instruct-onboarding",
+        "olive": {
+          "device": "cpu",
+          "input_source": "mobius-output-dir",
+          "log_level": "1",
+          "precision": "int4",
+          "provider": "CPUExecutionProvider",
+          "task": "text-generation-with-past"
+        },
+        "optimization_choices": [
+          {
+            "default": true,
+            "precision": "int4",
+            "skip_olive": false,
+            "strategy": "mobius-olive",
+            "task_profile": "llm-cpu-int4"
+          }
+        ],
+        "preferred_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+        "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+        "status": "experimental",
+        "status_reason": "Compiled from verified architecture capability 'granite-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+        "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "task_profile": "llm-cpu-int4",
+        "verified_revision": null,
+        "version": "0.1.0"
+      },
+      "schema_version": "1.0.0"
+    },
+    "canonical_payload_sha256": "539d980427fd9f71593944156373d0db21515dda5705710ef0b68fb607dbab49",
+    "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-02T00:52:53.573627+00:00",
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+    "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+    "recipe_status": "experimental",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+    "schema_version": "1.0.0",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "job": {
+    "artifacts": [],
+    "events": [
+      {
+        "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+        "sequence": 1,
+        "state": "queued",
+        "timestamp_utc": "2026-09-02T00:52:54.366826+00:00"
+      },
+      {
+        "message": "Starting preflight checks.",
+        "sequence": 2,
+        "state": "preflight",
+        "timestamp_utc": "2026-09-02T00:52:54.376826+00:00"
+      },
+      {
+        "message": "Failed (process_failed): No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+        "sequence": 3,
+        "state": "failed",
+        "timestamp_utc": "2026-09-02T00:53:22.498858+00:00"
+      }
+    ],
+    "failure": {
+      "classification": "process_failed",
+      "message": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+      "stage": "preflight"
+    },
+    "finished_utc": "2026-09-02T00:53:22.498858+00:00",
+    "job_id": "b1c221b4-ddcc-42d9-993f-bac8c4bd75ad",
+    "result_artifact_id": null,
+    "started_utc": "2026-09-02T00:52:54.366826+00:00",
+    "state": "failed",
+    "validations": [
+      {
+        "checks": [
+          "Candidate 'ibm-granite/granite-3.2-2b-instruct' was not found in Foundry catalog."
+        ],
+        "failure": null,
+        "stage": "preflight",
+        "status": "passed"
+      }
+    ]
+  },
+  "job_poll_timed_out": false,
+  "lingering_processes_after_close": [],
+  "manifest_catalog_match": {
+    "confidence": "none",
+    "matched": false,
+    "matched_entry": null,
+    "reason": "No catalog entry matches normalized HF name 'granite-3-2-2b-instruct'"
+  },
+  "manifest_recipe_exists": false,
+  "manifest_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+  "model_detail": {
+    "build_blockers": [],
+    "buildable": true,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "recipe_reason": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+    "task": "llm",
+    "warnings": []
+  },
+  "model_detail_http_status": 200,
+  "model_id": "ibm-granite/granite-3.2-2b-instruct",
+  "model_index": 5,
+  "preflight": {
+    "blockers": [
+      {
+        "classification": "invalid_request",
+        "message": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+        "stage": "preflight"
+      }
+    ],
+    "cache_key": "d19338499608cf32534f5906eb812ed8d284f20fa6662826c00b5d4376f9c612",
+    "cached": false,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "verified_reuse": null
+    },
+    "ok": false,
+    "recipe_reason": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "tools": [],
+    "warnings": []
+  },
+  "preflight_http_status": 200,
+  "preflight_recipe_unregistered_expected": true,
+  "preview_http_status": 200,
+  "resource_after": {
+    "cache_bytes": 0,
+    "disk_free_gb": 1403.209,
+    "disk_used_gb": 503.233,
+    "runtime_bytes": 196608,
+    "state_bytes": 196608,
+    "timestamp_utc": "2026-09-02T00:53:24.987508+00:00",
+    "workspace_bytes": 0
+  },
+  "resource_before": {
+    "cache_bytes": 0,
+    "disk_free_gb": 1403.209,
+    "disk_used_gb": 503.232,
+    "runtime_bytes": 176128,
+    "state_bytes": 176128,
+    "timestamp_utc": "2026-09-02T00:52:53.164164+00:00",
+    "workspace_bytes": 0
+  },
+  "started_utc": "2026-09-02T00:52:53.164164+00:00"
+}

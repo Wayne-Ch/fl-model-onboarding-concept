@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import time
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +31,15 @@ EXPECTED_FROZEN_MODELS: tuple[tuple[str, str], ...] = (
 )
 TERMINAL_STATES = {"succeeded", "failed", "cancelled"}
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"[A-Za-z]:(?:\\|/(?!/))[^\s\"']+")
+REQUIRED_COMMANDS: tuple[str, ...] = ("foundry", "mobius", "olive")
+REQUIRED_DISTRIBUTIONS: tuple[tuple[str, str], ...] = (
+    ("onnx", "onnx"),
+    ("onnxruntime", "onnxruntime"),
+    ("onnxruntime-genai", "onnxruntime_genai"),
+    ("foundry-local-sdk", "foundry_local_sdk"),
+    ("mobius-onnx", "mobius"),
+    ("olive-ai", "olive"),
+)
 
 
 @dataclass(frozen=True)
@@ -74,13 +85,19 @@ def _parse_json_maybe(text: str) -> Any:
     return None
 
 
-def _run_cli_json(python_exe: Path, cli_args: list[str]) -> dict[str, Any]:
+def _run_cli_json(
+    python_exe: Path,
+    cli_args: list[str],
+    *,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     cmd = [str(python_exe), "-m", "fl_model_onboarding.cli", *cli_args]
     completed = subprocess.run(
         cmd,
         check=False,
         capture_output=True,
         text=True,
+        env=env,
     )
     payload = _parse_json_maybe(completed.stdout) or _parse_json_maybe(completed.stderr)
     return {
@@ -92,35 +109,201 @@ def _run_cli_json(python_exe: Path, cli_args: list[str]) -> dict[str, Any]:
     }
 
 
-def _probe_command_version(name: str, args: tuple[str, ...] = ("--version",)) -> dict[str, Any]:
+def _normalize_path_for_compare(value: str) -> str:
+    return value.replace("/", "\\").rstrip("\\").lower()
+
+
+def _path_contains_dir(path_value: str, directory: Path) -> bool:
+    expected = _normalize_path_for_compare(str(directory))
+    if not expected:
+        return False
+    for segment in path_value.split(os.pathsep):
+        current = segment.strip()
+        if not current:
+            continue
+        if _normalize_path_for_compare(current) == expected:
+            return True
+    return False
+
+
+def _with_scripts_on_path(base_env: dict[str, str], scripts_dir: Path) -> tuple[dict[str, str], bool]:
+    env = dict(base_env)
+    current = env.get("PATH", "")
+    if _path_contains_dir(current, scripts_dir):
+        return env, False
+    env["PATH"] = str(scripts_dir) if not current else f"{scripts_dir}{os.pathsep}{current}"
+    return env, True
+
+
+def _resolve_console_script_path(scripts_dir: Path, name: str) -> Path | None:
+    for suffix in ("", ".exe", ".cmd", ".bat", ".ps1"):
+        candidate = scripts_dir / f"{name}{suffix}"
+        if candidate.exists():
+            return candidate.resolve()
+    return None
+
+
+def _resolve_python_runtime(python_exe: Path) -> dict[str, Any]:
+    code = (
+        "import json,sys,sysconfig;"
+        "print(json.dumps({"
+        "'executable': sys.executable,"
+        "'version': sys.version.split()[0],"
+        "'scripts_dir': sysconfig.get_path('scripts')"
+        "}))"
+    )
+    completed = subprocess.run(
+        [str(python_exe), "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    payload = _parse_json_maybe(completed.stdout)
+    if completed.returncode != 0 or not isinstance(payload, dict):
+        raise RuntimeError(
+            "Unable to resolve Python runtime identity from the selected interpreter: "
+            + (completed.stderr.strip() or completed.stdout.strip() or f"exit_code={completed.returncode}")
+        )
+    scripts_dir_raw = payload.get("scripts_dir")
+    if not isinstance(scripts_dir_raw, str) or not scripts_dir_raw.strip():
+        raise RuntimeError("Resolved Python runtime is missing a scripts directory.")
+    base_env = dict(os.environ)
+    scripts_dir = Path(scripts_dir_raw).resolve()
+    child_env, path_prefixed = _with_scripts_on_path(base_env, scripts_dir)
+    return {
+        "python_exe": Path(str(payload.get("executable") or python_exe)).resolve(),
+        "python_version": str(payload.get("version") or "unknown"),
+        "scripts_dir": scripts_dir,
+        "scripts_dir_name": scripts_dir.name,
+        "venv_name": scripts_dir.parent.name,
+        "parent_path_has_scripts": _path_contains_dir(base_env.get("PATH", ""), scripts_dir),
+        "child_path_prefixed": path_prefixed,
+        "child_env": child_env,
+        "command_paths": {
+            name: _resolve_console_script_path(scripts_dir, name) for name in REQUIRED_COMMANDS
+        },
+    }
+
+
+def _python_runtime_identity(runtime: dict[str, Any]) -> dict[str, Any]:
+    command_paths = runtime.get("command_paths")
+    command_resolution: dict[str, str] = {}
+    if isinstance(command_paths, dict):
+        for name in REQUIRED_COMMANDS:
+            command_resolution[name] = (
+                "venv-scripts-absolute"
+                if isinstance(command_paths.get(name), Path)
+                else "path-lookup"
+            )
+    return {
+        "python_version": runtime.get("python_version"),
+        "python_executable_name": runtime.get("python_exe").name
+        if isinstance(runtime.get("python_exe"), Path)
+        else "python",
+        "venv_name": runtime.get("venv_name"),
+        "scripts_dir_name": runtime.get("scripts_dir_name"),
+        "scripts_dir_resolution": "sysconfig",
+        "parent_path_has_scripts": bool(runtime.get("parent_path_has_scripts")),
+        "child_path_prefixed_scripts": bool(runtime.get("child_path_prefixed")),
+        "command_resolution": command_resolution,
+    }
+
+
+def _extract_semver(value: str) -> str | None:
+    match = re.search(r"\d+\.\d+\.\d+(?:\.\d+)?", value)
+    return match.group(0) if match else None
+
+
+def _probe_command(
+    name: str,
+    *,
+    executable: Path | None = None,
+    env: dict[str, str] | None = None,
+    availability_args: tuple[str, ...] = ("--version",),
+    version_args: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    invocation = str(executable) if executable is not None else name
+    resolution = "venv-scripts-absolute" if executable is not None else "path-lookup"
     try:
-        completed = subprocess.run(
-            [name, *args],
+        availability = subprocess.run(
+            [invocation, *availability_args],
             check=False,
             capture_output=True,
             text=True,
+            env=env,
         )
     except FileNotFoundError:
         return {
             "name": name,
+            "kind": "command",
+            "required": True,
             "available": False,
-            "exit_code": None,
             "version": None,
-            "detail": "command-not-found",
+            "probe": "command-not-found",
+            "resolution": resolution,
         }
-    output = (completed.stdout or completed.stderr or "").strip()
+    output = (availability.stdout or availability.stderr or "").strip()
     first_line = output.splitlines()[0] if output else ""
-    version_match = re.search(r"\d+\.\d+\.\d+(?:\.\d+)?", first_line)
+    version = _extract_semver(first_line) if first_line else None
+    probe = first_line or (
+        "probe-ok" if availability.returncode == 0 else f"exit-code-{availability.returncode}"
+    )
+    available = availability.returncode == 0
+    if version_args is not None:
+        try:
+            version_probe = subprocess.run(
+                [invocation, *version_args],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            version_output = (version_probe.stdout or version_probe.stderr or "").strip()
+            version_first_line = version_output.splitlines()[0] if version_output else ""
+            if version_probe.returncode == 0:
+                parsed = _extract_semver(version_first_line)
+                if parsed:
+                    version = parsed
+                if not probe:
+                    probe = version_first_line or "probe-ok"
+            elif not available and version_first_line:
+                probe = version_first_line
+        except FileNotFoundError:
+            available = False
+            probe = "command-not-found"
     return {
         "name": name,
-        "available": completed.returncode == 0,
-        "exit_code": completed.returncode,
-        "version": version_match.group(0) if version_match else None,
-        "detail": first_line,
+        "kind": "command",
+        "required": True,
+        "available": available,
+        "version": version,
+        "probe": probe or "probe-empty",
+        "resolution": resolution,
     }
 
 
-def _probe_python_distribution(python_exe: Path, distribution: str, import_name: str) -> dict[str, Any]:
+def _probe_command_version(
+    name: str,
+    *,
+    executable: Path | None = None,
+    env: dict[str, str] | None = None,
+    args: tuple[str, ...] = ("--version",),
+) -> dict[str, Any]:
+    return _probe_command(
+        name,
+        executable=executable,
+        env=env,
+        availability_args=args,
+    )
+
+
+def _probe_python_distribution(
+    python_exe: Path,
+    distribution: str,
+    import_name: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     code = (
         "import importlib, importlib.metadata, json; "
         f"importlib.import_module('{import_name}'); "
@@ -131,35 +314,73 @@ def _probe_python_distribution(python_exe: Path, distribution: str, import_name:
         check=False,
         capture_output=True,
         text=True,
+        env=env,
     )
     payload = _parse_json_maybe(completed.stdout)
     version = payload.get("version") if isinstance(payload, dict) else None
     detail = (completed.stderr or completed.stdout or "").strip().splitlines()
+    probe = detail[-1] if detail else ("probe-ok" if completed.returncode == 0 else f"exit-code-{completed.returncode}")
     return {
         "name": distribution,
+        "kind": "python-package",
+        "required": True,
         "import_name": import_name,
         "available": completed.returncode == 0 and isinstance(version, str),
-        "exit_code": completed.returncode,
         "version": version if isinstance(version, str) else None,
-        "detail": detail[-1] if detail else "",
+        "probe": probe,
+        "resolution": "python-interpreter",
     }
 
 
-def _probe_toolchain(python_exe: Path) -> dict[str, Any]:
+def _probe_toolchain(
+    python_exe: Path,
+    *,
+    runtime: dict[str, Any],
+    env: dict[str, str],
+) -> dict[str, Any]:
+    command_paths = runtime.get("command_paths")
+    resolved_paths = command_paths if isinstance(command_paths, dict) else {}
+    probes = [
+        _probe_command(
+            "foundry",
+            executable=resolved_paths.get("foundry"),
+            env=env,
+            availability_args=("--version",),
+        ),
+        _probe_command(
+            "mobius",
+            executable=resolved_paths.get("mobius"),
+            env=env,
+            availability_args=("--help",),
+            version_args=("--version",),
+        ),
+        _probe_command(
+            "olive",
+            executable=resolved_paths.get("olive"),
+            env=env,
+            availability_args=("--help",),
+            version_args=("--version",),
+        ),
+    ]
+    probes.extend(
+        _probe_python_distribution(
+            python_exe,
+            distribution,
+            import_name,
+            env=env,
+        )
+        for distribution, import_name in REQUIRED_DISTRIBUTIONS
+    )
+    missing_required = [
+        f"{row.get('kind')}:{row.get('name')}"
+        for row in probes
+        if row.get("required") is True and row.get("available") is False
+    ]
     return {
-        "commands": [
-            _probe_command_version("foundry"),
-            _probe_command_version("mobius"),
-            _probe_command_version("olive"),
-        ],
-        "python_distributions": [
-            _probe_python_distribution(python_exe, "onnx", "onnx"),
-            _probe_python_distribution(python_exe, "onnxruntime", "onnxruntime"),
-            _probe_python_distribution(python_exe, "onnxruntime-genai", "onnxruntime_genai"),
-            _probe_python_distribution(python_exe, "foundry-local-sdk", "foundry_local_sdk"),
-            _probe_python_distribution(python_exe, "mobius-onnx", "mobius"),
-            _probe_python_distribution(python_exe, "olive-ai", "olive"),
-        ],
+        "python_runtime": _python_runtime_identity(runtime),
+        "probes": probes,
+        "missing_required": missing_required,
+        "ready_for_round": len(missing_required) == 0,
     }
 
 
@@ -308,7 +529,7 @@ def _compact_preflight(payload: Any) -> dict[str, Any]:
                             "name": row.get("name"),
                             "available": row.get("available"),
                             "version": row.get("version"),
-                            "detail": row.get("detail"),
+                            "probe": row.get("detail") or row.get("version") or "probe-empty",
                         }
                     )
         result_blockers = result.get("blockers")
@@ -525,9 +746,13 @@ def _load_generated_record(db_path: Path, recipe_fingerprint: str) -> dict[str, 
     }
 
 
-def _replacement_pairs(paths: RunPaths) -> tuple[tuple[str, str], ...]:
+def _replacement_pairs(
+    paths: RunPaths,
+    *,
+    python_runtime: dict[str, Any] | None = None,
+) -> tuple[tuple[str, str], ...]:
     root_placeholder = f"scratch://round-1/{paths.run_id}"
-    return (
+    replacements: list[tuple[str, str]] = [
         (str(paths.runtime_root), root_placeholder),
         (str(paths.state_root), f"{root_placeholder}/state"),
         (str(paths.workspace_base), f"{root_placeholder}/workspace"),
@@ -535,7 +760,20 @@ def _replacement_pairs(paths: RunPaths) -> tuple[tuple[str, str], ...]:
         (str(paths.service_db_path), f"{root_placeholder}/state/service.sqlite3"),
         (str(paths.recipe_attempt_db_path), f"{root_placeholder}/state/recipe-attempts.sqlite3"),
         (str(paths.repo_root), "<repo-root>"),
-    )
+    ]
+    if isinstance(python_runtime, dict):
+        python_exe = python_runtime.get("python_exe")
+        scripts_dir = python_runtime.get("scripts_dir")
+        command_paths = python_runtime.get("command_paths")
+        if isinstance(python_exe, Path):
+            replacements.append((str(python_exe), "<python-exe>"))
+        if isinstance(scripts_dir, Path):
+            replacements.append((str(scripts_dir), "<python-scripts-dir>"))
+        if isinstance(command_paths, dict):
+            for tool_name, tool_path in command_paths.items():
+                if isinstance(tool_path, Path):
+                    replacements.append((str(tool_path), f"<{tool_name}-exe>"))
+    return tuple(replacements)
 
 
 def _sanitize_text(value: str, replacements: tuple[tuple[str, str], ...]) -> str:
@@ -558,6 +796,19 @@ def _sanitize_obj(value: Any, replacements: tuple[tuple[str, str], ...]) -> Any:
     if isinstance(value, dict):
         return {str(key): _sanitize_obj(item, replacements) for key, item in value.items()}
     return value
+
+
+@contextmanager
+def _temporary_path(path_value: str):
+    original = os.environ.get("PATH")
+    os.environ["PATH"] = path_value
+    try:
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("PATH", None)
+        else:
+            os.environ["PATH"] = original
 
 
 def _lingering_processes_for_runtime(runtime_root: Path) -> list[dict[str, Any]]:
@@ -632,6 +883,13 @@ def _extract_failure_summary(model_result: dict[str, Any]) -> dict[str, Any]:
     attempt = model_result.get("attempt")
     job = model_result.get("job")
     attempt_create = model_result.get("attempt_create")
+    preflight = model_result.get("preflight")
+    preflight_recipe_status = (
+        preflight.get("recipe_status") if isinstance(preflight, dict) else None
+    )
+    preflight_unregistered_expected = bool(
+        model_result.get("preflight_recipe_unregistered_expected")
+    )
 
     attempt_state = str(attempt.get("state")) if isinstance(attempt, dict) else "not_started"
     if attempt_state == "succeeded":
@@ -643,6 +901,8 @@ def _extract_failure_summary(model_result: dict[str, Any]) -> dict[str, Any]:
             "prior_successful_gates": _prior_successful_gates(attempt.get("gates", [])),
             "source_owner": None,
             "next_action": None,
+            "preflight_recipe_status": preflight_recipe_status,
+            "preflight_recipe_unregistered_expected": preflight_unregistered_expected,
         }
 
     gates = attempt.get("gates", []) if isinstance(attempt, dict) else []
@@ -659,6 +919,8 @@ def _extract_failure_summary(model_result: dict[str, Any]) -> dict[str, Any]:
             "source_owner": attempt_failure.get("source_owner"),
             "next_action": attempt_failure.get("next_action"),
             "evidence_refs": attempt_failure.get("evidence_refs"),
+            "preflight_recipe_status": preflight_recipe_status,
+            "preflight_recipe_unregistered_expected": preflight_unregistered_expected,
         }
 
     job_failure = job.get("failure") if isinstance(job, dict) else None
@@ -673,6 +935,8 @@ def _extract_failure_summary(model_result: dict[str, Any]) -> dict[str, Any]:
             "source_owner": "fl-onboarding",
             "next_action": "Inspect the failed build stage and rerun with a fresh generated-attempt idempotency key.",
             "evidence_refs": [f"job://{job.get('job_id')}"] if isinstance(job, dict) and job.get("job_id") else [],
+            "preflight_recipe_status": preflight_recipe_status,
+            "preflight_recipe_unregistered_expected": preflight_unregistered_expected,
         }
 
     if isinstance(attempt_create, dict):
@@ -686,6 +950,8 @@ def _extract_failure_summary(model_result: dict[str, Any]) -> dict[str, Any]:
                 "prior_successful_gates": [],
                 "source_owner": "fl-onboarding",
                 "next_action": "Resolve API creation failure and retry explicit-confirm generated attempt.",
+                "preflight_recipe_status": preflight_recipe_status,
+                "preflight_recipe_unregistered_expected": preflight_unregistered_expected,
             }
     return {
         "attempt_state": attempt_state,
@@ -695,6 +961,8 @@ def _extract_failure_summary(model_result: dict[str, Any]) -> dict[str, Any]:
         "prior_successful_gates": [],
         "source_owner": "fl-onboarding",
         "next_action": "Collect additional service diagnostics and retry.",
+        "preflight_recipe_status": preflight_recipe_status,
+        "preflight_recipe_unregistered_expected": preflight_unregistered_expected,
     }
 
 
@@ -759,6 +1027,9 @@ def _run_one_model(
             )
             result["preflight_http_status"] = preflight_status
             result["preflight"] = _compact_preflight(preflight_payload)
+            result["preflight_recipe_unregistered_expected"] = _expected_unregistered_recipe_preflight(
+                preflight_payload
+            )
 
             preview_status, preview_payload = _request(
                 client,
@@ -1008,6 +1279,118 @@ def _manifest_invariants(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _required_environment_blockers(toolchain_probe: dict[str, Any]) -> list[str]:
+    missing = toolchain_probe.get("missing_required")
+    if isinstance(missing, list):
+        out = [str(item) for item in missing if str(item).strip()]
+        if out:
+            return out
+    probes = toolchain_probe.get("probes")
+    if not isinstance(probes, list):
+        return []
+    blockers: list[str] = []
+    for row in probes:
+        if not isinstance(row, dict):
+            continue
+        if row.get("required") is True and row.get("available") is False:
+            blockers.append(f"{row.get('kind')}:{row.get('name')}")
+    return blockers
+
+
+def _expected_unregistered_recipe_preflight(preflight_payload: Any) -> bool:
+    if not isinstance(preflight_payload, dict):
+        return False
+    recipe_status = str(preflight_payload.get("recipe_status", "")).lower()
+    generated = preflight_payload.get("generated_recipe")
+    generated_eligible = (
+        isinstance(generated, dict)
+        and generated.get("eligible_for_automatic_recipe_attempt") is True
+    )
+    return recipe_status == "unregistered" and generated_eligible
+
+
+def _classify_round_outcome(
+    *,
+    manifest_invariants: dict[str, Any],
+    environment_blockers: list[str],
+    model_results: list[dict[str, Any]],
+    environment_fail_fast_triggered: bool,
+) -> dict[str, Any]:
+    total_count = len(model_results)
+    success_count = sum(
+        1
+        for row in model_results
+        if row.get("failure_summary", {}).get("attempt_state") == "succeeded"
+    )
+    attempt_success_rate = f"{success_count}/{total_count}"
+    if not bool(manifest_invariants.get("ok")):
+        return {
+            "round_classification": "invalid_manifest",
+            "baseline_valid": False,
+            "model_success_rate_applicable": False,
+            "success_rate": "not_applicable",
+            "attempt_success_rate": attempt_success_rate,
+            "environment_blockers": [],
+            "environment_fail_fast_triggered": False,
+        }
+    if environment_blockers:
+        return {
+            "round_classification": "invalid_environment",
+            "baseline_valid": False,
+            "model_success_rate_applicable": False,
+            "success_rate": "not_applicable",
+            "attempt_success_rate": attempt_success_rate,
+            "environment_blockers": environment_blockers,
+            "environment_fail_fast_triggered": environment_fail_fast_triggered,
+        }
+    return {
+        "round_classification": "valid_baseline",
+        "baseline_valid": True,
+        "model_success_rate_applicable": True,
+        "success_rate": attempt_success_rate,
+        "attempt_success_rate": attempt_success_rate,
+        "environment_blockers": [],
+        "environment_fail_fast_triggered": False,
+    }
+
+
+def _make_environment_failfast_result(
+    *,
+    paths: RunPaths,
+    model_entry: dict[str, Any],
+    model_index: int,
+    environment_blockers: list[str],
+) -> dict[str, Any]:
+    model_id = str(model_entry.get("model_id", f"invalid-model-entry-{model_index}"))
+    now = _now_utc_iso()
+    message = (
+        "Round fail-fast before attempts because required shared tools are unavailable: "
+        + ", ".join(environment_blockers)
+    )
+    return {
+        "model_index": model_index,
+        "model_id": model_id,
+        "manifest_sha": model_entry.get("sha"),
+        "started_utc": now,
+        "finished_utc": now,
+        "resource_before": _snapshot_paths(paths),
+        "resource_after": _snapshot_paths(paths),
+        "manifest_catalog_match": model_entry.get("catalog_match"),
+        "manifest_recipe_exists": model_entry.get("recipe_exists"),
+        "preflight_recipe_unregistered_expected": None,
+        "failure_summary": {
+            "attempt_state": "not_attempted",
+            "first_failed_stage": "round_environment_preflight",
+            "first_failed_classification": "invalid_environment",
+            "error_signature": message,
+            "prior_successful_gates": [],
+            "source_owner": "fl-onboarding",
+            "next_action": "Install/resolve required toolchain commands in the selected Python environment and rerun.",
+            "environment_blockers": list(environment_blockers),
+        },
+    }
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -1029,11 +1412,12 @@ def _build_report(
     frozen_validate: dict[str, Any],
     frozen_dry_run: dict[str, Any],
     quality_profile: dict[str, Any],
+    round_outcome: dict[str, Any],
     model_results: list[dict[str, Any]],
     reuse_checks: list[dict[str, Any]],
 ) -> str:
-    success_count = sum(1 for row in model_results if row.get("failure_summary", {}).get("attempt_state") == "succeeded")
-    total_count = len(model_results)
+    model_success_rate = str(round_outcome.get("success_rate", "not_applicable"))
+    attempt_success_rate = str(round_outcome.get("attempt_success_rate", "0/0"))
     lines: list[str] = []
     lines.append("# Recipe Agent v1 Round 1 Report")
     lines.append("")
@@ -1041,7 +1425,14 @@ def _build_report(
     lines.append(f"- **Branch:** `{git_branch}`")
     lines.append(f"- **Commit:** `{git_head}`")
     lines.append(f"- **Window (UTC):** `{started_utc}` -> `{finished_utc}`")
-    lines.append(f"- **Round result:** **{success_count}/{total_count}** succeeded")
+    lines.append(f"- **Round classification:** `{round_outcome.get('round_classification')}`")
+    lines.append(f"- **Baseline valid evidence:** `{round_outcome.get('baseline_valid')}`")
+    lines.append(
+        "- **Model success rate:** "
+        + (f"**{model_success_rate}**" if round_outcome.get("model_success_rate_applicable") else "**not_applicable**")
+    )
+    if not round_outcome.get("model_success_rate_applicable"):
+        lines.append(f"- **Raw attempt outcome (diagnostic only):** `{attempt_success_rate}`")
     lines.append(f"- **Retained external evidence root:** `scratch://round-1/{run_paths.run_id}`")
     lines.append("")
     lines.append("## Frozen manifest and deterministic checks")
@@ -1049,6 +1440,12 @@ def _build_report(
     lines.append(f"- Manifest invariants pass: **{manifest_invariants.get('ok')}**")
     lines.append(f"- `recipe-agent frozen-validate` exit code: **{frozen_validate.get('exit_code')}**")
     lines.append(f"- `recipe-agent frozen-dry-run` exit code: **{frozen_dry_run.get('exit_code')}**")
+    environment_blockers = round_outcome.get("environment_blockers") or []
+    if environment_blockers:
+        lines.append("- Round-level environment blockers: `" + ", ".join(str(item) for item in environment_blockers) + "`")
+        lines.append(
+            f"- Round fail-fast before attempts triggered: `{round_outcome.get('environment_fail_fast_triggered')}`"
+        )
     lines.append("")
     lines.append("## Deterministic quality profile snapshot")
     lines.append("")
@@ -1087,6 +1484,10 @@ def _build_report(
             lines.append(f"{index}. **{row.get('model_id')}**")
             lines.append(f"   - First failed stage/classification: `{summary.get('first_failed_stage')}` / `{summary.get('first_failed_classification')}`")
             lines.append(f"   - Error signature: `{summary.get('error_signature')}`")
+            if summary.get("preflight_recipe_unregistered_expected"):
+                lines.append(
+                    "   - Preflight recipe status: `unregistered` (expected in generated-recipe preflight; not an environment blocker)."
+                )
             if first_non_pass is not None:
                 lines.append(
                     f"   - First failed gate: `{first_non_pass.get('gate')}` with status `{first_non_pass.get('status')}`"
@@ -1160,11 +1561,17 @@ def main() -> int:
         default="",
         help="Optional explicit run id. Defaults to UTC timestamp run id.",
     )
+    parser.add_argument(
+        "--output-dir",
+        default="",
+        help="Optional output directory. Defaults to evaluation/recipe-agent-v1/round-1.",
+    )
     args = parser.parse_args()
 
-    output_root = Path(__file__).resolve().parent
-    repo_root = output_root.parents[2]
-    manifest_path = output_root.parent / "models.json"
+    script_root = Path(__file__).resolve().parent
+    output_root = Path(args.output_dir).resolve() if args.output_dir.strip() else script_root
+    repo_root = script_root.parents[2]
+    manifest_path = script_root.parent / "models.json"
     run_id = args.run_id.strip() or datetime.now(timezone.utc).strftime("r1-%Y%m%dT%H%M%SZ")
 
     scratch_root = Path(args.scratch_root).resolve()
@@ -1191,7 +1598,11 @@ def main() -> int:
         recipe_attempt_db_path=recipe_attempt_db_path,
         run_id=run_id,
     )
-    replacements = _replacement_pairs(paths)
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    selected_python = Path(args.python_exe).resolve()
+    python_runtime = _resolve_python_runtime(selected_python)
+    replacements = _replacement_pairs(paths, python_runtime=python_runtime)
 
     started_utc = _now_utc_iso()
     git_head = _git_value(paths.repo_root, ["rev-parse", "HEAD"])
@@ -1201,56 +1612,110 @@ def main() -> int:
     if not isinstance(manifest_raw, dict):
         raise SystemExit("Frozen manifest must be a JSON object.")
     manifest_invariants = _manifest_invariants(manifest_raw)
-    toolchain_probe = _probe_toolchain(Path(args.python_exe))
-    frozen_list = _run_cli_json(Path(args.python_exe), ["recipe-agent", "frozen-list", "--path", str(paths.manifest_path)])
-    frozen_validate = _run_cli_json(
-        Path(args.python_exe),
-        ["recipe-agent", "frozen-validate", "--path", str(paths.manifest_path)],
-    )
-    frozen_dry_run = _run_cli_json(
-        Path(args.python_exe),
-        ["recipe-agent", "frozen-dry-run", "--path", str(paths.manifest_path)],
-    )
-
     models = manifest_raw.get("models")
     if not isinstance(models, list):
         raise SystemExit("Frozen manifest models must be a list.")
 
     per_model_results: list[dict[str, Any]] = []
-    for index, model_entry in enumerate(models, start=1):
-        if not isinstance(model_entry, dict):
-            per_model_results.append(
-                {
-                    "model_index": index,
-                    "model_id": f"invalid-model-entry-{index}",
-                    "failure_summary": {
-                        "attempt_state": "failed",
-                        "first_failed_stage": "manifest-parse",
-                        "first_failed_classification": "invalid-manifest-entry",
-                        "error_signature": "Manifest entry was not a JSON object.",
-                        "prior_successful_gates": [],
-                        "source_owner": "fl-onboarding",
-                        "next_action": "Fix frozen manifest row shape and rerun.",
-                    },
-                }
-            )
-            continue
-        per_model_results.append(
-            _run_one_model(
-                paths=paths,
-                model_entry=model_entry,
-                model_index=index,
-                model_timeout_seconds=max(60, int(args.model_timeout_seconds)),
-                poll_seconds=max(1, int(args.poll_seconds)),
-            )
+    child_env = python_runtime.get("child_env")
+    if not isinstance(child_env, dict):
+        raise RuntimeError("Resolved Python runtime did not provide a child environment.")
+    child_path = str(child_env.get("PATH", ""))
+
+    with _temporary_path(child_path):
+        toolchain_probe = _probe_toolchain(
+            selected_python,
+            runtime=python_runtime,
+            env=child_env,
+        )
+        frozen_list = _run_cli_json(
+            selected_python,
+            ["recipe-agent", "frozen-list", "--path", str(paths.manifest_path)],
+            env=child_env,
+        )
+        frozen_validate = _run_cli_json(
+            selected_python,
+            ["recipe-agent", "frozen-validate", "--path", str(paths.manifest_path)],
+            env=child_env,
+        )
+        frozen_dry_run = _run_cli_json(
+            selected_python,
+            ["recipe-agent", "frozen-dry-run", "--path", str(paths.manifest_path)],
+            env=child_env,
         )
 
-    successful_rows = [
-        row
-        for row in per_model_results
-        if row.get("failure_summary", {}).get("attempt_state") == "succeeded"
-    ]
-    reuse_checks = _run_reuse_checks(paths, successful_rows)
+        environment_blockers = _required_environment_blockers(toolchain_probe)
+        environment_fail_fast_triggered = False
+        if environment_blockers:
+            environment_fail_fast_triggered = True
+            for index, model_entry in enumerate(models, start=1):
+                if not isinstance(model_entry, dict):
+                    per_model_results.append(
+                        {
+                            "model_index": index,
+                            "model_id": f"invalid-model-entry-{index}",
+                            "failure_summary": {
+                                "attempt_state": "failed",
+                                "first_failed_stage": "manifest-parse",
+                                "first_failed_classification": "invalid-manifest-entry",
+                                "error_signature": "Manifest entry was not a JSON object.",
+                                "prior_successful_gates": [],
+                                "source_owner": "fl-onboarding",
+                                "next_action": "Fix frozen manifest row shape and rerun.",
+                            },
+                        }
+                    )
+                    continue
+                per_model_results.append(
+                    _make_environment_failfast_result(
+                        paths=paths,
+                        model_entry=model_entry,
+                        model_index=index,
+                        environment_blockers=environment_blockers,
+                    )
+                )
+        else:
+            for index, model_entry in enumerate(models, start=1):
+                if not isinstance(model_entry, dict):
+                    per_model_results.append(
+                        {
+                            "model_index": index,
+                            "model_id": f"invalid-model-entry-{index}",
+                            "failure_summary": {
+                                "attempt_state": "failed",
+                                "first_failed_stage": "manifest-parse",
+                                "first_failed_classification": "invalid-manifest-entry",
+                                "error_signature": "Manifest entry was not a JSON object.",
+                                "prior_successful_gates": [],
+                                "source_owner": "fl-onboarding",
+                                "next_action": "Fix frozen manifest row shape and rerun.",
+                            },
+                        }
+                    )
+                    continue
+                per_model_results.append(
+                    _run_one_model(
+                        paths=paths,
+                        model_entry=model_entry,
+                        model_index=index,
+                        model_timeout_seconds=max(60, int(args.model_timeout_seconds)),
+                        poll_seconds=max(1, int(args.poll_seconds)),
+                    )
+                )
+
+        successful_rows = [
+            row
+            for row in per_model_results
+            if row.get("failure_summary", {}).get("attempt_state") == "succeeded"
+        ]
+        reuse_checks = _run_reuse_checks(paths, successful_rows)
+
+    round_outcome = _classify_round_outcome(
+        manifest_invariants=manifest_invariants,
+        environment_blockers=_required_environment_blockers(toolchain_probe),
+        model_results=per_model_results,
+        environment_fail_fast_triggered=environment_fail_fast_triggered,
+    )
     finished_utc = _now_utc_iso()
 
     final_snapshot = _snapshot_paths(paths)
@@ -1274,6 +1739,10 @@ def main() -> int:
                 "prior_successful_gates": failure_summary.get("prior_successful_gates"),
                 "source_owner": failure_summary.get("source_owner"),
                 "next_action": failure_summary.get("next_action"),
+                "preflight_recipe_status": failure_summary.get("preflight_recipe_status"),
+                "preflight_recipe_unregistered_expected": failure_summary.get(
+                    "preflight_recipe_unregistered_expected"
+                ),
                 "recipe_fingerprint": (
                     generated_record.get("recipe_fingerprint") if isinstance(generated_record, dict) else None
                 ),
@@ -1290,6 +1759,11 @@ def main() -> int:
                 "catalog_matches_count": generated_preview.get("foundry_catalog_matches_count"),
                 "recipe_registry_status": row.get("model_detail", {}).get("recipe_status"),
                 "preflight_ok": preflight.get("ok"),
+                "preflight_recipe_interpretation": (
+                    "expected_unregistered_generated_recipe"
+                    if failure_summary.get("preflight_recipe_unregistered_expected")
+                    else None
+                ),
                 "job_state": row.get("job", {}).get("state") if isinstance(row.get("job"), dict) else None,
                 "job_id": row.get("job", {}).get("job_id") if isinstance(row.get("job"), dict) else None,
                 "attempt_id": row.get("attempt", {}).get("attempt_id") if isinstance(row.get("attempt"), dict) else None,
@@ -1314,7 +1788,13 @@ def main() -> int:
         "models_total": len(per_model_results),
         "models_succeeded": success_count,
         "models_failed": len(per_model_results) - success_count,
-        "success_rate": f"{success_count}/{len(per_model_results)}",
+        "round_classification": round_outcome.get("round_classification"),
+        "baseline_valid": round_outcome.get("baseline_valid"),
+        "model_success_rate_applicable": round_outcome.get("model_success_rate_applicable"),
+        "success_rate": round_outcome.get("success_rate"),
+        "attempt_success_rate": round_outcome.get("attempt_success_rate"),
+        "environment_blockers": round_outcome.get("environment_blockers"),
+        "environment_fail_fast_triggered": round_outcome.get("environment_fail_fast_triggered"),
         "results": model_results_slim,
         "reuse_checks": reuse_checks,
     }
@@ -1328,12 +1808,14 @@ def main() -> int:
         "manifest_path": "evaluation/recipe-agent-v1/models.json",
         "manifest_sha256": hashlib.sha256(paths.manifest_path.read_bytes()).hexdigest(),
         "manifest_invariants": manifest_invariants,
+        "round_outcome": round_outcome,
         "frozen_cli": {
             "frozen_list": frozen_list,
             "frozen_validate": frozen_validate,
             "frozen_dry_run": frozen_dry_run,
         },
         "quality_profile": quality_profile,
+        "python_environment": toolchain_probe.get("python_runtime"),
         "toolchain_probe": toolchain_probe,
         "scratch_locations": {
             "root": f"scratch://round-1/{paths.run_id}",
@@ -1390,6 +1872,7 @@ def main() -> int:
         frozen_validate=frozen_validate,
         frozen_dry_run=frozen_dry_run,
         quality_profile=quality_profile,
+        round_outcome=_sanitize_obj(round_outcome, replacements),
         model_results=_sanitize_obj(per_model_results, replacements),
         reuse_checks=_sanitize_obj(reuse_checks, replacements),
     )
