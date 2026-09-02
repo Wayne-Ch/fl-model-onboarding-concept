@@ -338,6 +338,46 @@ class RegressedOptimizedTextBackend(EchoTextBackend):
         return super().infer(artifact=artifact, job=job, prompt=prompt, max_tokens=max_tokens)
 
 
+class BatchEchoTextBackend(EchoTextBackend):
+    def __init__(self) -> None:
+        self.infer_calls = 0
+        self.batch_calls: list[dict[str, object]] = []
+
+    def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        self.infer_calls += 1
+        return super().infer(artifact=artifact, job=job, prompt=prompt, max_tokens=max_tokens)
+
+    def infer_batch(self, *, artifact, job, prompts, max_tokens: int):  # noqa: ANN001
+        prompt_rows = list(prompts)
+        self.batch_calls.append(
+            {
+                "artifact_id": artifact.artifact_id,
+                "prompt_ids": [prompt_id for prompt_id, _ in prompt_rows],
+                "max_tokens": max_tokens,
+            }
+        )
+        outputs: list[str] = []
+        for _, prompt in prompt_rows:
+            quality_response = self._QUALITY_RESPONSES.get(prompt)
+            if quality_response is not None:
+                outputs.append(quality_response)
+            else:
+                outputs.append(f"{artifact.artifact_id}:{job.job_id}:{prompt}:{max_tokens}")
+        return tuple(outputs)
+
+
+class BatchBaselineTimeoutTextBackend(BatchEchoTextBackend):
+    def infer_batch(self, *, artifact, job, prompts, max_tokens: int):  # noqa: ANN001
+        if str(artifact.artifact_id).startswith("baseline-"):
+            raise RuntimeError("stage=prompt_timeout prompt_id=factual-red-planet")
+        return super().infer_batch(
+            artifact=artifact,
+            job=job,
+            prompts=prompts,
+            max_tokens=max_tokens,
+        )
+
+
 def _submission(model_id: str = "HuggingFaceTB/SmolLM2-1.7B-Instruct") -> BuildSubmission:
     return BuildSubmission(
         model_id=model_id,
@@ -612,6 +652,69 @@ def test_generated_recipe_attempt_success_promotes_and_enables_verified_reuse(tm
         service.close()
 
 
+def test_generated_recipe_attempt_uses_batch_quality_inference_and_records_split_summary(
+    tmp_path: Path,
+) -> None:
+    backend = BatchEchoTextBackend()
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        text_backend=backend,
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-batch-quality-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        expected_prompt_ids = [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit",
+        ]
+        deadline = time.time() + 5.0
+        while len(backend.batch_calls) < 2 and time.time() < deadline:
+            time.sleep(0.02)
+        assert backend.infer_calls == 0
+        assert len(backend.batch_calls) == 2
+        assert backend.batch_calls[0]["prompt_ids"] == expected_prompt_ids
+        assert backend.batch_calls[1]["prompt_ids"] == expected_prompt_ids
+        assert str(backend.batch_calls[0]["artifact_id"]).startswith("baseline-")
+        assert not str(backend.batch_calls[1]["artifact_id"]).startswith("baseline-")
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "succeeded"
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["metrics_ref"] is not None
+        quality_validation = attempt_status["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "verified"
+        capability = quality_validation["model_capability"]
+        assert capability["checks_passed"] == 4
+        assert capability["total_checks"] == 4
+        assert capability["confidence"]["level"] == "low"
+
+        evidence = json.loads(
+            (completed.request.workspace_root / "quality-validation-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        prompt_rows = evidence["per_prompt"]
+        assert [row["prompt_id"] for row in prompt_rows] == expected_prompt_ids
+        assert all(isinstance(row.get("baseline"), dict) for row in prompt_rows)
+        assert all(isinstance(row.get("optimized"), dict) for row in prompt_rows)
+    finally:
+        service.close()
+
+
 def test_generated_recipe_attempt_requires_distinct_baseline_package(tmp_path: Path) -> None:
     service = _service(
         tmp_path,
@@ -706,8 +809,12 @@ def test_generated_recipe_attempt_baseline_regression_blocks_promotion(tmp_path:
         quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
         assert quality_gate["status"] == "failed"
         assert "baseline-regression" in quality_gate["evidence_ref"]
+        quality_validation = attempt_status["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "blocked"
+        assert quality_validation["model_capability"]["checks_passed"] == 3
+        assert quality_validation["model_capability"]["total_checks"] == 4
         assert attempt_status["failure"]["classification"] == "validation_failed"
-        assert "optimized_failed_prompt" in attempt_status["failure"]["message"]
+        assert "baseline_passed_optimized_failed:arithmetic-addition-17-plus-28" in attempt_status["failure"]["message"]
     finally:
         service.close()
 
@@ -737,9 +844,46 @@ def test_generated_recipe_attempt_baseline_execution_unavailable_is_structured_f
         quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
         assert quality_gate["status"] == "unavailable"
         assert "baseline-unavailable" in quality_gate["evidence_ref"]
+        quality_validation = attempt_status["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "inconclusive"
+        assert quality_validation["model_capability"] is None
         assert attempt_status["failure"]["classification"] == "validation_failed"
         assert "Baseline quality prompt" in attempt_status["failure"]["message"]
         assert attempt_status["failure"]["source_owner"] == "fl-onboarding"
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_batch_timeout_is_attributed_to_baseline_prompt(
+    tmp_path: Path,
+) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        text_backend=BatchBaselineTimeoutTextBackend(),
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-baseline-batch-timeout-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "unavailable"
+        assert "baseline-unavailable" in quality_gate["evidence_ref"]
+        assert attempt_status["failure"]["classification"] == "validation_failed"
+        assert "prompt_timeout" in attempt_status["failure"]["message"]
+        assert "factual-red-planet" in attempt_status["failure"]["message"]
     finally:
         service.close()
 

@@ -113,6 +113,7 @@ class RecipeArgumentProvenance:
 class PromotionGateCheck:
     passed: bool
     evidence: str
+    metrics_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -579,10 +580,13 @@ def _promotion_to_payload(promotion: RecipePromotionRecord | None) -> dict[str, 
 
 
 def _gate_to_payload(gate: PromotionGateCheck) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "passed": gate.passed,
         "evidence": gate.evidence,
     }
+    if gate.metrics_ref is not None:
+        payload["metrics_ref"] = gate.metrics_ref
+    return payload
 
 
 def _validate_promotion_gate_evidence(gates: PromotionGateEvidence) -> None:
@@ -602,6 +606,10 @@ def _validate_promotion_gate_evidence(gates: PromotionGateEvidence) -> None:
         if not gate.evidence.strip():
             raise GeneratedRecipePromotionError(
                 f"Gate '{name}' is missing explicit evidence."
+            )
+        if gate.metrics_ref is not None and not gate.metrics_ref.strip():
+            raise GeneratedRecipePromotionError(
+                f"Gate '{name}' has an empty metrics_ref."
             )
 
 

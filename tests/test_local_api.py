@@ -596,6 +596,10 @@ def test_generated_recipe_preview_and_attempt_endpoints(tmp_path: Path) -> None:
         assert all(row["status"] == "passed" for row in attempt_body["gates"])
         quality_gate = next(row for row in attempt_body["gates"] if row["gate"] == "quality_validation")
         assert "baseline-passed" in quality_gate["evidence_ref"]
+        quality_validation = attempt_body["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "verified"
+        assert quality_validation["model_capability"]["checks_passed"] == 4
+        assert quality_validation["model_capability"]["total_checks"] == 4
 
         reuse_preview = client.get(
             "/api/recipes/generated/preview",
@@ -648,6 +652,9 @@ def test_generated_recipe_attempt_api_reports_baseline_not_run_gate(tmp_path: Pa
         quality_gate = next(row for row in attempt_body["gates"] if row["gate"] == "quality_validation")
         assert quality_gate["status"] == "not_run"
         assert "baseline-not-run" in quality_gate["evidence_ref"]
+        quality_validation = attempt_body["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "inconclusive"
+        assert quality_validation["model_capability"] is None
         assert attempt_body["failure"]["classification"] == "validation_failed"
         assert "Quality baseline not run" in attempt_body["failure"]["message"]
 

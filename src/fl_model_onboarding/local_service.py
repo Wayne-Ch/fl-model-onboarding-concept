@@ -137,6 +137,9 @@ _QUALITY_EVIDENCE_SCHEMA_VERSION = "1.0.0"
 _QUALITY_EVIDENCE_FILENAME = "quality-validation-evidence.json"
 _QUALITY_EVIDENCE_MAX_OUTPUT_CHARS = 512
 _QUALITY_EVIDENCE_MAX_PROMPT_CHARS = 256
+_QUALITY_METRICS_REF_RE = re.compile(
+    r"^quality-metrics://(?P<job_id>[0-9a-fA-F-]+)/(?P<filename>[^/\\]+)$"
+)
 _RECIPE_TOOLCHAIN = RecipeCompilerToolchain(
     mobius_version="0.1.0",
     olive_version="0.13.0",
@@ -1550,6 +1553,16 @@ class LocalOnboardingService:
     def _serialize_recipe_attempt(self, attempt: Any) -> dict[str, object]:
         with self._lock:
             job_id = self._attempt_to_build_job.get(attempt.attempt_id)
+            workspace_root = (
+                self._jobs[job_id].request.workspace_root
+                if job_id is not None and job_id in self._jobs
+                else None
+            )
+        quality_validation = self._quality_validation_summary_for_attempt(
+            attempt=attempt,
+            job_id=job_id,
+            workspace_root=workspace_root,
+        )
         return {
             "attempt_id": attempt.attempt_id,
             "idempotency_key": attempt.idempotency_key,
@@ -1591,6 +1604,191 @@ class LocalOnboardingService:
                 if attempt.failure is not None
                 else None
             ),
+            "quality_validation": quality_validation,
+        }
+
+    @staticmethod
+    def _recipe_integrity_status_from_gate_status(status: AttemptGateStatus) -> str:
+        if status == AttemptGateStatus.PASSED:
+            return "verified"
+        if status == AttemptGateStatus.FAILED:
+            return "blocked"
+        return "inconclusive"
+
+    def _quality_validation_summary_for_attempt(
+        self,
+        *,
+        attempt: Any,
+        job_id: str | None,
+        workspace_root: Path | None,
+    ) -> dict[str, object] | None:
+        quality_gate = next(
+            (row for row in attempt.gate_results if row.gate == AttemptGate.QUALITY_VALIDATION),
+            None,
+        )
+        if quality_gate is None:
+            return None
+        fallback_integrity_status = self._recipe_integrity_status_from_gate_status(
+            quality_gate.status
+        )
+        summary: dict[str, object] = {
+            "recipe_integrity": {"status": fallback_integrity_status},
+            "model_capability": None,
+        }
+        metrics_ref = quality_gate.metrics_ref
+        if metrics_ref is None:
+            return summary
+        payload = self._load_quality_validation_evidence_payload(
+            metrics_ref=metrics_ref,
+            expected_job_id=job_id,
+            workspace_root=workspace_root,
+        )
+        if payload is None:
+            return summary
+        summary["recipe_integrity"] = self._recipe_integrity_summary_from_payload(
+            payload=payload,
+            fallback_status=fallback_integrity_status,
+        )
+        summary["model_capability"] = self._model_capability_summary_from_payload(payload)
+        return summary
+
+    def _load_quality_validation_evidence_payload(
+        self,
+        *,
+        metrics_ref: str,
+        expected_job_id: str | None,
+        workspace_root: Path | None,
+    ) -> dict[str, object] | None:
+        match = _QUALITY_METRICS_REF_RE.fullmatch(metrics_ref.strip())
+        if match is None:
+            return None
+        ref_job_id = match.group("job_id")
+        if expected_job_id is not None and ref_job_id != expected_job_id:
+            return None
+        filename = match.group("filename")
+        if filename != _QUALITY_EVIDENCE_FILENAME:
+            return None
+        target_workspace = (
+            workspace_root
+            if workspace_root is not None
+            else workspace_root_for_job(ref_job_id, base_dir=self._workspace_base)
+        )
+        evidence_path = target_workspace / filename
+        if not evidence_path.is_file():
+            return None
+        try:
+            payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        return payload
+
+    @staticmethod
+    def _recipe_integrity_summary_from_payload(
+        *,
+        payload: dict[str, object],
+        fallback_status: str,
+    ) -> dict[str, object]:
+        summary: dict[str, object] = {"status": fallback_status}
+        recipe_raw = payload.get("recipe_verification")
+        if not isinstance(recipe_raw, dict):
+            return summary
+        status_raw = recipe_raw.get("status")
+        if isinstance(status_raw, str):
+            normalized = status_raw.strip().lower()
+            if normalized in {"verified", "blocked", "inconclusive"}:
+                summary["status"] = normalized
+        gate_status = recipe_raw.get("gate_status")
+        if isinstance(gate_status, str):
+            summary["gate_status"] = gate_status.strip().lower()
+        for field in (
+            "runtime_functional",
+            "baseline_available",
+            "regression_free",
+            "can_promote",
+        ):
+            value = recipe_raw.get(field)
+            if isinstance(value, bool):
+                summary[field] = value
+        failures = recipe_raw.get("integrity_failures")
+        if isinstance(failures, list):
+            summary["integrity_failures"] = [
+                str(entry) for entry in failures if isinstance(entry, str)
+            ]
+        return summary
+
+    @staticmethod
+    def _model_capability_summary_from_payload(
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        model_raw = payload.get("model_capability")
+        if isinstance(model_raw, dict):
+            checks_passed_raw = model_raw.get("checks_passed")
+            total_checks_raw = model_raw.get("total_checks")
+            if (
+                type(checks_passed_raw) is int
+                and checks_passed_raw >= 0
+                and type(total_checks_raw) is int
+                and total_checks_raw >= 0
+            ):
+                summary: dict[str, object] = {
+                    "checks_passed": checks_passed_raw,
+                    "total_checks": total_checks_raw,
+                    "warnings": [
+                        str(entry)
+                        for entry in model_raw.get("warnings", [])
+                        if isinstance(entry, str)
+                    ]
+                    if isinstance(model_raw.get("warnings"), list)
+                    else [],
+                }
+                confidence_raw = model_raw.get("confidence")
+                if isinstance(confidence_raw, dict):
+                    confidence: dict[str, object] = {}
+                    level = confidence_raw.get("level")
+                    if isinstance(level, str):
+                        normalized = level.strip().lower()
+                        if normalized in {"high", "low"}:
+                            confidence["level"] = normalized
+                    determinism_supported = confidence_raw.get("determinism_supported")
+                    if isinstance(determinism_supported, bool):
+                        confidence["determinism_supported"] = determinism_supported
+                    reasons_raw = confidence_raw.get("reasons")
+                    if isinstance(reasons_raw, list):
+                        confidence["reasons"] = [
+                            str(entry) for entry in reasons_raw if isinstance(entry, str)
+                        ]
+                    if confidence:
+                        summary["confidence"] = confidence
+                return summary
+
+        prompt_rows = payload.get("per_prompt")
+        if not isinstance(prompt_rows, list):
+            return None
+        checks_passed = 0
+        total_checks = 0
+        for row in prompt_rows:
+            if not isinstance(row, dict):
+                continue
+            optimized = row.get("optimized")
+            if not isinstance(optimized, dict):
+                continue
+            checks = optimized.get("checks")
+            if not isinstance(checks, dict):
+                continue
+            passed = checks.get("passed")
+            if not isinstance(passed, bool):
+                continue
+            total_checks += 1
+            if passed:
+                checks_passed += 1
+        if total_checks == 0:
+            return None
+        return {
+            "checks_passed": checks_passed,
+            "total_checks": total_checks,
+            "warnings": [],
         }
 
     def get_recipe_attempt(self, *, attempt_id: str) -> dict[str, object]:
@@ -1992,6 +2190,23 @@ class LocalOnboardingService:
                 evidence_ref=f"job://{job.job_id}/{gate.value}/passed",
             )
 
+    @staticmethod
+    def _model_capability_advisory_message(model_capability: Any) -> str:
+        summary = (
+            "Model capability advisory: "
+            f"{model_capability.checks_passed}/{model_capability.total_checks} checks passed."
+        )
+        warnings = list(model_capability.warnings)
+        if warnings:
+            preview = ", ".join(warnings[:3])
+            if len(warnings) > 3:
+                preview = f"{preview}, ..."
+            summary += f" Warnings: {preview}."
+        confidence = model_capability.confidence
+        if confidence.level.value == "low":
+            summary += " Confidence: low (determinism support is partial)."
+        return summary
+
     def _run_quality_validation(
         self,
         *,
@@ -2075,52 +2290,54 @@ class LocalOnboardingService:
                 message=f"Quality evidence capture failed: {exc}",
                 evidence_ref=f"{evidence_prefix}/metrics-persist-failed",
             )
-        baseline_gate = result.promotion_evidence.baseline_comparison_gate
-        if baseline_gate == GateState.MISSING:
+        recipe_verification = result.recipe_verification
+        if recipe_verification.gate_status == GateState.MISSING:
             return QualityValidationOutcome(
                 passed=False,
                 gate_status=AttemptGateStatus.NOT_RUN,
-                message="Quality baseline comparison was not recorded for this attempt.",
+                message="Recipe integrity is inconclusive because quality baseline comparison was not recorded.",
                 evidence_ref=f"{evidence_prefix}/baseline-not-run",
                 metrics_ref=metrics_ref,
             )
-        if baseline_gate == GateState.UNAVAILABLE:
+        if recipe_verification.gate_status == GateState.UNAVAILABLE:
             return QualityValidationOutcome(
                 passed=False,
                 gate_status=AttemptGateStatus.UNAVAILABLE,
-                message="Quality baseline comparison was unavailable for this attempt.",
+                message="Recipe integrity is inconclusive because quality baseline comparison was unavailable.",
                 evidence_ref=f"{evidence_prefix}/baseline-unavailable",
                 metrics_ref=metrics_ref,
             )
-        if result.promotion_evidence.can_promote:
+        advisory = self._model_capability_advisory_message(result.model_capability)
+        if recipe_verification.can_promote:
             return QualityValidationOutcome(
                 passed=True,
                 gate_status=AttemptGateStatus.PASSED,
                 message=(
-                    "Quality profile passed: "
-                    f"{result.promotion_evidence.profile_id}@{result.promotion_evidence.profile_version} "
-                    "(determinism enforcement is limited to max_tokens in runtime worker)."
+                    "Recipe integrity verified: "
+                    f"{result.promotion_evidence.profile_id}@{result.promotion_evidence.profile_version}. "
+                    f"{advisory}"
                 ),
                 evidence_ref=f"{evidence_prefix}/baseline-passed",
                 metrics_ref=metrics_ref,
             )
 
-        failures: list[str] = []
-        for row in result.optimized_functional.prompt_results:
-            if not row.passed:
-                failures.append(f"{row.prompt_id}:{'|'.join(row.failures)}")
-        if result.baseline_comparison is not None and not result.baseline_comparison.passed:
-            failures.append(f"baseline:{'|'.join(result.baseline_comparison.regressions)}")
-        if not failures:
-            failures.append("quality_validation_gate_not_promotable")
-        if baseline_gate == GateState.FAILED:
+        integrity_failures = list(recipe_verification.integrity_failures)
+        if not integrity_failures:
+            integrity_failures.append("recipe_integrity_blocked")
+        if any(
+            failure.startswith("baseline_passed_optimized_failed:")
+            or failure.startswith("optimized_structural_regression:")
+            for failure in integrity_failures
+        ):
             evidence_ref = f"{evidence_prefix}/baseline-regression"
+        elif not recipe_verification.runtime_functional:
+            evidence_ref = f"{evidence_prefix}/runtime-integrity-failed"
         else:
             evidence_ref = f"{evidence_prefix}/optimized-validation-failed"
         return QualityValidationOutcome(
             passed=False,
             gate_status=AttemptGateStatus.FAILED,
-            message="Quality validation failed: " + "; ".join(failures),
+            message=f"Recipe integrity blocked: {'; '.join(integrity_failures)}. {advisory}",
             evidence_ref=evidence_ref,
             metrics_ref=metrics_ref,
         )
@@ -2225,6 +2442,21 @@ class LocalOnboardingService:
             )
 
         baseline_comparison = quality_result.baseline_comparison
+        recipe_verification = quality_result.recipe_verification
+        model_capability = quality_result.model_capability
+        model_capability_prompt_rows = [
+            {
+                "prompt_id": row.prompt_id,
+                "category": row.category.value,
+                "baseline_status": row.baseline_status.value,
+                "optimized_status": row.optimized_status.value,
+                "comparison": row.comparison.value,
+                "baseline_failures": list(row.baseline_failures),
+                "optimized_failures": list(row.optimized_failures),
+                "warnings": list(row.warnings),
+            }
+            for row in model_capability.prompt_results
+        ]
         evidence_payload: dict[str, object] = {
             "schema_version": _QUALITY_EVIDENCE_SCHEMA_VERSION,
             "job_id": job.job_id,
@@ -2234,6 +2466,26 @@ class LocalOnboardingService:
                 self._quality_profile.deterministic_inference
             ),
             "unsupported_determinism_fields_reported_by_runtime": ["temperature", "seed"],
+            "recipe_verification": {
+                "runtime_functional": recipe_verification.runtime_functional,
+                "baseline_available": recipe_verification.baseline_available,
+                "regression_free": recipe_verification.regression_free,
+                "integrity_failures": list(recipe_verification.integrity_failures),
+                "gate_status": recipe_verification.gate_status.value,
+                "status": recipe_verification.status.value,
+                "can_promote": recipe_verification.can_promote,
+            },
+            "model_capability": {
+                "checks_passed": model_capability.checks_passed,
+                "total_checks": model_capability.total_checks,
+                "warnings": list(model_capability.warnings),
+                "confidence": {
+                    "level": model_capability.confidence.level.value,
+                    "determinism_supported": model_capability.confidence.determinism_supported,
+                    "reasons": list(model_capability.confidence.reasons),
+                },
+                "per_prompt": model_capability_prompt_rows,
+            },
             "promotion_evidence": {
                 "can_promote": quality_result.promotion_evidence.can_promote,
                 "functional_gate": quality_result.promotion_evidence.functional_gate.value,
@@ -2333,6 +2585,37 @@ class LocalOnboardingService:
         backend = self._text_inference_backend
         if backend is None:
             raise RuntimeError("Text inference backend is unavailable for quality validation.")
+        max_tokens = self._quality_profile.deterministic_inference.max_tokens
+        prompt_rows = tuple((prompt.prompt_id, prompt.prompt) for prompt in self._quality_profile.prompts)
+        batch_infer = getattr(backend, "infer_batch", None)
+        if callable(batch_infer):
+            try:
+                batch_outputs = batch_infer(
+                    artifact=artifact,
+                    job=job,
+                    prompts=prompt_rows,
+                    max_tokens=max_tokens,
+                )
+            except Exception as exc:
+                raise RuntimeError(f"{execution_label} quality prompt batch failed: {exc}") from exc
+            if not isinstance(batch_outputs, (list, tuple)):
+                raise RuntimeError(
+                    f"{execution_label} quality prompt batch returned invalid output container."
+                )
+            if len(batch_outputs) != len(prompt_rows):
+                raise RuntimeError(
+                    f"{execution_label} quality prompt batch returned {len(batch_outputs)} outputs for "
+                    f"{len(prompt_rows)} prompts."
+                )
+            return tuple(
+                PromptExecutionRecord(
+                    prompt_id=prompt_id,
+                    output_text=str(output_text),
+                    applied_determinism=self._quality_profile.deterministic_inference,
+                    unsupported_determinism_fields=("temperature", "seed"),
+                )
+                for (prompt_id, _), output_text in zip(prompt_rows, batch_outputs)
+            )
         outputs: list[PromptExecutionRecord] = []
         for prompt in self._quality_profile.prompts:
             try:
@@ -2340,7 +2623,7 @@ class LocalOnboardingService:
                     artifact=artifact,
                     job=job,
                     prompt=prompt.prompt,
-                    max_tokens=self._quality_profile.deterministic_inference.max_tokens,
+                    max_tokens=max_tokens,
                 )
             except Exception as exc:
                 raise RuntimeError(
@@ -2366,6 +2649,7 @@ class LocalOnboardingService:
             return PromotionGateCheck(
                 passed=row.status == AttemptGateStatus.PASSED,
                 evidence=row.evidence_ref,
+                metrics_ref=row.metrics_ref,
             )
 
         return PromotionGateEvidence(
@@ -2625,7 +2909,7 @@ class LocalOnboardingService:
             new_version="1.0.0",
             status_reason=(
                 "Verified recipe promoted after deterministic generated-attempt gates passed, "
-                "including quality validation baseline comparison."
+                "with recipe integrity verified and model capability advisory recorded in quality evidence."
             ),
         )
         self._recipe_attempt_store.promote_verified_recipe(

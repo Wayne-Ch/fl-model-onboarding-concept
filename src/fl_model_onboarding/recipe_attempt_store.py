@@ -2025,7 +2025,15 @@ def _normalize_promotion_gate_evidence(gates: PromotionGateEvidence) -> Promotio
                 f"Promotion gate '{gate.value}' must pass."
             )
         evidence = _sanitize_reference(check.evidence, path=f"promotion_evidence.{gate.value}.evidence")
-        normalized[gate.value] = PromotionGateCheck(passed=True, evidence=evidence)
+        metrics_ref = _sanitize_optional_reference(
+            check.metrics_ref,
+            path=f"promotion_evidence.{gate.value}.metrics_ref",
+        )
+        normalized[gate.value] = PromotionGateCheck(
+            passed=True,
+            evidence=evidence,
+            metrics_ref=metrics_ref,
+        )
     return PromotionGateEvidence(
         mobius_build=normalized[AttemptGate.MOBIUS_BUILD.value],
         olive_optimize=normalized[AttemptGate.OLIVE_OPTIMIZE.value],
@@ -2058,38 +2066,22 @@ def _assert_promotion_evidence_matches_attempt(
             raise RecipePromotionConflictError(
                 f"Promotion evidence mismatch for gate '{gate.value}'."
             )
+        expected_metrics_ref = getattr(promotion_evidence, gate.value).metrics_ref
+        if expected_metrics_ref is not None and attempt_gate.metrics_ref != expected_metrics_ref:
+            raise RecipePromotionConflictError(
+                f"Promotion metrics evidence mismatch for gate '{gate.value}'."
+            )
 
 
 def _promotion_evidence_to_payload(gates: PromotionGateEvidence) -> dict[str, object]:
     return {
-        "mobius_build": {
-            "passed": gates.mobius_build.passed,
-            "evidence": gates.mobius_build.evidence,
-        },
-        "olive_optimize": {
-            "passed": gates.olive_optimize.passed,
-            "evidence": gates.olive_optimize.evidence,
-        },
-        "onnx_validation": {
-            "passed": gates.onnx_validation.passed,
-            "evidence": gates.onnx_validation.evidence,
-        },
-        "ort_validation": {
-            "passed": gates.ort_validation.passed,
-            "evidence": gates.ort_validation.evidence,
-        },
-        "oga_validation": {
-            "passed": gates.oga_validation.passed,
-            "evidence": gates.oga_validation.evidence,
-        },
-        "fl_sdk_inference": {
-            "passed": gates.fl_sdk_inference.passed,
-            "evidence": gates.fl_sdk_inference.evidence,
-        },
-        "quality_validation": {
-            "passed": gates.quality_validation.passed,
-            "evidence": gates.quality_validation.evidence,
-        },
+        "mobius_build": _promotion_gate_to_payload(gates.mobius_build),
+        "olive_optimize": _promotion_gate_to_payload(gates.olive_optimize),
+        "onnx_validation": _promotion_gate_to_payload(gates.onnx_validation),
+        "ort_validation": _promotion_gate_to_payload(gates.ort_validation),
+        "oga_validation": _promotion_gate_to_payload(gates.oga_validation),
+        "fl_sdk_inference": _promotion_gate_to_payload(gates.fl_sdk_inference),
+        "quality_validation": _promotion_gate_to_payload(gates.quality_validation),
     }
 
 
@@ -2116,7 +2108,21 @@ def _promotion_gate_from_payload(payload: dict[str, object], gate: AttemptGate) 
         _coerce_str(check.get("evidence"), f"promotion_evidence.{gate.value}.evidence"),
         path=f"promotion_evidence.{gate.value}.evidence",
     )
-    return PromotionGateCheck(passed=True, evidence=evidence)
+    metrics_ref = _sanitize_optional_reference(
+        check.get("metrics_ref"),
+        path=f"promotion_evidence.{gate.value}.metrics_ref",
+    )
+    return PromotionGateCheck(passed=True, evidence=evidence, metrics_ref=metrics_ref)
+
+
+def _promotion_gate_to_payload(gate: PromotionGateCheck) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "passed": gate.passed,
+        "evidence": gate.evidence,
+    }
+    if gate.metrics_ref is not None:
+        payload["metrics_ref"] = gate.metrics_ref
+    return payload
 
 
 def _validate_record_payload(

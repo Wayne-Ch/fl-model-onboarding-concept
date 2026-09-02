@@ -8,11 +8,14 @@ from pathlib import Path
 import pytest
 
 from fl_model_onboarding.quality_validation import (
+    CapabilityComparisonStatus,
+    CapabilityConfidenceLevel,
     DEFAULT_TEXT_GENERATION_QUALITY_PROFILE,
     DeterministicInferenceConfig,
     GateState,
     PromptExecutionRecord,
     QualityMetrics,
+    RecipeIntegrityStatus,
     evaluate_quality_validation,
     load_quality_validation_profile_registry,
     quality_validation_profiles_path,
@@ -106,6 +109,15 @@ def test_quality_validation_passes_and_emits_promotable_evidence() -> None:
     assert result.baseline_functional.passed is True
     assert result.baseline_comparison is not None
     assert result.baseline_comparison.passed is True
+    assert result.recipe_verification.status == RecipeIntegrityStatus.VERIFIED
+    assert result.recipe_verification.runtime_functional is True
+    assert result.recipe_verification.baseline_available is True
+    assert result.recipe_verification.regression_free is True
+    assert result.recipe_verification.can_promote is True
+    assert result.model_capability.checks_passed == 4
+    assert result.model_capability.total_checks == 4
+    assert result.model_capability.warnings == ()
+    assert result.model_capability.confidence.level == CapabilityConfidenceLevel.HIGH
     assert result.promotion_evidence.functional_gate == GateState.PASSED
     assert result.promotion_evidence.baseline_comparison_gate == GateState.PASSED
     assert result.promotion_evidence.metrics_gate == GateState.RECORDED
@@ -117,8 +129,8 @@ def test_quality_validation_detects_baseline_pass_optimized_fail_regression() ->
     baseline = _passing_outputs(profile)
     optimized = _replace_output(
         _passing_outputs(profile),
-        "instruction-two-words-blue-river",
-        output_text="blue blue blue blue blue blue",
+        "format-json-answer-unit",
+        output_text="```json\n{\"answer\":12,\"unit\":\"cm\"}\n```",
     )
     result = evaluate_quality_validation(
         profile=profile,
@@ -130,8 +142,133 @@ def test_quality_validation_detects_baseline_pass_optimized_fail_regression() ->
     assert result.optimized_functional.passed is False
     assert result.baseline_comparison is not None
     assert result.baseline_comparison.passed is False
-    assert "optimized_failed_prompt:instruction-two-words-blue-river" in result.baseline_comparison.regressions
+    assert "optimized_failed_prompt:format-json-answer-unit" in result.baseline_comparison.regressions
+    assert any(
+        row.startswith("optimized_structural_regression:format-json-answer-unit:")
+        for row in result.baseline_comparison.regressions
+    )
+    assert result.recipe_verification.status == RecipeIntegrityStatus.BLOCKED
+    assert "baseline_passed_optimized_failed:format-json-answer-unit" in result.recipe_verification.integrity_failures
+    assert any(
+        row.startswith("optimized_structural_regression:format-json-answer-unit:")
+        for row in result.recipe_verification.integrity_failures
+    )
     assert result.promotion_evidence.can_promote is False
+
+
+def test_shared_absolute_failure_is_model_capability_advisory_only() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text="1728",
+    )
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text="1728",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is False
+    assert result.recipe_verification.status == RecipeIntegrityStatus.VERIFIED
+    assert result.recipe_verification.can_promote is True
+    assert result.promotion_evidence.can_promote is True
+    prompt = next(
+        row
+        for row in result.model_capability.prompt_results
+        if row.prompt_id == "factual-red-planet"
+    )
+    assert prompt.comparison == CapabilityComparisonStatus.MATCHED_FAIL
+    assert "shared_capability_failure" in prompt.warnings
+    assert "factual-red-planet:shared_capability_failure" in result.model_capability.warnings
+
+
+def test_optimized_improvement_and_shared_failure_are_capability_advisories() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _replace_output(
+            _passing_outputs(profile),
+            "arithmetic-addition-17-plus-28",
+            output_text="44",
+        ),
+        "instruction-two-words-blue-river",
+        output_text="blue",
+    )
+    optimized = _replace_output(
+        _replace_output(
+            _passing_outputs(profile),
+            "arithmetic-addition-17-plus-28",
+            output_text="45",
+        ),
+        "instruction-two-words-blue-river",
+        output_text="river",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.status == RecipeIntegrityStatus.VERIFIED
+    assert result.recipe_verification.can_promote is True
+    arithmetic = next(
+        row
+        for row in result.model_capability.prompt_results
+        if row.prompt_id == "arithmetic-addition-17-plus-28"
+    )
+    instruction = next(
+        row
+        for row in result.model_capability.prompt_results
+        if row.prompt_id == "instruction-two-words-blue-river"
+    )
+    assert arithmetic.comparison == CapabilityComparisonStatus.IMPROVED
+    assert "optimized_improved_over_baseline" in arithmetic.warnings
+    assert instruction.comparison == CapabilityComparisonStatus.DIVERGENT_FAIL
+    assert "divergent_capability_failure" in instruction.warnings
+
+
+def test_granite_style_shared_failure_and_unsupported_determinism_is_advisory() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        output_text="35",
+        unsupported=("temperature", "seed"),
+    )
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        output_text="25",
+        unsupported=("temperature", "seed"),
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.status == RecipeIntegrityStatus.VERIFIED
+    assert result.recipe_verification.can_promote is True
+    arithmetic = next(
+        row
+        for row in result.model_capability.prompt_results
+        if row.prompt_id == "arithmetic-addition-17-plus-28"
+    )
+    assert arithmetic.comparison == CapabilityComparisonStatus.MATCHED_FAIL
+    assert "shared_capability_failure" in arithmetic.warnings
+    assert result.model_capability.confidence.level == CapabilityConfidenceLevel.LOW
+    assert any(
+        "determinism_unsupported" in reason
+        for reason in result.model_capability.confidence.reasons
+    )
 
 
 @pytest.mark.parametrize(
@@ -157,6 +294,8 @@ def test_quality_validation_rejects_empty_repetitive_or_garbled_outputs(output_t
         require_baseline_comparison=True,
     )
     assert result.optimized_functional.passed is False
+    assert result.recipe_verification.runtime_functional is False
+    assert result.recipe_verification.status == RecipeIntegrityStatus.BLOCKED
     assert result.promotion_evidence.functional_gate == GateState.FAILED
 
 
@@ -247,7 +386,7 @@ def test_format_constraint_requires_valid_json_and_keys() -> None:
     assert "json_key_missing:unit" in row.failures
 
 
-def test_missing_determinism_record_fails_closed() -> None:
+def test_missing_determinism_record_lowers_confidence_without_blocking() -> None:
     profile = _profile()
     optimized = _replace_output(
         _passing_outputs(profile),
@@ -261,13 +400,20 @@ def test_missing_determinism_record_fails_closed() -> None:
         baseline_outputs=_passing_outputs(profile),
         require_baseline_comparison=True,
     )
-    assert result.optimized_functional.passed is False
+    assert result.optimized_functional.passed is True
+    assert result.recipe_verification.can_promote is True
+    assert result.promotion_evidence.can_promote is True
+    assert result.model_capability.confidence.level == CapabilityConfidenceLevel.LOW
     row = next(
         item
         for item in result.optimized_functional.prompt_results
         if item.prompt_id == "arithmetic-addition-17-plus-28"
     )
-    assert "determinism_not_recorded" in row.failures
+    assert row.determinism.recorded is False
+    assert any(
+        reason.endswith(":determinism_not_recorded")
+        for reason in result.model_capability.confidence.reasons
+    )
 
 
 def test_partial_determinism_support_is_recorded_not_silently_ignored() -> None:
@@ -299,8 +445,10 @@ def test_partial_determinism_support_is_recorded_not_silently_ignored() -> None:
     assert row.determinism.recorded is True
     assert row.determinism.fully_enforced is False
     assert row.determinism.unsupported_fields == ("seed",)
+    assert result.model_capability.confidence.level == CapabilityConfidenceLevel.LOW
+    assert any("determinism_unsupported" in reason for reason in result.model_capability.confidence.reasons)
     assert any(
-        "Runtime could not enforce all deterministic settings" in note
+        "deterministic inference settings were only partially enforced" in note
         for note in result.promotion_evidence.notes
     )
 
@@ -329,6 +477,10 @@ def test_missing_required_baseline_comparison_blocks_promotion() -> None:
         require_baseline_comparison=True,
     )
     assert result.baseline_comparison is None
+    assert result.recipe_verification.status == RecipeIntegrityStatus.INCONCLUSIVE
+    assert result.recipe_verification.baseline_available is False
+    assert result.recipe_verification.regression_free is False
+    assert "baseline_unavailable" in result.recipe_verification.integrity_failures
     assert result.promotion_evidence.baseline_comparison_gate == GateState.MISSING
     assert result.promotion_evidence.can_promote is False
 

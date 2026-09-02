@@ -18,6 +18,8 @@ from fl_model_onboarding.architecture_capabilities import (
 )
 from fl_model_onboarding.candidates import PHASE0_CANDIDATES
 from fl_model_onboarding.contracts import (
+    ArtifactKind,
+    BuildArtifact,
     BuildJob,
     BuildRequest,
     CandidateModality,
@@ -31,6 +33,7 @@ from fl_model_onboarding.contracts import (
 )
 from fl_model_onboarding.local_service import BuildSubmission, LocalOnboardingService
 from fl_model_onboarding.production_runner import (
+    FoundrySdkTextInferenceBackend,
     ProductionBuildStageRunner,
     SMOLLM2_REVISION,
     production_package_paths,
@@ -91,6 +94,46 @@ class ContractProcessRunner:
         elif "foundry-infer" in argv:
             stdout = json.dumps({"ok": True, "output": "OK"})
         return CommandResult(spec=spec, exit_code=0, stdout=stdout, stderr="")
+
+
+class BatchInferenceProcessRunner:
+    def __init__(self, *, fail_payload: dict[str, object] | None = None) -> None:
+        self.specs: list[CommandSpec] = []
+        self.cancel_events = []
+        self.request_payloads: list[dict[str, object]] = []
+        self.request_files: list[Path] = []
+        self._fail_payload = fail_payload
+
+    def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+        self.specs.append(spec)
+        self.cancel_events.append(cancel_event)
+        argv = spec.argv
+        if "foundry-infer-batch" not in argv:
+            raise AssertionError(f"Unexpected command in batch runner: {argv!r}")
+        request_file = Path(argv[argv.index("--request-file") + 1])
+        self.request_files.append(request_file)
+        payload = json.loads(request_file.read_text(encoding="utf-8"))
+        self.request_payloads.append(payload)
+        if self._fail_payload is not None:
+            return CommandResult(
+                spec=spec,
+                exit_code=1,
+                stdout=json.dumps(self._fail_payload),
+                stderr="",
+            )
+        prompts = payload.get("prompts")
+        assert isinstance(prompts, list)
+        results = [
+            {"prompt_id": str(row.get("prompt_id")), "output": f"out:{row.get('prompt_id')}"}
+            for row in prompts
+            if isinstance(row, dict)
+        ]
+        return CommandResult(
+            spec=spec,
+            exit_code=0,
+            stdout=json.dumps({"ok": True, "results": results}),
+            stderr="",
+        )
 
 
 class PinnedSnapshot:
@@ -392,6 +435,88 @@ def test_production_runner_uses_explicit_runtime_interpreter_for_worker_commands
     foundry_infer = next(spec for spec in runner.specs if "foundry-infer" in spec.argv)
     assert validate_runtime.argv[0] == str(explicit_python)
     assert foundry_infer.argv[0] == str(explicit_python)
+
+
+def test_foundry_inference_backend_batches_prompts_with_single_worker_call(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    request.workspace_root.mkdir(parents=True)
+    model_dir = tmp_path / "batch-model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "inference_model.json").write_text(
+        json.dumps({"Name": "batch-model"}),
+        encoding="utf-8",
+    )
+    artifact = BuildArtifact(
+        artifact_id="artifact-batch",
+        kind=ArtifactKind.MODEL,
+        path=model_dir,
+        description="batch test artifact",
+    )
+    job = BuildJob(job_id="batch-job", request=request)
+    runner = BatchInferenceProcessRunner()
+    backend = FoundrySdkTextInferenceBackend(runner, timeout_seconds=90)
+
+    outputs = backend.infer_batch(
+        artifact=artifact,
+        job=job,
+        prompts=(
+            ("prompt-a", "What is 17 + 28? Reply using only digits."),
+            ("prompt-b", "Which planet is known as the Red Planet? Reply with one word."),
+        ),
+        max_tokens=64,
+    )
+
+    assert outputs == ("out:prompt-a", "out:prompt-b")
+    assert len(runner.specs) == 1
+    spec = runner.specs[0]
+    assert "foundry-infer-batch" in spec.argv
+    assert spec.timeout_seconds == 195
+    payload = runner.request_payloads[0]
+    assert payload["per_prompt_timeout_seconds"] == 90
+    assert payload["batch_timeout_seconds"] == 180
+    prompts = payload["prompts"]
+    assert isinstance(prompts, list)
+    assert [row["prompt_id"] for row in prompts] == ["prompt-a", "prompt-b"]
+    assert [row["max_tokens"] for row in prompts] == [64, 64]
+    assert all(not path.exists() for path in runner.request_files)
+
+
+def test_foundry_inference_backend_batch_failure_surfaces_stage_and_prompt(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    request.workspace_root.mkdir(parents=True)
+    model_dir = tmp_path / "batch-model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "inference_model.json").write_text(
+        json.dumps({"Name": "batch-model"}),
+        encoding="utf-8",
+    )
+    artifact = BuildArtifact(
+        artifact_id="artifact-batch-fail",
+        kind=ArtifactKind.MODEL,
+        path=model_dir,
+        description="batch failure artifact",
+    )
+    job = BuildJob(job_id="batch-fail", request=request)
+    runner = BatchInferenceProcessRunner(
+        fail_payload={
+            "ok": False,
+            "error": "Batch quality inference prompt timed out.",
+            "failure_stage": "prompt_timeout",
+            "failed_prompt_id": "prompt-b",
+        }
+    )
+    backend = FoundrySdkTextInferenceBackend(runner, timeout_seconds=90)
+
+    with pytest.raises(RuntimeError, match="stage=prompt_timeout prompt_id=prompt-b"):
+        backend.infer_batch(
+            artifact=artifact,
+            job=job,
+            prompts=(
+                ("prompt-a", "What is 17 + 28? Reply using only digits."),
+                ("prompt-b", "Which planet is known as the Red Planet? Reply with one word."),
+            ),
+            max_tokens=64,
+        )
 
 
 def test_service_indexes_exact_revision_profile_after_runner_sdk_success(tmp_path: Path) -> None:

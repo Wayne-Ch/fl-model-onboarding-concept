@@ -34,6 +34,32 @@ class GateState(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class RecipeIntegrityStatus(StrEnum):
+    VERIFIED = "verified"
+    BLOCKED = "blocked"
+    INCONCLUSIVE = "inconclusive"
+
+
+class CapabilityCheckStatus(StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+    NOT_AVAILABLE = "not_available"
+
+
+class CapabilityComparisonStatus(StrEnum):
+    MATCHED_PASS = "matched_pass"
+    MATCHED_FAIL = "matched_fail"
+    IMPROVED = "improved"
+    REGRESSED = "regressed"
+    DIVERGENT_FAIL = "divergent_fail"
+    BASELINE_UNAVAILABLE = "baseline_unavailable"
+
+
+class CapabilityConfidenceLevel(StrEnum):
+    HIGH = "high"
+    LOW = "low"
+
+
 @dataclass(frozen=True)
 class DeterministicInferenceConfig:
     temperature: float
@@ -178,11 +204,52 @@ class PromotionEvidence:
 
 
 @dataclass(frozen=True)
+class RecipeVerificationResult:
+    runtime_functional: bool
+    baseline_available: bool
+    regression_free: bool
+    integrity_failures: tuple[str, ...]
+    gate_status: GateState
+    status: RecipeIntegrityStatus
+    can_promote: bool
+
+
+@dataclass(frozen=True)
+class ModelCapabilityPromptResult:
+    prompt_id: str
+    category: PromptCategory
+    baseline_status: CapabilityCheckStatus
+    optimized_status: CapabilityCheckStatus
+    comparison: CapabilityComparisonStatus
+    baseline_failures: tuple[str, ...]
+    optimized_failures: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ModelCapabilityConfidence:
+    level: CapabilityConfidenceLevel
+    determinism_supported: bool
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ModelCapabilityResult:
+    checks_passed: int
+    total_checks: int
+    warnings: tuple[str, ...]
+    confidence: ModelCapabilityConfidence
+    prompt_results: tuple[ModelCapabilityPromptResult, ...]
+
+
+@dataclass(frozen=True)
 class QualityValidationResult:
     profile_identity: str
     optimized_functional: FunctionalValidationResult
     baseline_functional: FunctionalValidationResult | None
     baseline_comparison: QuantizationComparisonResult | None
+    recipe_verification: RecipeVerificationResult
+    model_capability: ModelCapabilityResult
     metrics: MetricsCaptureResult
     promotion_evidence: PromotionEvidence
 
@@ -267,6 +334,18 @@ def evaluate_quality_validation(
             optimized=optimized_functional,
         )
 
+    recipe_verification = _evaluate_recipe_verification(
+        profile=profile,
+        optimized=optimized_functional,
+        baseline=baseline_functional,
+        require_baseline_comparison=require_baseline_comparison,
+    )
+    model_capability = _evaluate_model_capability(
+        profile=profile,
+        optimized=optimized_functional,
+        baseline=baseline_functional,
+    )
+
     metrics_gate = (
         GateState.RECORDED if (optimized_metrics is not None or baseline_metrics is not None) else GateState.UNAVAILABLE
     )
@@ -276,27 +355,25 @@ def evaluate_quality_validation(
         gate_state=metrics_gate,
     )
 
-    functional_gate = GateState.PASSED if optimized_functional.passed else GateState.FAILED
+    functional_gate = GateState.PASSED if recipe_verification.runtime_functional else GateState.FAILED
     if require_baseline_comparison:
-        if comparison is None:
+        if not recipe_verification.baseline_available:
             baseline_gate = GateState.MISSING
-        elif comparison.passed:
+        elif recipe_verification.regression_free:
             baseline_gate = GateState.PASSED
         else:
             baseline_gate = GateState.FAILED
     else:
         baseline_gate = GateState.UNAVAILABLE
-
-    required_gate_states = [functional_gate]
-    if require_baseline_comparison:
-        required_gate_states.append(baseline_gate)
-    can_promote = all(state == GateState.PASSED for state in required_gate_states)
+    can_promote = recipe_verification.can_promote
 
     notes: list[str] = []
     if metrics.gate_state == GateState.UNAVAILABLE:
         notes.append("Optional latency/memory/package metrics were not supplied.")
-    if optimized_functional.passed and _has_partial_determinism(optimized_functional):
-        notes.append("Runtime could not enforce all deterministic settings for at least one prompt.")
+    if model_capability.confidence.level == CapabilityConfidenceLevel.LOW:
+        notes.append(
+            "Model capability confidence is low because deterministic inference settings were only partially enforced."
+        )
 
     evidence = PromotionEvidence(
         profile_id=profile.profile_id,
@@ -313,6 +390,8 @@ def evaluate_quality_validation(
         optimized_functional=optimized_functional,
         baseline_functional=baseline_functional,
         baseline_comparison=comparison,
+        recipe_verification=recipe_verification,
+        model_capability=model_capability,
         metrics=metrics,
         promotion_evidence=evidence,
     )
@@ -320,7 +399,11 @@ def evaluate_quality_validation(
 
 def _has_partial_determinism(result: FunctionalValidationResult) -> bool:
     return any(
-        prompt_result.determinism.recorded and not prompt_result.determinism.fully_enforced
+        (
+            (not prompt_result.determinism.recorded)
+            or bool(prompt_result.determinism.unsupported_fields)
+            or bool(prompt_result.determinism.mismatched_fields)
+        )
         for prompt_result in result.prompt_results
     )
 
@@ -357,10 +440,6 @@ def _evaluate_functional(
             prompt_id=prompt.prompt_id,
         )
         failures = list(_evaluate_output(prompt.expected, row.output_text))
-        if not determinism.recorded:
-            failures.append("determinism_not_recorded")
-        for field in determinism.mismatched_fields:
-            failures.append(f"determinism_mismatch:{field}")
         passed = len(failures) == 0
         prompt_results.append(
             PromptCheckResult(
@@ -498,8 +577,6 @@ def _compare_quantization(
             "Inconsistent baseline/optimized prompt coverage in quantization comparison."
         )
     regressions: list[str] = []
-    if not baseline.passed:
-        regressions.append("baseline_failed_functional_checks")
     for prompt in profile.prompts:
         baseline_row = baseline_map[prompt.prompt_id]
         optimized_row = optimized_map[prompt.prompt_id]
@@ -507,10 +584,256 @@ def _compare_quantization(
             regressions.append(
                 f"optimized_failed_prompt:{prompt.prompt_id}"
             )
+        baseline_structural = set(_structural_failures(prompt=prompt, failures=baseline_row.failures))
+        optimized_structural = set(_structural_failures(prompt=prompt, failures=optimized_row.failures))
+        for failure_code in sorted(optimized_structural - baseline_structural):
+            regressions.append(
+                f"optimized_structural_regression:{prompt.prompt_id}:{failure_code}"
+            )
     return QuantizationComparisonResult(
         passed=(len(regressions) == 0),
         regressions=tuple(regressions),
     )
+
+
+def _evaluate_recipe_verification(
+    *,
+    profile: QualityValidationProfile,
+    optimized: FunctionalValidationResult,
+    baseline: FunctionalValidationResult | None,
+    require_baseline_comparison: bool,
+) -> RecipeVerificationResult:
+    optimized_map = {row.prompt_id: row for row in optimized.prompt_results}
+    baseline_map = (
+        {row.prompt_id: row for row in baseline.prompt_results}
+        if baseline is not None
+        else {}
+    )
+    integrity_failures: list[str] = []
+    runtime_failures = 0
+
+    for prompt in profile.prompts:
+        optimized_row = optimized_map[prompt.prompt_id]
+        for failure_code in _pathological_failures(optimized_row.failures):
+            runtime_failures += 1
+            _append_unique(
+                integrity_failures,
+                f"optimized_pathological_output:{prompt.prompt_id}:{failure_code}",
+            )
+
+    baseline_available = baseline is not None
+    if baseline is None and require_baseline_comparison:
+        _append_unique(integrity_failures, "baseline_unavailable")
+
+    if baseline is not None:
+        for prompt in profile.prompts:
+            baseline_row = baseline_map[prompt.prompt_id]
+            optimized_row = optimized_map[prompt.prompt_id]
+            if baseline_row.passed and not optimized_row.passed:
+                _append_unique(
+                    integrity_failures,
+                    f"baseline_passed_optimized_failed:{prompt.prompt_id}",
+                )
+            baseline_structural = set(_structural_failures(prompt=prompt, failures=baseline_row.failures))
+            optimized_structural = set(_structural_failures(prompt=prompt, failures=optimized_row.failures))
+            for failure_code in sorted(optimized_structural - baseline_structural):
+                _append_unique(
+                    integrity_failures,
+                    f"optimized_structural_regression:{prompt.prompt_id}:{failure_code}",
+                )
+
+    regression_failures = [
+        entry
+        for entry in integrity_failures
+        if entry.startswith("baseline_passed_optimized_failed:")
+        or entry.startswith("optimized_structural_regression:")
+    ]
+    regression_free = (
+        len(regression_failures) == 0 and (baseline_available or not require_baseline_comparison)
+    )
+    runtime_functional = runtime_failures == 0
+    can_promote = runtime_functional and regression_free
+
+    if can_promote:
+        status = RecipeIntegrityStatus.VERIFIED
+        gate_status = GateState.PASSED
+    elif require_baseline_comparison and not baseline_available:
+        status = RecipeIntegrityStatus.INCONCLUSIVE
+        gate_status = GateState.MISSING
+    else:
+        status = RecipeIntegrityStatus.BLOCKED
+        gate_status = GateState.FAILED
+
+    return RecipeVerificationResult(
+        runtime_functional=runtime_functional,
+        baseline_available=baseline_available,
+        regression_free=regression_free,
+        integrity_failures=tuple(integrity_failures),
+        gate_status=gate_status,
+        status=status,
+        can_promote=can_promote,
+    )
+
+
+def _evaluate_model_capability(
+    *,
+    profile: QualityValidationProfile,
+    optimized: FunctionalValidationResult,
+    baseline: FunctionalValidationResult | None,
+) -> ModelCapabilityResult:
+    optimized_map = {row.prompt_id: row for row in optimized.prompt_results}
+    baseline_map = (
+        {row.prompt_id: row for row in baseline.prompt_results}
+        if baseline is not None
+        else {}
+    )
+    prompt_rows: list[ModelCapabilityPromptResult] = []
+    warnings: list[str] = []
+    confidence_reasons: list[str] = []
+
+    checks_passed = 0
+    for prompt in profile.prompts:
+        optimized_row = optimized_map[prompt.prompt_id]
+        if optimized_row.passed:
+            checks_passed += 1
+        optimized_status = (
+            CapabilityCheckStatus.PASSED
+            if optimized_row.passed
+            else CapabilityCheckStatus.FAILED
+        )
+        _collect_determinism_reasons(
+            bucket=confidence_reasons,
+            run_label="optimized",
+            prompt_id=prompt.prompt_id,
+            determinism=optimized_row.determinism,
+        )
+        prompt_warnings: list[str] = []
+        if baseline is None:
+            baseline_status = CapabilityCheckStatus.NOT_AVAILABLE
+            comparison = CapabilityComparisonStatus.BASELINE_UNAVAILABLE
+            if not optimized_row.passed:
+                prompt_warnings.append("baseline_unavailable_for_comparison")
+        else:
+            baseline_row = baseline_map[prompt.prompt_id]
+            baseline_status = (
+                CapabilityCheckStatus.PASSED
+                if baseline_row.passed
+                else CapabilityCheckStatus.FAILED
+            )
+            _collect_determinism_reasons(
+                bucket=confidence_reasons,
+                run_label="baseline",
+                prompt_id=prompt.prompt_id,
+                determinism=baseline_row.determinism,
+            )
+            if baseline_row.passed and optimized_row.passed:
+                comparison = CapabilityComparisonStatus.MATCHED_PASS
+            elif baseline_row.passed and not optimized_row.passed:
+                comparison = CapabilityComparisonStatus.REGRESSED
+                prompt_warnings.append("optimized_regressed_vs_baseline")
+            elif not baseline_row.passed and optimized_row.passed:
+                comparison = CapabilityComparisonStatus.IMPROVED
+                prompt_warnings.append("optimized_improved_over_baseline")
+            else:
+                if baseline_row.failures == optimized_row.failures:
+                    comparison = CapabilityComparisonStatus.MATCHED_FAIL
+                    prompt_warnings.append("shared_capability_failure")
+                else:
+                    comparison = CapabilityComparisonStatus.DIVERGENT_FAIL
+                    prompt_warnings.append("divergent_capability_failure")
+            baseline_failures = baseline_row.failures
+        if baseline is None:
+            baseline_failures = ()
+        for code in prompt_warnings:
+            _append_unique(warnings, f"{prompt.prompt_id}:{code}")
+        prompt_rows.append(
+            ModelCapabilityPromptResult(
+                prompt_id=prompt.prompt_id,
+                category=prompt.category,
+                baseline_status=baseline_status,
+                optimized_status=optimized_status,
+                comparison=comparison,
+                baseline_failures=baseline_failures,
+                optimized_failures=optimized_row.failures,
+                warnings=tuple(prompt_warnings),
+            )
+        )
+
+    confidence_level = (
+        CapabilityConfidenceLevel.HIGH
+        if not confidence_reasons
+        else CapabilityConfidenceLevel.LOW
+    )
+    confidence = ModelCapabilityConfidence(
+        level=confidence_level,
+        determinism_supported=(confidence_level == CapabilityConfidenceLevel.HIGH),
+        reasons=tuple(confidence_reasons),
+    )
+    return ModelCapabilityResult(
+        checks_passed=checks_passed,
+        total_checks=len(profile.prompts),
+        warnings=tuple(warnings),
+        confidence=confidence,
+        prompt_results=tuple(prompt_rows),
+    )
+
+
+def _collect_determinism_reasons(
+    *,
+    bucket: list[str],
+    run_label: str,
+    prompt_id: str,
+    determinism: DeterminismCheckResult,
+) -> None:
+    if not determinism.recorded:
+        _append_unique(bucket, f"{run_label}:{prompt_id}:determinism_not_recorded")
+    if determinism.unsupported_fields:
+        _append_unique(
+            bucket,
+            (
+                f"{run_label}:{prompt_id}:determinism_unsupported:"
+                f"{','.join(determinism.unsupported_fields)}"
+            ),
+        )
+    if determinism.mismatched_fields:
+        _append_unique(
+            bucket,
+            (
+                f"{run_label}:{prompt_id}:determinism_mismatch:"
+                f"{','.join(determinism.mismatched_fields)}"
+            ),
+        )
+
+
+def _pathological_failures(failures: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        failure
+        for failure in failures
+        if failure in {"output_too_short", "output_garbled", "output_repetitive"}
+    )
+
+
+def _structural_failures(
+    *,
+    prompt: ValidationPrompt,
+    failures: tuple[str, ...],
+) -> tuple[str, ...]:
+    structural: list[str] = []
+    for failure in failures:
+        if failure == "json_format_invalid" or failure.startswith("json_key_missing:"):
+            structural.append(failure)
+            continue
+        if (
+            prompt.category == PromptCategory.OUTPUT_FORMAT
+            and failure.startswith("forbidden_token_present:")
+        ):
+            structural.append(failure)
+    return tuple(structural)
+
+
+def _append_unique(bucket: list[str], value: str) -> None:
+    if value not in bucket:
+        bucket.append(value)
 
 
 def _looks_repetitive(
@@ -820,12 +1143,18 @@ DEFAULT_TEXT_GENERATION_QUALITY_PROFILE = DEFAULT_QUALITY_VALIDATION_PROFILE_REG
 
 
 __all__ = [
+    "CapabilityCheckStatus",
+    "CapabilityComparisonStatus",
+    "CapabilityConfidenceLevel",
     "DEFAULT_QUALITY_VALIDATION_PROFILE_REGISTRY",
     "DEFAULT_TEXT_GENERATION_QUALITY_PROFILE",
     "DeterminismCheckResult",
     "DeterministicInferenceConfig",
     "FunctionalValidationResult",
     "GateState",
+    "ModelCapabilityConfidence",
+    "ModelCapabilityPromptResult",
+    "ModelCapabilityResult",
     "MetricsCaptureResult",
     "PromptCategory",
     "PromptCheckResult",
@@ -838,6 +1167,8 @@ __all__ = [
     "QualityValidationResult",
     "QualityValidationTask",
     "QuantizationComparisonResult",
+    "RecipeIntegrityStatus",
+    "RecipeVerificationResult",
     "ValidationPrompt",
     "evaluate_quality_validation",
     "load_quality_validation_profile_registry",

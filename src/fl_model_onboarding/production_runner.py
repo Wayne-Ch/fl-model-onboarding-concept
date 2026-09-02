@@ -53,6 +53,7 @@ _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _QUANTIZED_OUTPUT_RE = re.compile(r"^(?P<base>.+)_Q(?P<bits>\d+)$", re.IGNORECASE)
 _INDEXED_DECODER_OUTPUT_RE = re.compile(r"%(?:0?\d*)d")
 _MAX_COMMAND_FAILURE_DETAIL_CHARS = 1200
+_BATCH_INFERENCE_TIMEOUT_GRACE_SECONDS = 15
 
 
 def _result_payload(result: CommandResult) -> dict[str, object]:
@@ -824,8 +825,7 @@ class FoundrySdkTextInferenceBackend:
         if len(prompt) > 8192:
             raise ValueError("Inference prompt exceeds the 8192 character limit.")
         model_dir = artifact.path.resolve()
-        descriptor = json.loads((model_dir / "inference_model.json").read_text(encoding="utf-8"))
-        model_name = descriptor["Name"]
+        model_name = self._read_model_name(model_dir)
         request_file = job.request.workspace_root / f"inference-{uuid.uuid4().hex}.json"
         request_file.write_text(
             json.dumps({"prompt": prompt, "max_tokens": max_tokens}),
@@ -857,6 +857,113 @@ class FoundrySdkTextInferenceBackend:
         if not result.ok or payload.get("ok") is not True:
             raise RuntimeError(str(payload.get("error") or "Foundry Local inference failed."))
         return str(payload["output"])
+
+    def infer_batch(
+        self,
+        *,
+        artifact: BuildArtifact,
+        job: BuildJob,
+        prompts: Sequence[tuple[str, str]],
+        max_tokens: int,
+    ) -> tuple[str, ...]:
+        if isinstance(max_tokens, bool) or max_tokens <= 0:
+            raise ValueError("Inference max_tokens must be a positive integer.")
+        prompt_payload: list[dict[str, object]] = []
+        for prompt_id, prompt_text in prompts:
+            if not isinstance(prompt_id, str) or not prompt_id.strip():
+                raise ValueError("Inference prompt_id must be a non-empty string.")
+            if len(prompt_text) > 8192:
+                raise ValueError("Inference prompt exceeds the 8192 character limit.")
+            prompt_payload.append(
+                {
+                    "prompt_id": prompt_id.strip(),
+                    "prompt": prompt_text,
+                    "max_tokens": int(max_tokens),
+                }
+            )
+        if not prompt_payload:
+            return ()
+
+        model_dir = artifact.path.resolve()
+        model_name = self._read_model_name(model_dir)
+        batch_timeout = self._timeout_seconds * len(prompt_payload)
+        command_timeout = batch_timeout + _BATCH_INFERENCE_TIMEOUT_GRACE_SECONDS
+        request_file = job.request.workspace_root / f"inference-{uuid.uuid4().hex}.json"
+        request_file.write_text(
+            json.dumps(
+                {
+                    "prompts": prompt_payload,
+                    "per_prompt_timeout_seconds": self._timeout_seconds,
+                    "batch_timeout_seconds": batch_timeout,
+                }
+            ),
+            encoding="utf-8",
+        )
+        try:
+            try:
+                result = self._process_runner.run(
+                    CommandSpec(
+                        argv=(
+                            str(self._runtime_python_executable),
+                            "-m",
+                            "fl_model_onboarding.runtime_worker",
+                            "foundry-infer-batch",
+                            "--model-dir",
+                            str(model_dir),
+                            "--model-name",
+                            str(model_name),
+                            "--request-file",
+                            str(request_file),
+                        ),
+                        cwd=job.request.workspace_root,
+                        timeout_seconds=command_timeout,
+                    ),
+                    cancel_event=self._cancellation_event,
+                )
+            except TimeoutError as exc:
+                raise RuntimeError(
+                    "Foundry Local batch inference timed out before completing the prompt suite."
+                ) from exc
+        finally:
+            request_file.unlink(missing_ok=True)
+        payload = _result_payload(result)
+        if not result.ok or payload.get("ok") is not True:
+            detail = str(payload.get("error") or "Foundry Local batch inference failed.")
+            failure_stage = payload.get("failure_stage")
+            failed_prompt_id = payload.get("failed_prompt_id")
+            if isinstance(failure_stage, str) and failure_stage.strip():
+                detail += f" stage={failure_stage.strip()}"
+            if isinstance(failed_prompt_id, str) and failed_prompt_id.strip():
+                detail += f" prompt_id={failed_prompt_id.strip()}"
+            raise RuntimeError(detail)
+        results = payload.get("results")
+        if not isinstance(results, list):
+            raise RuntimeError("Foundry Local batch inference response is missing prompt results.")
+        if len(results) != len(prompt_payload):
+            raise RuntimeError(
+                "Foundry Local batch inference response did not return all requested prompt results."
+            )
+        outputs: list[str] = []
+        for index, row in enumerate(results):
+            if not isinstance(row, dict):
+                raise RuntimeError("Foundry Local batch inference result rows must be objects.")
+            expected_prompt_id = str(prompt_payload[index]["prompt_id"])
+            actual_prompt_id = row.get("prompt_id")
+            if actual_prompt_id != expected_prompt_id:
+                raise RuntimeError(
+                    "Foundry Local batch inference response prompt order mismatch "
+                    f"(expected '{expected_prompt_id}', got '{actual_prompt_id}')."
+                )
+            outputs.append(str(row.get("output") or ""))
+        return tuple(outputs)
+
+    @staticmethod
+    def _read_model_name(model_dir: Path) -> str:
+        descriptor = json.loads((model_dir / "inference_model.json").read_text(encoding="utf-8"))
+        model_name = descriptor.get("Name")
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise RuntimeError(f"Model descriptor is missing non-empty Name in '{model_dir}'.")
+        return model_name.strip()
 
 
 class ProductionBuildStageRunner:

@@ -1,4 +1,15 @@
-import { ApiParseError, asRecord, readBoolean, readNumber, readOptionalString, readRecord, readString, readStringArray, readUnknown } from "./runtime";
+import {
+  ApiParseError,
+  asRecord,
+  readBoolean,
+  readNumber,
+  readOptionalBoolean,
+  readOptionalString,
+  readRecord,
+  readString,
+  readStringArray,
+  readUnknown
+} from "./runtime";
 import { createFixtureTransport, type Transport } from "./fixtureServer";
 import type {
   ApiClient,
@@ -14,9 +25,12 @@ import type {
   HealthSnapshot,
   JobEvent,
   ModelDetail,
+  ModelCapabilitySummary,
   ModelPreflight,
   ModelSummary,
   ModelTask,
+  RecipeAttemptQualityValidation,
+  RecipeIntegritySummary,
   RecipeAttemptStatus,
   RecipeStatus,
   SupportedOptimization,
@@ -338,6 +352,85 @@ function parseGeneratedRecipePreview(input: unknown): GeneratedRecipePreview | u
   };
 }
 
+function parseRecipeIntegritySummary(
+  input: unknown
+): RecipeIntegritySummary | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const record = asRecord(input, "recipe integrity summary");
+  const statusRaw = readOptionalString(record, ["status"])?.toLowerCase();
+  if (statusRaw !== "verified" && statusRaw !== "blocked" && statusRaw !== "inconclusive") {
+    return undefined;
+  }
+  const gateStatusRaw = readOptionalString(record, ["gate_status"])?.toLowerCase();
+  const gateStatus =
+    gateStatusRaw === "passed" ||
+    gateStatusRaw === "failed" ||
+    gateStatusRaw === "missing" ||
+    gateStatusRaw === "unavailable"
+      ? gateStatusRaw
+      : undefined;
+  const integrityFailures = readStringArray(record, ["integrity_failures"]);
+  return {
+    status: statusRaw,
+    gateStatus,
+    runtimeFunctional: readOptionalBoolean(record, ["runtime_functional"]),
+    baselineAvailable: readOptionalBoolean(record, ["baseline_available"]),
+    regressionFree: readOptionalBoolean(record, ["regression_free"]),
+    canPromote: readOptionalBoolean(record, ["can_promote"]),
+    integrityFailures: integrityFailures.length > 0 ? integrityFailures : undefined
+  };
+}
+
+function parseModelCapabilitySummary(
+  input: unknown
+): ModelCapabilitySummary | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const record = asRecord(input, "model capability summary");
+  const checksPassed = readNumber(record, ["checks_passed"]);
+  const totalChecks = readNumber(record, ["total_checks"]);
+  if (checksPassed === undefined || totalChecks === undefined) {
+    return undefined;
+  }
+  const confidenceRecord = readRecord(record, ["confidence"]);
+  return {
+    checksPassed,
+    totalChecks,
+    warnings: readStringArray(record, ["warnings"]),
+    confidence: confidenceRecord
+      ? {
+          level:
+            readOptionalString(confidenceRecord, ["level"]) === "high" ||
+            readOptionalString(confidenceRecord, ["level"]) === "low"
+              ? (readOptionalString(confidenceRecord, ["level"]) as "high" | "low")
+              : undefined,
+          determinismSupported: readOptionalBoolean(confidenceRecord, ["determinism_supported"]),
+          reasons: readStringArray(confidenceRecord, ["reasons"])
+        }
+      : undefined
+  };
+}
+
+function parseAttemptQualityValidation(
+  input: unknown
+): RecipeAttemptQualityValidation | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const record = asRecord(input, "attempt quality validation");
+  const recipeIntegrity = parseRecipeIntegritySummary(readUnknown(record, ["recipe_integrity"]));
+  if (!recipeIntegrity) {
+    return undefined;
+  }
+  return {
+    recipeIntegrity,
+    modelCapability: parseModelCapabilitySummary(readUnknown(record, ["model_capability"]))
+  };
+}
+
 function parseRecipeAttempt(input: unknown): RecipeAttemptStatus {
   const record = asRecord(input, "recipe attempt");
   const gatesRaw = readUnknown(record, ["gates"]);
@@ -345,13 +438,13 @@ function parseRecipeAttempt(input: unknown): RecipeAttemptStatus {
     ? gatesRaw.map((row): RecipeAttemptStatus["gates"][number] => {
         const gate = asRecord(row, "recipe attempt gate");
         const status = readString(gate, ["status"], "failed");
-      const gateStatus: RecipeAttemptStatus["gates"][number]["status"] =
-        status === "passed" || status === "failed" || status === "not_run" || status === "unavailable"
-          ? status
-          : "failed";
-      const sequence = readNumber(gate, ["sequence"]);
-      return {
-        sequence: sequence ?? 0,
+        const gateStatus: RecipeAttemptStatus["gates"][number]["status"] =
+          status === "passed" || status === "failed" || status === "not_run" || status === "unavailable"
+            ? status
+            : "failed";
+        const sequence = readNumber(gate, ["sequence"]);
+        return {
+          sequence: sequence ?? 0,
           gate: readString(gate, ["gate"]),
           status: gateStatus,
           evidenceRef: readString(gate, ["evidence_ref"]),
@@ -368,6 +461,7 @@ function parseRecipeAttempt(input: unknown): RecipeAttemptStatus {
     state: readString(record, ["state"]) as RecipeAttemptStatus["state"],
     buildJobId: readOptionalString(record, ["build_job_id"]) ?? undefined,
     gates,
+    qualityValidation: parseAttemptQualityValidation(readUnknown(record, ["quality_validation"])),
     failure: failureRecord
       ? {
           classification: readString(failureRecord, ["classification"]),

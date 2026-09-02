@@ -52,6 +52,44 @@ function isTerminalStage(stage: string): boolean {
   return stage === "succeeded" || stage === "failed" || stage === "cancelled";
 }
 
+function recipeIntegrityStatusForAttempt(
+  attempt: RecipeAttemptStatus
+): "verified" | "blocked" | "inconclusive" {
+  const explicit = attempt.qualityValidation?.recipeIntegrity.status;
+  if (explicit) {
+    return explicit;
+  }
+  const qualityGate = attempt.gates.find((gate) => gate.gate === "quality_validation");
+  if (qualityGate?.status === "passed") {
+    return "verified";
+  }
+  if (qualityGate?.status === "failed") {
+    return "blocked";
+  }
+  return "inconclusive";
+}
+
+function recipeIntegrityLabel(status: "verified" | "blocked" | "inconclusive"): string {
+  if (status === "verified") {
+    return "Verified";
+  }
+  if (status === "blocked") {
+    return "Blocked";
+  }
+  return "Inconclusive";
+}
+
+function modelCapabilityHeadline(
+  modelCapability: { checksPassed: number; totalChecks: number; warnings: string[] } | undefined
+): string {
+  if (!modelCapability) {
+    return "Not recorded";
+  }
+  const warningCount = modelCapability.warnings.length;
+  const warningSuffix = warningCount > 0 ? ` + ${warningCount} warning${warningCount === 1 ? "" : "s"}` : "";
+  return `${modelCapability.checksPassed}/${modelCapability.totalChecks} checks passed${warningSuffix}`;
+}
+
 function createIdempotencyKey(): string {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -958,6 +996,25 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             <p>
               <strong>Recipe fingerprint:</strong> {currentAttempt.recipeFingerprint}
             </p>
+            <p>
+              <strong>Recipe integrity:</strong>{" "}
+              {recipeIntegrityLabel(recipeIntegrityStatusForAttempt(currentAttempt))}
+            </p>
+            <p>
+              <strong>Model capability:</strong>{" "}
+              {modelCapabilityHeadline(currentAttempt.qualityValidation?.modelCapability)}
+            </p>
+            {currentAttempt.qualityValidation?.modelCapability?.warnings.length ? (
+              <p className="muted">
+                <strong>Capability warnings:</strong>{" "}
+                {currentAttempt.qualityValidation.modelCapability.warnings.join(", ")}
+              </p>
+            ) : null}
+            {currentAttempt.qualityValidation?.modelCapability?.confidence?.level === "low" ? (
+              <p className="muted">
+                <strong>Capability confidence:</strong> low
+              </p>
+            ) : null}
             {currentAttempt.gates.length > 0 ? (
               <table className="event-table">
                 <thead>

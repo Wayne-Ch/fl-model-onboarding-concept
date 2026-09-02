@@ -997,6 +997,70 @@ components:
         next_action:
           type: string
 
+    RecipeIntegritySummary:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [verified, blocked, inconclusive]
+        gate_status:
+          type: string
+          enum: [passed, failed, missing, unavailable]
+        runtime_functional:
+          type: boolean
+        baseline_available:
+          type: boolean
+        regression_free:
+          type: boolean
+        can_promote:
+          type: boolean
+        integrity_failures:
+          type: array
+          items:
+            type: string
+
+    ModelCapabilityConfidenceSummary:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [high, low]
+        determinism_supported:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+
+    ModelCapabilitySummary:
+      type: object
+      required: [checks_passed, total_checks, warnings]
+      properties:
+        checks_passed:
+          type: integer
+          minimum: 0
+        total_checks:
+          type: integer
+          minimum: 0
+        warnings:
+          type: array
+          items:
+            type: string
+        confidence:
+          $ref: "#/components/schemas/ModelCapabilityConfidenceSummary"
+
+    RecipeAttemptQualityValidation:
+      type: object
+      required: [recipe_integrity]
+      properties:
+        recipe_integrity:
+          $ref: "#/components/schemas/RecipeIntegritySummary"
+        model_capability:
+          oneOf:
+            - $ref: "#/components/schemas/ModelCapabilitySummary"
+            - type: "null"
+
     RecipeAttempt:
       type: object
       required:
@@ -1049,6 +1113,10 @@ components:
         failure:
           oneOf:
             - $ref: "#/components/schemas/RecipeAttemptFailure"
+            - type: "null"
+        quality_validation:
+          oneOf:
+            - $ref: "#/components/schemas/RecipeAttemptQualityValidation"
             - type: "null"
 
     GeneratedRecipeAttemptCreateResponse:

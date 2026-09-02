@@ -90,6 +90,12 @@
         },
         "evidence": {
           "type": "string"
+        },
+        "metrics_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false

@@ -341,6 +341,27 @@ describe("api client", () => {
                   finished_utc: "2026-01-01T00:00:05Z"
                 }
               ],
+              quality_validation: {
+                recipe_integrity: {
+                  status: "blocked",
+                  gate_status: "failed",
+                  runtime_functional: true,
+                  baseline_available: true,
+                  regression_free: false,
+                  can_promote: false,
+                  integrity_failures: ["baseline_passed_optimized_failed:factual-red-planet"]
+                },
+                model_capability: {
+                  checks_passed: 3,
+                  total_checks: 4,
+                  warnings: ["factual-red-planet:shared_capability_failure"],
+                  confidence: {
+                    level: "low",
+                    determinism_supported: false,
+                    reasons: ["optimized:factual-red-planet:determinism_unsupported:seed"]
+                  }
+                }
+              },
               failure: {
                 classification: "validation_failed",
                 stage: "succeeded",
@@ -372,5 +393,10 @@ describe("api client", () => {
     expect(response.attempt.gates[1].status).toBe("unavailable");
     expect(response.attempt.gates[2].status).toBe("not_run");
     expect(response.attempt.failure?.sourceOwner).toBe("fl-onboarding");
+    expect(response.attempt.qualityValidation?.recipeIntegrity.status).toBe("blocked");
+    expect(response.attempt.qualityValidation?.modelCapability?.checksPassed).toBe(3);
+    expect(response.attempt.qualityValidation?.modelCapability?.warnings[0]).toBe(
+      "factual-red-planet:shared_capability_failure"
+    );
   });
 });

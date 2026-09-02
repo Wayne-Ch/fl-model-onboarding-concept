@@ -516,6 +516,11 @@ describe("OnboardingShell", () => {
           finishedUtc: "2026-01-01T00:00:03Z"
         }
       ],
+      qualityValidation: {
+        recipeIntegrity: {
+          status: "inconclusive"
+        }
+      },
       failure: {
         classification: "validation_failed",
         stage: "succeeded",
@@ -547,6 +552,8 @@ describe("OnboardingShell", () => {
     await screen.findByText("Recipe attempt gates");
     expect(screen.getByText("quality_validation")).toBeInTheDocument();
     expect(screen.getByText("unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Inconclusive")).toBeInTheDocument();
+    expect(screen.getByText("Not recorded")).toBeInTheDocument();
     expect(screen.getByText(/Quality baseline unavailable/)).toBeInTheDocument();
   });
 
@@ -578,7 +585,22 @@ describe("OnboardingShell", () => {
           startedUtc: "2026-01-01T00:00:02Z",
           finishedUtc: "2026-01-01T00:00:03Z"
         }
-      ]
+      ],
+      qualityValidation: {
+        recipeIntegrity: {
+          status: "verified"
+        },
+        modelCapability: {
+          checksPassed: 3,
+          totalChecks: 4,
+          warnings: ["factual-red-planet:shared_capability_failure"],
+          confidence: {
+            level: "low",
+            determinismSupported: false,
+            reasons: ["optimized:factual-red-planet:determinism_unsupported:seed"]
+          }
+        }
+      }
     }));
     const client = createClient({
       startGeneratedRecipeAttempt,
@@ -600,6 +622,9 @@ describe("OnboardingShell", () => {
     await user.click(await screen.findByRole("button", { name: "Run automatic recipe attempt" }));
 
     await screen.findByText("Recipe attempt gates");
+    expect(screen.getByText("Verified")).toBeInTheDocument();
+    expect(screen.getByText("3/4 checks passed + 1 warning")).toBeInTheDocument();
+    expect(screen.getByText(/factual-red-planet:shared_capability_failure/)).toBeInTheDocument();
     expect(screen.getByText("quality://job-1/quality_validation/baseline-passed")).toBeInTheDocument();
     expect(screen.getByText("passed")).toBeInTheDocument();
   });

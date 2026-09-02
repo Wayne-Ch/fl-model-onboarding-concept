@@ -85,12 +85,41 @@ export interface RecipeAttemptGate {
   finishedUtc: string;
 }
 
+export interface RecipeIntegritySummary {
+  status: "verified" | "blocked" | "inconclusive";
+  gateStatus?: "passed" | "failed" | "missing" | "unavailable";
+  runtimeFunctional?: boolean;
+  baselineAvailable?: boolean;
+  regressionFree?: boolean;
+  canPromote?: boolean;
+  integrityFailures?: string[];
+}
+
+export interface ModelCapabilityConfidenceSummary {
+  level?: "high" | "low";
+  determinismSupported?: boolean;
+  reasons?: string[];
+}
+
+export interface ModelCapabilitySummary {
+  checksPassed: number;
+  totalChecks: number;
+  warnings: string[];
+  confidence?: ModelCapabilityConfidenceSummary;
+}
+
+export interface RecipeAttemptQualityValidation {
+  recipeIntegrity: RecipeIntegritySummary;
+  modelCapability?: ModelCapabilitySummary;
+}
+
 export interface RecipeAttemptStatus {
   attemptId: string;
   recipeFingerprint: string;
   state: "generated" | "running" | "succeeded" | "failed" | "cancelled";
   buildJobId?: string;
   gates: RecipeAttemptGate[];
+  qualityValidation?: RecipeAttemptQualityValidation;
   failure?: {
     classification: string;
     stage: string;
