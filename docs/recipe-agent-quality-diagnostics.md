@@ -16,36 +16,38 @@ required.
 
 | Prompt | Category | Optimized failures | Baseline also failed? | Classification |
 |---|---|---|---|---|
-| arithmetic-addition-17-plus-28 | arithmetic | exact_match_failed, max_words_exceeded | Yes | **Model capability** |
-| instruction-two-words-blue-river | instruction | max_words_exceeded | Yes (inferred) | **Model capability** |
+| arithmetic-addition-17-plus-28 | arithmetic | exact_match_failed, max_words_exceeded | Yes | **Baseline functional failure** |
+| instruction-two-words-blue-river | instruction | max_words_exceeded | Yes | **Baseline functional failure** |
 | format-json-answer-unit | output-format | forbidden_token_present:\`\`\`, json_format_invalid | **No — baseline passed** | **Quantization regression** |
 | factual-red-planet | factual-recall | _(none)_ | N/A (both passed) | Passed |
 
-**Diagnosis:** 1 genuine INT4 quantization regression (JSON format — optimized wraps JSON in
-markdown code fences, baseline did not). 2 model capability limitations (arithmetic, word count).
-The JSON regression is partially an evaluator strictness issue: `_parse_json_object` does raw
-`json.loads()` without stripping markdown fences, which is common instruction-model behavior.
+**Diagnosis:** 1 genuine INT4 quantization regression (JSON format — optimized introduced
+markdown code fences; the forbidden_token contract independently rejects \`\`\` even if the
+JSON parser were fence-aware). 2 baseline functional failures where both FP32 and INT4 failed
+(arithmetic, instruction word count) — not quantization regressions. Without retained raw
+output text, the detailed root cause for the baseline failures (model capability vs
+prompt/template vs inference plumbing) is unproven.
 
-**Path to 5/5:** Even with an evaluator fix for JSON fences, SmolLM2-360M would still fail
-arithmetic and likely instruction word-count. This 360M model has a genuine quality ceiling.
-It remains in the model set; path to full pass requires a higher-capability source model at
-this scale.
+**Path forward:** SmolLM2-360M fails 3 of 4 prompts. It remains in the model set. A bounded
+rerun with output capture is the prerequisite for further root-cause analysis.
 
 ## Granite-3.2-2B-Instruct
 
 | Prompt | Category | Optimized failures | Baseline also failed? | Classification |
 |---|---|---|---|---|
-| arithmetic-addition-17-plus-28 | arithmetic | exact_match_failed, relevance_keyword_missing | Yes | **Model capability** |
+| arithmetic-addition-17-plus-28 | arithmetic | exact_match_failed, relevance_keyword_missing | Yes | **Baseline functional failure** |
 | factual-red-planet | factual-recall | _(none)_ | N/A (both passed) | Passed |
 | instruction-two-words-blue-river | instruction | _(none)_ | N/A (both passed) | Passed |
 | format-json-answer-unit | output-format | _(none)_ | N/A (both passed) | Passed |
 
-**Diagnosis:** Zero quantization regressions. The single failure is arithmetic — both FP32
-baseline and INT4 optimized produce a wrong answer (45 not present at all). This is a source
-model limitation.
+**Diagnosis:** Zero quantization regressions. The single failure is a baseline functional
+failure — both FP32 baseline and INT4 optimized failed identically.
+`relevance_keyword_missing` specifically establishes that the answer token "45" is absent from
+the output (wrong answer). Without retained raw output text, root cause beyond wrong-answer is
+unproven.
 
-**Path to 5/5:** Granite passes 3/4 with no optimization-caused degradation. Only arithmetic
-blocks; this requires the source model to improve, not a pipeline fix.
+**Path forward:** Granite passes 3/4 with zero optimization-caused degradation. A bounded
+rerun with output capture is needed to establish root cause for the arithmetic failure.
 
 ## Cross-cutting findings
 
@@ -60,21 +62,21 @@ affects cross-run reproducibility but not within-run baseline-vs-optimized fairn
 ### Prompt fairness (0.36B–3B range)
 - **Factual recall (Red Planet):** Fair — all models expected to pass.
 - **Instruction following (two words):** Strict but fair — prompt explicitly says "exactly two words."
-- **JSON format:** Fair intent, but evaluator penalizes common markdown-wrapping behavior.
-- **Arithmetic (17+28):** Legitimate bar, but hardest for sub-1B models.
+- **JSON format:** Requires clean JSON without markdown wrapping; legitimate contract.
+- **Arithmetic (17+28):** Legitimate functional bar.
 
 ## Recommendations
 
 | Action | Scope | Detail |
 |---|---|---|
-| **Fix evaluator** | `_parse_json_object` | Strip markdown code fences before `json.loads()`. Generic fix, not model-specific. |
-| **Keep arithmetic failure** | Both models | Legitimate model capability limitation. |
-| **Keep instruction failure** | SmolLM2 only | Legitimate capability limitation at 360M. |
-| **Bounded rerun** | Both models | Capture verbatim outputs. Apply JSON-fence fix first, then rerun. |
+| **Keep all failures** | Both models | All current failures are legitimate under the existing quality contract. |
+| **Bounded rerun** | Both models | Capture verbatim baseline + optimized outputs to establish root cause for baseline functional failures. |
 
-## Required next steps
+## Next round harness requirement
 
-1. Implement `evaluator-json-fence-strip` generic fix in `quality_validation._parse_json_object`.
-2. Bounded inference rerun with output capture for SmolLM2 and Granite.
-3. Confirm SmolLM2 JSON prompt passes with fix (would reduce failures from 3→2).
-4. Full 5-model rerun after evaluator fix is merged.
+The next round harness must retain **bounded sanitized baseline and optimized output text** per
+quality prompt, plus determinism enforcement metadata, in committed artifacts. This enables
+root-cause analysis without requiring a rerun. Required fields per prompt:
+`prompt_id`, `baseline_output_text`, `optimized_output_text`, `applied_determinism`,
+`unsupported_determinism_fields`. Truncate outputs to max_tokens limit; strip absolute paths.
+No model-specific prompt changes.
