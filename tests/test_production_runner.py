@@ -8,6 +8,8 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
+import pytest
+
 from fl_model_onboarding.adapters.interfaces import CommandResult, CommandSpec
 from fl_model_onboarding.architecture_capabilities import (
     load_architecture_capability_registry,
@@ -115,6 +117,25 @@ class GenericSnapshot:
     ) -> Path:
         local_dir.mkdir(parents=True)
         (local_dir / "config.json").write_text("{}", encoding="utf-8")
+        (local_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+        return local_dir
+
+
+class CapturingSnapshot:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Path, str | None]] = []
+
+    def acquire_snapshot(
+        self,
+        model_id: str,
+        local_dir: Path,
+        revision: str | None = None,
+        allow_patterns=None,  # noqa: ANN001, ARG002
+    ) -> Path:
+        self.calls.append((model_id, local_dir, revision))
+        local_dir.mkdir(parents=True)
+        (local_dir / "config.json").write_text("{}", encoding="utf-8")
+        (local_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
         return local_dir
 
 
@@ -149,6 +170,14 @@ _GENERATED_TOOLCHAIN = RecipeCompilerToolchain(
     oga_version="0.15.2",
     foundry_sdk_version="1.2.4",
     foundry_cli_version="0.11.0",
+)
+
+_FROZEN_FIVE_MODELS: tuple[tuple[str, str], ...] = (
+    ("TinyLlama/TinyLlama-1.1B-Chat-v1.0", "fe8a4ea1ffedaf415f4da2f062534de366a451e6"),
+    ("HuggingFaceTB/SmolLM2-360M-Instruct", "a10cc1512eabd3dde888204e902eca88bddb4951"),
+    ("Qwen/Qwen2-1.5B-Instruct", "ba1cf1846d7df0a0591d6c00649f57e798519da8"),
+    ("Qwen/Qwen2-0.5B-Instruct", "c540970f9e29518b1d8f06ab8b24cba66ad77b6d"),
+    ("ibm-granite/granite-3.2-2b-instruct", "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3"),
 )
 
 
@@ -330,8 +359,10 @@ def test_production_runner_uses_verified_contract_and_registers_artifact(tmp_pat
         for validation in job.validations
     )
     mobius = runner.specs[0]
-    assert mobius.argv[:3] == ("mobius", "build", "--model")
-    assert Path(mobius.argv[3]).name == "snapshot"
+    assert mobius.argv[:3] == ("mobius", "build", "--config")
+    config_path = Path(mobius.argv[3])
+    assert config_path.parent == request.model_cache_dir
+    assert config_path.name.startswith("snapshot-huggingfacetb-smollm2-1.7b-instruct-")
     assert Path(mobius.argv[-1]).name == "mobius"
     olive = runner.specs[1]
     assert olive.argv[:2] == ("olive", "optimize")
@@ -473,7 +504,98 @@ def test_production_runner_executes_generated_attempt_from_persisted_record(tmp_
 
     assert job.state == JobState.SUCCEEDED
     assert process_runner.specs
-    assert process_runner.specs[0].argv[:2] == ("mobius", "build")
+    mobius = process_runner.specs[0]
+    assert mobius.argv[:3] == ("mobius", "build", "--config")
+    assert "--model" not in mobius.argv
+    assert generated_candidate.recipe.huggingface_model_id not in mobius.argv
+    assert Path(mobius.argv[3]).parent == request.model_cache_dir
+    assert "--runtime" in mobius.argv
+    assert mobius.argv[mobius.argv.index("--runtime") + 1] == "ort-genai"
+
+
+@pytest.mark.parametrize(("model_id", "revision_sha"), _FROZEN_FIVE_MODELS)
+def test_generated_execution_plan_uses_local_snapshot_config_for_frozen_models(
+    tmp_path: Path,
+    model_id: str,
+    revision_sha: str,
+) -> None:
+    generated_candidate = _compile_generated_candidate(model_id, revision_sha)
+    generated_record = _generated_record_for(generated_candidate)
+    attempt_id = "77777777-7777-7777-7777-777777777777"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.RUNNING,
+    )
+    request = _generated_request(tmp_path, generated_candidate, attempt_id=attempt_id)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id=f"generated-plan-{hash(model_id) & 0xffff:x}", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.SUCCEEDED
+    mobius = process_runner.specs[0]
+    assert mobius.argv[:3] == ("mobius", "build", "--config")
+    assert "--model" not in mobius.argv
+    assert model_id not in mobius.argv
+    assert "\\" in mobius.argv[3]
+    assert Path(mobius.argv[3]).parent == request.model_cache_dir
+
+
+def test_generated_execution_passes_pinned_revision_and_snapshot_config_source(tmp_path: Path) -> None:
+    generated_candidate = _compile_generated_candidate(
+        "owner/unregistered-model",
+        "1234567890abcdef1234567890abcdef12345678",
+    )
+    generated_record = _generated_record_for(generated_candidate)
+    attempt_id = "88888888-8888-8888-8888-888888888888"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.RUNNING,
+    )
+    request = _generated_request(tmp_path, generated_candidate, attempt_id=attempt_id)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-pinned-source", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    snapshot = CapturingSnapshot()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=snapshot,  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.SUCCEEDED
+    assert len(snapshot.calls) == 1
+    model_id, snapshot_dir, revision = snapshot.calls[0]
+    assert model_id == generated_candidate.recipe.huggingface_model_id
+    assert revision == generated_candidate.pinned_revision
+    assert revision is not None
+    assert len(revision) == 40
+    assert snapshot_dir.parent == request.model_cache_dir
+    assert (snapshot_dir / "tokenizer.json").is_file()
+    mobius = process_runner.specs[0]
+    assert mobius.argv[:3] == ("mobius", "build", "--config")
+    assert Path(mobius.argv[3]) == snapshot_dir
+    assert "--model" not in mobius.argv
 
 
 def test_production_runner_rejects_generated_attempt_revision_mismatch_before_tools(tmp_path: Path) -> None:

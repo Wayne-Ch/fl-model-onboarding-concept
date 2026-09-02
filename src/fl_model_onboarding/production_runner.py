@@ -95,6 +95,13 @@ class RecipeExecutionResolutionError(RuntimeError):
         self.classification = classification
 
 
+@dataclass(frozen=True)
+class PinnedModelSource:
+    model_id: str
+    revision_sha: str
+    snapshot_dir: Path
+
+
 class RecipeExecutionResolver:
     def __init__(
         self,
@@ -721,19 +728,14 @@ class ProductionBuildStageRunner:
         if recipe.olive is None:
             raise RuntimeError(f"Recipe '{recipe.id}' requires Olive settings for production packaging.")
 
-        snapshot_dir = request.workspace_root / "snapshot"
+        pinned_source = self._resolve_pinned_source(recipe=recipe, request=request, pinned_revision=pinned_revision)
         mobius_dir = request.workspace_root / "mobius"
         olive_dir = request.workspace_root / "olive"
         mobius_dir.mkdir(parents=True, exist_ok=False)
         olive_dir.mkdir(parents=True, exist_ok=False)
 
-        transition(job, JobState.DOWNLOADING, f"Pinned Hugging Face revision {pinned_revision}.")
+        transition(job, JobState.DOWNLOADING, f"Pinned Hugging Face revision {pinned_source.revision_sha}.")
         persist()
-        snapshot_path = self._model_acquisition.acquire_snapshot(
-            recipe.huggingface_model_id,
-            snapshot_dir,
-            revision=pinned_revision,
-        )
         mobius_dtype = recipe.mobius.dtype or "default"
         transition(
             job,
@@ -747,8 +749,8 @@ class ProductionBuildStageRunner:
         mobius_argv: list[str] = [
             "mobius",
             "build",
-            "--model",
-            str(snapshot_path),
+            "--config",
+            str(pinned_source.snapshot_dir),
             "--ep",
             recipe.mobius.ep,
             "--runtime",
@@ -908,6 +910,34 @@ class ProductionBuildStageRunner:
         job.finished_utc = datetime.now(timezone.utc)
         persist()
 
+    def _resolve_pinned_source(
+        self,
+        *,
+        recipe: ModelRecipe,
+        request: BuildRequest,
+        pinned_revision: str,
+    ) -> PinnedModelSource:
+        snapshot_dir = pinned_snapshot_cache_path(
+            request.model_cache_dir,
+            model_id=recipe.huggingface_model_id,
+            revision_sha=pinned_revision,
+        )
+        snapshot_dir.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path = self._model_acquisition.acquire_snapshot(
+            recipe.huggingface_model_id,
+            snapshot_dir,
+            revision=pinned_revision,
+        )
+        if not snapshot_path.is_dir():
+            raise RuntimeError(
+                f"Pinned snapshot path is not a directory: {snapshot_path}."
+            )
+        return PinnedModelSource(
+            model_id=recipe.huggingface_model_id,
+            revision_sha=pinned_revision,
+            snapshot_dir=snapshot_path,
+        )
+
     def _run_command(
         self,
         spec: CommandSpec,
@@ -981,3 +1011,12 @@ def _normalize_cache_prefix(value: str) -> str:
 
 def _fallback_cache_prefix(model_id: str) -> str:
     return _normalize_cache_prefix(model_id.strip().split("/")[-1])
+
+
+def pinned_snapshot_cache_path(model_cache_dir: Path, *, model_id: str, revision_sha: str) -> Path:
+    normalized_revision = _normalize_revision_sha(
+        revision_sha,
+        field_name="snapshot.revision_sha",
+    )
+    model_slug = _normalize_cache_prefix(model_id.replace("/", "-"))
+    return model_cache_dir / f"snapshot-{model_slug}-{normalized_revision}"
