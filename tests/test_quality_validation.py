@@ -15,6 +15,7 @@ from fl_model_onboarding.quality_validation import (
     GateState,
     PromptExecutionRecord,
     QualityMetrics,
+    QualityRetryDisposition,
     RecipeIntegrityStatus,
     evaluate_quality_validation,
     load_quality_validation_profile_registry,
@@ -568,3 +569,212 @@ def test_inconsistent_baseline_and_optimized_cases_fail_closed() -> None:
             optimized_outputs=_passing_outputs(profile),
             baseline_outputs=tuple(baseline),
         )
+
+
+# --- Quality retry disposition -------------------------------------------------------
+
+
+def test_retry_disposition_is_retryable_for_smollm_shaped_json_and_fence_regression() -> None:
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='```json\n{"answer":12,"unit":"cm"}\n```',
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    # Existing gates are unchanged by adding the retry evaluation.
+    assert result.recipe_verification.status == RecipeIntegrityStatus.BLOCKED
+    assert result.recipe_verification.can_promote is False
+    assert result.promotion_evidence.can_promote is False
+
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION
+    assert evaluation.is_retryable is True
+    assert any(reason.startswith("optimized_structural_regression:format-json-answer-unit:") for reason in evaluation.reasons)
+
+
+def test_retry_disposition_is_not_retryable_when_baseline_unavailable() -> None:
+    profile = _profile()
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=_passing_outputs(profile),
+        baseline_outputs=None,
+        require_baseline_comparison=True,
+    )
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.is_retryable is False
+    assert evaluation.reasons == ("baseline_unavailable",)
+
+
+def test_retry_disposition_is_not_retryable_when_both_baseline_and_optimized_fail() -> None:
+    profile = _profile()
+    # arithmetic prompt is a matched failure (both baseline and optimized are wrong),
+    # while format-json-answer-unit is a genuine allowlisted structural regression. The
+    # matched failure must disqualify the whole recipe from retry -- it is ambiguous,
+    # not a proven optimized-only structural regression.
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        output_text="44",
+    )
+    optimized = _replace_output(
+        _replace_output(
+            _passing_outputs(profile),
+            "arithmetic-addition-17-plus-28",
+            output_text="44",
+        ),
+        "format-json-answer-unit",
+        output_text='```json\n{"answer":12,"unit":"cm"}\n```',
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is False
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("baseline_and_optimized_failed:arithmetic-addition-17-plus-28",)
+
+
+def test_retry_disposition_is_not_retryable_for_capability_only_wrong_answer() -> None:
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text="Venus",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is False
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("non_structural_regression:factual-red-planet",)
+
+
+def test_retry_disposition_is_not_retryable_for_missing_json_key_regression() -> None:
+    # json_key_missing is a real structural-ish failure but is *not* on the narrow
+    # proven allowlist (only json_format_invalid and forbidden formatting tokens are).
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='{"answer": 12}',
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is False
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("non_structural_regression:format-json-answer-unit",)
+
+
+def test_retry_disposition_is_not_retryable_for_optimized_improvement() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        output_text="44",
+    )
+    optimized = _passing_outputs(profile)
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is True
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("no_blocking_regression",)
+
+
+def test_retry_disposition_is_not_retryable_for_matched_failure_only() -> None:
+    profile = _profile()
+    baseline = _replace_output(_passing_outputs(profile), "factual-red-planet", output_text="1728")
+    optimized = _replace_output(_passing_outputs(profile), "factual-red-planet", output_text="1728")
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is True
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("no_blocking_regression",)
+
+
+@pytest.mark.parametrize(
+    "output_text",
+    [
+        "",
+        "ok ok ok ok ok ok ok ok ok",
+        "@@@@ #### $$$$ !!!!",
+    ],
+)
+def test_retry_disposition_is_not_retryable_for_pathological_runtime_failure(output_text: str) -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text=output_text,
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("optimized_runtime_failure",)
+
+
+def test_retry_disposition_is_not_retryable_when_fully_passing() -> None:
+    profile = _profile()
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=_passing_outputs(profile),
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("no_blocking_regression",)

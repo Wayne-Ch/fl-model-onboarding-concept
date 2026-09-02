@@ -60,6 +60,32 @@ class CapabilityConfidenceLevel(StrEnum):
     LOW = "low"
 
 
+class QualityRetryDisposition(StrEnum):
+    """Stable, typed disposition describing whether a recipe attempt is eligible for a
+    narrow, declarative quality retry.
+
+    ``RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION`` is the sole retryable value and is
+    derived deterministically from existing gate evidence only (never from free-text
+    report prose). It requires all of:
+
+    1. a baseline exists and passes the affected structural constraint;
+    2. the optimized run is runtime-functional (no pathological output);
+    3. optimized alone fails an allowlisted structural output-format requirement
+       (currently: invalid JSON output, or a forbidden formatting token in an
+       output-format prompt); and
+    4. the recipe is otherwise blocked (cannot be promoted) solely because of that
+       optimized-only structural regression.
+
+    Every other case -- including baseline unavailable, both baseline and optimized
+    failing, capability-only wrong answers, optimized improvement, matched failure,
+    pathological/runtime failure, or unknown/malformed evidence -- resolves to
+    ``NOT_RETRYABLE``.
+    """
+
+    RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION = "retryable_optimized_structural_regression"
+    NOT_RETRYABLE = "not_retryable"
+
+
 @dataclass(frozen=True)
 class DeterministicInferenceConfig:
     temperature: float
@@ -243,6 +269,16 @@ class ModelCapabilityResult:
 
 
 @dataclass(frozen=True)
+class QualityRetryEvaluation:
+    disposition: QualityRetryDisposition
+    reasons: tuple[str, ...]
+
+    @property
+    def is_retryable(self) -> bool:
+        return self.disposition == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION
+
+
+@dataclass(frozen=True)
 class QualityValidationResult:
     profile_identity: str
     optimized_functional: FunctionalValidationResult
@@ -252,6 +288,9 @@ class QualityValidationResult:
     model_capability: ModelCapabilityResult
     metrics: MetricsCaptureResult
     promotion_evidence: PromotionEvidence
+    # Additive, backward-compatible field: always populated by evaluate_quality_validation.
+    # Defaults to None only to tolerate any other historical construction path.
+    quality_retry_evaluation: QualityRetryEvaluation | None = None
 
 
 class QualityValidationProfileRegistry:
@@ -385,7 +424,7 @@ def evaluate_quality_validation(
         can_promote=can_promote,
         notes=tuple(notes),
     )
-    return QualityValidationResult(
+    result = QualityValidationResult(
         profile_identity=profile.identity,
         optimized_functional=optimized_functional,
         baseline_functional=baseline_functional,
@@ -394,6 +433,18 @@ def evaluate_quality_validation(
         model_capability=model_capability,
         metrics=metrics,
         promotion_evidence=evidence,
+    )
+    quality_retry_evaluation = _derive_quality_retry_disposition(result)
+    return QualityValidationResult(
+        profile_identity=result.profile_identity,
+        optimized_functional=result.optimized_functional,
+        baseline_functional=result.baseline_functional,
+        baseline_comparison=result.baseline_comparison,
+        recipe_verification=result.recipe_verification,
+        model_capability=result.model_capability,
+        metrics=result.metrics,
+        promotion_evidence=result.promotion_evidence,
+        quality_retry_evaluation=quality_retry_evaluation,
     )
 
 
@@ -775,6 +826,100 @@ def _evaluate_model_capability(
         warnings=tuple(warnings),
         confidence=confidence,
         prompt_results=tuple(prompt_rows),
+    )
+
+
+# Failure codes eligible for the narrow, allowlisted structural retry trigger. These
+# are the *only* codes that can make a recipe retry-eligible; every other failure code
+# (capability/factual mismatches, pathological output, runtime failure, etc.) is
+# deliberately excluded. Matching is against existing typed failure codes only -- never
+# free-text report prose.
+def _is_retryable_structural_failure_code(category: PromptCategory, failure_code: str) -> bool:
+    if failure_code == "json_format_invalid":
+        return True
+    if category == PromptCategory.OUTPUT_FORMAT and failure_code.startswith("forbidden_token_present:"):
+        return True
+    return False
+
+
+def _allowlisted_structural_only_failures(
+    *,
+    category: PromptCategory,
+    failures: tuple[str, ...],
+) -> tuple[str, ...] | None:
+    """Return the failure codes if *every* failure for this prompt is within the narrow
+    structural retry allowlist, otherwise None (disqualifying the prompt from retry
+    eligibility because of a mixed or unallowlisted failure mode).
+    """
+    if not failures:
+        return None
+    codes: list[str] = []
+    for failure in failures:
+        if not _is_retryable_structural_failure_code(category, failure):
+            return None
+        codes.append(failure)
+    return tuple(codes)
+
+
+def _derive_quality_retry_disposition(result: QualityValidationResult) -> QualityRetryEvaluation:
+    verification = result.recipe_verification
+
+    if not verification.baseline_available:
+        return QualityRetryEvaluation(
+            disposition=QualityRetryDisposition.NOT_RETRYABLE,
+            reasons=("baseline_unavailable",),
+        )
+    if not verification.runtime_functional:
+        return QualityRetryEvaluation(
+            disposition=QualityRetryDisposition.NOT_RETRYABLE,
+            reasons=("optimized_runtime_failure",),
+        )
+    if verification.can_promote:
+        return QualityRetryEvaluation(
+            disposition=QualityRetryDisposition.NOT_RETRYABLE,
+            reasons=("no_blocking_regression",),
+        )
+
+    # baseline_functional is guaranteed non-None here because baseline_available is True.
+    baseline_functional = result.baseline_functional
+    assert baseline_functional is not None
+    optimized_by_prompt = {row.prompt_id: row for row in result.optimized_functional.prompt_results}
+
+    blocking_reasons: list[str] = []
+    for baseline_row in baseline_functional.prompt_results:
+        optimized_row = optimized_by_prompt[baseline_row.prompt_id]
+        if optimized_row.passed:
+            continue
+        if not baseline_row.passed:
+            # Both baseline and optimized fail (matched or divergent) -- never retryable.
+            return QualityRetryEvaluation(
+                disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                reasons=(f"baseline_and_optimized_failed:{baseline_row.prompt_id}",),
+            )
+        allowlisted_codes = _allowlisted_structural_only_failures(
+            category=optimized_row.category,
+            failures=optimized_row.failures,
+        )
+        if allowlisted_codes is None:
+            return QualityRetryEvaluation(
+                disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                reasons=(f"non_structural_regression:{baseline_row.prompt_id}",),
+            )
+        blocking_reasons.append(
+            f"optimized_structural_regression:{baseline_row.prompt_id}:{','.join(allowlisted_codes)}"
+        )
+
+    if not blocking_reasons:
+        # Defensive: recipe is blocked, but not by a baseline-passed/optimized-failed
+        # prompt we could attribute. Do not guess; stay non-retryable.
+        return QualityRetryEvaluation(
+            disposition=QualityRetryDisposition.NOT_RETRYABLE,
+            reasons=("unattributed_block",),
+        )
+
+    return QualityRetryEvaluation(
+        disposition=QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION,
+        reasons=tuple(blocking_reasons),
     )
 
 
@@ -1162,6 +1307,8 @@ __all__ = [
     "PromptExpectedConstraints",
     "PromotionEvidence",
     "QualityMetrics",
+    "QualityRetryDisposition",
+    "QualityRetryEvaluation",
     "QualityValidationProfile",
     "QualityValidationProfileRegistry",
     "QualityValidationResult",
