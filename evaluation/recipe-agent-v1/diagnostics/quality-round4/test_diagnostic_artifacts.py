@@ -24,6 +24,7 @@ REQUIRED_TOP_KEYS = {
     "cross_cutting_analysis",
     "recommendations",
     "generic_fixes_required",
+    "next_round_harness_requirements",
     "rerun_requirement",
 }
 
@@ -45,10 +46,9 @@ REQUIRED_PROMPT_FAILURE_KEYS = {
 }
 
 VALID_CLASSIFICATIONS = {
-    "model_capability_limitation",
+    "baseline_functional_failure",
     "quantization_regression",
     "evaluator_false_negative",
-    "indeterminate_needs_rerun",
     "passed",
 }
 
@@ -137,6 +137,7 @@ def test_smollm2_has_quantization_regression(diagnostic_report: dict):
     diag = smollm2["overall_diagnosis"]
     assert len(diag["genuine_quantization_regressions"]) >= 1
     assert "format-json-answer-unit" in diag["genuine_quantization_regressions"]
+    assert len(diag["baseline_functional_failures"]) == 2
 
 
 def test_granite_has_no_quantization_regression(diagnostic_report: dict):
@@ -148,6 +149,7 @@ def test_granite_has_no_quantization_regression(diagnostic_report: dict):
     assert granite is not None
     diag = granite["overall_diagnosis"]
     assert len(diag["genuine_quantization_regressions"]) == 0
+    assert len(diag["baseline_functional_failures"]) == 1
 
 
 def test_evidence_gap_documented(diagnostic_report: dict):
@@ -175,9 +177,34 @@ def test_error_signatures_match_round4_artifacts(diagnostic_report: dict):
         )
 
 
-def test_generic_fixes_have_required_fields(diagnostic_report: dict):
-    for fix in diagnostic_report["generic_fixes_required"]:
-        assert "fix_id" in fix
-        assert "type" in fix
-        assert "component" in fix
-        assert "description" in fix
+def test_generic_fixes_is_empty(diagnostic_report: dict):
+    assert diagnostic_report["generic_fixes_required"] == []
+
+
+def test_next_round_harness_requirements(diagnostic_report: dict):
+    reqs = diagnostic_report["next_round_harness_requirements"]
+    assert len(reqs) >= 1
+    for req in reqs:
+        assert "requirement_id" in req
+        assert "description" in req
+        assert "fields_per_prompt" in req
+
+
+def test_baseline_passed_false_when_no_regression(diagnostic_report: dict):
+    """If a prompt is not in optimized_failed_prompt regressions and baseline_failed_functional_checks
+    is reported, baseline_passed_this_prompt must be false."""
+    for model in diagnostic_report["models_diagnosed"]:
+        regressions = model.get("baseline_comparison_regressions", [])
+        if "baseline_failed_functional_checks" not in regressions:
+            continue
+        regression_prompts = {
+            r.split(":")[-1] for r in regressions if r.startswith("optimized_failed_prompt:")
+        }
+        for pf in model["prompt_failures"]:
+            if pf["classification"] == "passed":
+                continue
+            if pf["prompt_id"] not in regression_prompts:
+                assert pf["baseline_passed_this_prompt"] is False, (
+                    f"{model['model_id']}:{pf['prompt_id']} must have baseline_passed_this_prompt=false "
+                    f"because it is absent from optimized_failed_prompt regressions"
+                )
