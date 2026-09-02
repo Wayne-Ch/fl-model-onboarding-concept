@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 
 from pathlib import Path
 
 DIAG_DIR = Path(__file__).resolve().parent
 REPORT_PATH = DIAG_DIR / "diagnostic-report.json"
 DOC_PATH = DIAG_DIR.parents[3] / "docs" / "smollm-json-regression.md"
+HARNESS_PATH = DIAG_DIR / "run_smollm_json_regression_diagnostics.py"
 
 
 def _read_report() -> dict[str, object]:
@@ -24,100 +27,181 @@ def _find_variant(report: dict[str, object], variant_id: str) -> dict[str, objec
     raise AssertionError(f"Variant '{variant_id}' not found")
 
 
-def test_report_exists() -> None:
+def _find_full_suite_candidate(report: dict[str, object], candidate_id: str) -> dict[str, object]:
+    full_suite = report["full_suite_evidence"]  # type: ignore[index]
+    assert isinstance(full_suite, dict)
+    candidates = full_suite["candidates"]  # type: ignore[index]
+    assert isinstance(candidates, list)
+    for row in candidates:
+        if isinstance(row, dict) and row.get("candidate_id") == candidate_id:
+            return row
+    raise AssertionError(f"Full-suite candidate '{candidate_id}' not found")
+
+
+def _find_cost_row(report: dict[str, object], variant: str) -> dict[str, object]:
+    costs = report["block_size_costs_and_performance"]  # type: ignore[index]
+    assert isinstance(costs, dict)
+    rows = costs["rows"]  # type: ignore[index]
+    assert isinstance(rows, list)
+    for row in rows:
+        if isinstance(row, dict) and row.get("variant") == variant:
+            return row
+    raise AssertionError(f"Cost row '{variant}' not found")
+
+
+def test_report_and_doc_exist() -> None:
     assert REPORT_PATH.is_file()
-
-
-def test_doc_exists() -> None:
     assert DOC_PATH.is_file()
 
 
-def test_frozen_smollm_identity() -> None:
+def test_toolchain_probe_guard_rejects_unacknowledged_conflation() -> None:
+    cmd = [
+        sys.executable,
+        str(HARNESS_PATH),
+        "--toolchain-probe-only",
+        "--runtime-python",
+        sys.executable,
+    ]
+    completed = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert completed.returncode != 0
+    combined = (completed.stdout or "") + "\n" + (completed.stderr or "")
+    assert "allow-interpreter-conflation" in combined
+
+
+def test_toolchain_probe_reports_runtime_subprocess_identity() -> None:
     report = _read_report()
-    frozen = report["frozen_model"]  # type: ignore[index]
-    assert isinstance(frozen, dict)
-    assert frozen["model_id"] == "HuggingFaceTB/SmolLM2-360M-Instruct"
-    assert frozen["revision_sha"] == "a10cc1512eabd3dde888204e902eca88bddb4951"
+    probe = report["toolchain_probe"]  # type: ignore[index]
+    assert isinstance(probe, dict)
+    assert probe["probe_source"] == "runtime_subprocess"
+    runtime_reported = probe["runtime_reported"]  # type: ignore[index]
+    assert isinstance(runtime_reported, dict)
+    assert runtime_reported["probe_source"] == "runtime_subprocess"
+    conflation = probe["interpreter_conflation"]  # type: ignore[index]
+    assert isinstance(conflation, dict)
+    assert conflation["allow_interpreter_conflation"] is True
 
 
-def test_repeated_trials_reproduce_round6_json_regression() -> None:
+def test_selected_input_evidence_records_exact_id_and_hash_stability() -> None:
     report = _read_report()
-    repeated = report["determinism_repeated_trials"]  # type: ignore[index]
-    assert isinstance(repeated, dict)
-    summary = repeated["summary"]  # type: ignore[index]
-    assert isinstance(summary, dict)
-    assert summary["baseline_json_valid_rate"] == "6/6"
-    assert summary["optimized_json_valid_rate"] == "0/6"
-    assert summary["optimized_fenced_rate"] == "6/6"
-    assert summary["quality_regression_signature_rate"] == "6/6"
+    selected = report["selected_input_evidence"]  # type: ignore[index]
+    assert isinstance(selected, dict)
+    selection = selected["selection_by_exact_artifact_id"]  # type: ignore[index]
+    assert isinstance(selection, dict)
+    assert selection["exact_match"] is True
+    before = selected["selected_input_hashes_before"]  # type: ignore[index]
+    after = selected["selected_input_hashes_after"]  # type: ignore[index]
+    assert isinstance(before, dict)
+    assert isinstance(after, dict)
+    assert before["snapshot"]["manifest_sha256"] == after["snapshot"]["manifest_sha256"]  # type: ignore[index]
+    assert before["optimized_package"]["manifest_sha256"] == after["optimized_package"]["manifest_sha256"]  # type: ignore[index]
+    assert selected["selected_inputs_unchanged_after_diagnostics"] is True
 
 
-def test_packaging_and_template_are_not_the_regression_layer() -> None:
+def test_single_prompt_reproducibility_rates_match_regression_signature() -> None:
     report = _read_report()
-    packaging = report["packaging_and_template_comparison"]  # type: ignore[index]
-    assert isinstance(packaging, dict)
-    assert packaging["genai_config_exact_equal"] is True
-    templates = packaging["chat_template_fingerprints"]  # type: ignore[index]
-    assert isinstance(templates, dict)
-    baseline = templates["baseline"]  # type: ignore[index]
-    optimized = templates["optimized"]  # type: ignore[index]
-    assert isinstance(baseline, dict)
-    assert isinstance(optimized, dict)
-    assert baseline["tokenizer_config_chat_template_sha256"] == optimized["tokenizer_config_chat_template_sha256"]
+    repro = report["single_prompt_reproducibility"]  # type: ignore[index]
+    assert isinstance(repro, dict)
+    assert repro["baseline_json_valid_rate"] == "6/6"
+    assert repro["optimized_json_valid_rate"] == "0/6"
+    assert repro["optimized_fenced_rate"] == "6/6"
+    assert repro["regression_signature_rate"] == "6/6"
 
 
-def test_hybrid_swaps_isolate_graph_as_introducing_layer() -> None:
+def test_full_suite_matrix_shows_default_regressed_and_block64_passing() -> None:
     report = _read_report()
-    hybrid = report["layer_isolation_hybrid_swaps"]  # type: ignore[index]
-    assert isinstance(hybrid, dict)
-    hybrid_a = hybrid["hybrid_a_baseline_package_plus_optimized_graph"]  # type: ignore[index]
-    hybrid_b = hybrid["hybrid_b_optimized_package_plus_baseline_graph"]  # type: ignore[index]
-    assert isinstance(hybrid_a, dict)
-    assert isinstance(hybrid_b, dict)
-    assert hybrid_a["json_prompt_has_fence"] is True
-    assert hybrid_a["quality_eval"]["can_promote"] is False  # type: ignore[index]
-    assert hybrid_b["json_prompt_has_fence"] is False
-    assert hybrid_b["quality_eval"]["can_promote"] is True  # type: ignore[index]
+    default_row = _find_full_suite_candidate(report, "default_int4")
+    block64_row = _find_full_suite_candidate(report, "block_size_64")
+    assert default_row["trial_count"] == 3
+    assert block64_row["trial_count"] == 3
+    assert default_row["complete_batch_rate"] == "3/3"
+    assert block64_row["complete_batch_rate"] == "3/3"
+    assert default_row["json_structural_regression_rate"] == "3/3"
+    assert block64_row["json_structural_regression_rate"] == "0/3"
+    assert block64_row["can_promote_rate"] == "3/3"
 
 
-def test_int4_block_size_64_is_top_candidate_on_target_model() -> None:
+def test_variant_failures_capture_tail_and_classification() -> None:
     report = _read_report()
-    default_variant = _find_variant(report, "int4_default")
-    block64 = _find_variant(report, "int4_block_size_64")
-    assert default_variant["status"] == "evaluated"
-    assert default_variant["summary"]["can_promote_rate"] == "0/3"  # type: ignore[index]
-    assert default_variant["summary"]["json_fenced_rate"] == "3/3"  # type: ignore[index]
-    assert block64["status"] == "evaluated"
-    assert block64["summary"]["can_promote_rate"] == "5/5"  # type: ignore[index]
-    assert block64["summary"]["json_parse_ok_rate"] == "5/5"  # type: ignore[index]
-    assert block64["summary"]["json_fenced_rate"] == "0/5"  # type: ignore[index]
+    neg1 = _find_variant(report, "int4_block_size_-1")
+    uint8 = _find_variant(report, "int4_act_precision_uint8")
+    for row in (neg1, uint8):
+        assert row["status"] == "optimize_failed_or_unsupported"
+        assert isinstance(row.get("optimize_stderr_tail"), str)
+        assert len(str(row["optimize_stderr_tail"])) > 0
+        assert isinstance(row.get("failure_classification"), str)
+        assert len(str(row["failure_classification"])) > 0
+        assert isinstance(row.get("last_exception_line"), str)
 
 
-def test_remedy_analysis_requires_full_unchanged_five_model_rerun() -> None:
+def test_block_size_cost_matrix_contains_required_rows() -> None:
+    report = _read_report()
+    for key in (
+        "default_int4_selected_round6_artifact",
+        "int4_default",
+        "int4_block_size_16",
+        "int4_block_size_32",
+        "int4_block_size_64",
+    ):
+        row = _find_cost_row(report, key)
+        assert row["package_size_bytes"] is not None
+        if key != "default_int4_selected_round6_artifact":
+            assert row["optimize_seconds"] is not None
+        assert "load_seconds" in row
+        assert "generation_seconds" in row
+        assert "peak_rss_bytes" in row
+
+
+def test_numeric_fidelity_is_recorded_or_explicitly_unknown() -> None:
+    report = _read_report()
+    fidelity = report["numeric_fidelity_probe"]  # type: ignore[index]
+    assert isinstance(fidelity, dict)
+    status = fidelity["status"]
+    assert status in {"available", "numeric_fidelity_unknown"}
+    if status == "available":
+        baseline_vs_block64 = fidelity.get("baseline_vs_block64")
+        assert isinstance(baseline_vs_block64, dict)
+        comparison = baseline_vs_block64.get("comparison")
+        assert isinstance(comparison, dict)
+        assert "step_match_rate" in comparison
+    else:
+        assert isinstance(fidelity.get("error"), str)
+        assert len(str(fidelity["error"])) > 0
+
+
+def test_remedy_and_generalization_status() -> None:
     report = _read_report()
     remedy = report["remedy_analysis"]  # type: ignore[index]
     assert isinstance(remedy, dict)
-    ranked = remedy["ranked_candidates"]  # type: ignore[index]
-    assert isinstance(ranked, list)
-    assert ranked[0]["candidate"] == "capability-level Olive INT4 block_size=64"  # type: ignore[index]
-    assert ranked[0]["status"] == "proven_on_target_model"  # type: ignore[index]
-    assert remedy["safe_generic_fix_proven_for_full_round6_five_model_set"] is False
+    retry = remedy["retry_ladder_round7_justification"]  # type: ignore[index]
+    assert isinstance(retry, dict)
+    assert retry["justified"] is True
+    assert report["cross_model_generalization"]["status"] == "unproven_pending_full_five_model_rerun"  # type: ignore[index]
     rerun = remedy["mandatory_full_set_rerun"]  # type: ignore[index]
     assert isinstance(rerun, dict)
-    assert rerun["required"] is True
     model_ids = rerun["model_ids"]  # type: ignore[index]
     assert isinstance(model_ids, list)
     assert len(model_ids) == 5
 
 
-def test_cleanup_and_process_containment_recorded() -> None:
+def test_cleanup_records_stray_root_and_no_lingering_processes() -> None:
     report = _read_report()
     cleanup = report["operational_cleanup"]  # type: ignore[index]
     assert isinstance(cleanup, dict)
-    cleanup_result = cleanup["external_cleanup_result"]  # type: ignore[index]
+    external = cleanup["external_cleanup_result"]  # type: ignore[index]
+    stray = cleanup["exact_stray_root_cleanup"]  # type: ignore[index]
     lingering = cleanup["lingering_process_probe"]  # type: ignore[index]
-    assert isinstance(cleanup_result, dict)
+    assert isinstance(external, dict)
+    assert isinstance(stray, dict)
     assert isinstance(lingering, dict)
-    assert cleanup_result["ok"] is True
+    assert external["ok"] is True
+    assert "bytes_freed" in external
+    assert "bytes_freed" in stray
     assert lingering["ok"] is True
     assert lingering["count"] == 0

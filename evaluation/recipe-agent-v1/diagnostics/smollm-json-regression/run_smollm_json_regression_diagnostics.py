@@ -12,7 +12,9 @@ import sys
 import tempfile
 import time
 
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +36,9 @@ UNSUPPORTED_DETERMINISM_FIELDS = ("temperature", "seed")
 DEFAULT_RUNTIME_PYTHON = Path(r"C:\fl-recipe-v1-venv\Scripts\python.exe")
 DEFAULT_RETAINED_CACHE_ROOT = Path(r"C:\fmo-r6\r6-20260902T172246Z\cache")
 DEFAULT_EXTERNAL_SCRATCH_ROOT = Path(r"C:\fmo-r6-smollm-json-regression")
+EXACT_STRAY_DIAGNOSTIC_ROOT = Path(r"C:\fmo-r6-smollm-diagnostics")
+NUMERIC_FIDELITY_PROMPT = "Write one short sentence about measuring a length in centimeters."
+NUMERIC_FIDELITY_MAX_TOKENS = 48
 
 ABS_PATH_RE = re.compile(r"[A-Za-z]:(?:\\|/(?!/))[^\"'\r\n]*")
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -97,6 +102,29 @@ def _sanitize_payload(payload: Any) -> Any:
     return payload
 
 
+def _sanitize_tail(value: str, *, max_chars: int = 2400) -> str:
+    cleaned = CONTROL_CHAR_RE.sub("", value)
+    cleaned = ABS_PATH_RE.sub("<redacted-absolute-path>", cleaned)
+    cleaned = cleaned.strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    if max_chars <= 3:
+        return cleaned[-max_chars:]
+    return "..." + cleaned[-(max_chars - 3) :].lstrip()
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.value
+    if is_dataclass(value):
+        return _jsonable(asdict(value))
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
 def _run_cmd(
     argv: list[str],
     *,
@@ -126,6 +154,8 @@ def _run_cmd(
         "stderr": completed.stderr,
         "stdout_excerpt": _sanitize_text(completed.stdout, max_chars=360),
         "stderr_excerpt": _sanitize_text(completed.stderr, max_chars=360),
+        "stdout_tail": _sanitize_tail(completed.stdout, max_chars=3200),
+        "stderr_tail": _sanitize_tail(completed.stderr, max_chars=3200),
     }
 
 
@@ -135,6 +165,88 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def _file_size_bytes(path: Path) -> int:
+    return int(path.stat().st_size) if path.is_file() else 0
+
+
+def _directory_size_bytes(path: Path) -> int:
+    total = 0
+    if not path.exists():
+        return total
+    for item in path.rglob("*"):
+        if item.is_file():
+            total += int(item.stat().st_size)
+    return total
+
+
+def _directory_fingerprint(path: Path) -> dict[str, Any]:
+    if not path.is_dir():
+        return {
+            "exists": False,
+            "path_name": path.name,
+            "file_count": 0,
+            "total_bytes": 0,
+            "manifest_sha256": None,
+            "files": [],
+        }
+    records: list[dict[str, Any]] = []
+    manifest = hashlib.sha256()
+    total_bytes = 0
+    file_paths = [row for row in sorted(path.rglob("*")) if row.is_file()]
+    for item in file_paths:
+        rel = item.relative_to(path).as_posix()
+        size = int(item.stat().st_size)
+        digest = _sha256(item)
+        total_bytes += size
+        manifest.update(rel.encode("utf-8"))
+        manifest.update(b"\0")
+        manifest.update(str(size).encode("utf-8"))
+        manifest.update(b"\0")
+        manifest.update(digest.encode("utf-8"))
+        manifest.update(b"\n")
+        records.append(
+            {
+                "relative_path": rel,
+                "size_bytes": size,
+                "sha256": digest,
+            }
+        )
+    return {
+        "exists": True,
+        "path_name": path.name,
+        "file_count": len(records),
+        "total_bytes": total_bytes,
+        "manifest_sha256": manifest.hexdigest(),
+        "files": records,
+    }
+
+
+def _cache_sibling_inventory(*, cache_root: Path, artifact_prefix: str, snapshot_prefix: str) -> dict[str, Any]:
+    artifact_siblings = sorted(cache_root.glob(f"{artifact_prefix}-*"))
+    snapshot_siblings = sorted(cache_root.glob(f"{snapshot_prefix}-*"))
+    return {
+        "cache_root_name": cache_root.name,
+        "artifact_prefix": artifact_prefix,
+        "snapshot_prefix": snapshot_prefix,
+        "artifact_siblings": [
+            {
+                "name": item.name,
+                "is_dir": item.is_dir(),
+                "size_bytes": (_directory_size_bytes(item) if item.is_dir() else _file_size_bytes(item)),
+            }
+            for item in artifact_siblings
+        ],
+        "snapshot_siblings": [
+            {
+                "name": item.name,
+                "is_dir": item.is_dir(),
+                "size_bytes": (_directory_size_bytes(item) if item.is_dir() else _file_size_bytes(item)),
+            }
+            for item in snapshot_siblings
+        ],
+    }
 
 
 def _slug_model_id(model_id: str) -> str:
@@ -152,32 +264,87 @@ def _runtime_env(base: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def _load_toolchain_versions(python_exe: Path, env: dict[str, str]) -> dict[str, Any]:
-    _ = python_exe
-    _ = env
-    import importlib.metadata as metadata
+def _load_toolchain_versions(
+    python_exe: Path,
+    env: dict[str, str],
+    *,
+    allow_interpreter_conflation: bool,
+) -> dict[str, Any]:
+    runtime_exe = python_exe.resolve()
+    harness_exe = Path(sys.executable).resolve()
+    same_interpreter = runtime_exe == harness_exe
+    if same_interpreter and not allow_interpreter_conflation:
+        raise RuntimeError(
+            "Harness interpreter and requested runtime interpreter are identical. "
+            "Pass --allow-interpreter-conflation only when this is intentional.",
+        )
 
-    packages = [
-        "fl-model-onboarding",
-        "onnx",
-        "onnxruntime",
-        "onnxruntime-genai",
-        "foundry-local-sdk",
-        "mobius-onnx",
-        "olive-ai",
-    ]
-    versions: dict[str, str] = {}
-    missing: list[str] = []
-    for package in packages:
-        try:
-            versions[package] = metadata.version(package)
-        except Exception:
-            missing.append(package)
+    code = """
+import importlib.metadata as metadata
+import json
+import os
+import platform
+import sys
+from pathlib import Path
+
+packages = [
+    "fl-model-onboarding",
+    "onnx",
+    "onnxruntime",
+    "onnxruntime-genai",
+    "foundry-local-sdk",
+    "mobius-onnx",
+    "olive-ai",
+]
+versions = {}
+missing = []
+for package in packages:
+    try:
+        versions[package] = metadata.version(package)
+    except Exception:
+        missing.append(package)
+
+print(json.dumps({
+    "probe_source": "runtime_subprocess",
+    "runtime_executable": str(Path(sys.executable).resolve()),
+    "runtime_python_version": platform.python_version(),
+    "runtime_prefix": sys.prefix,
+    "runtime_base_prefix": getattr(sys, "base_prefix", sys.prefix),
+    "pythonpath_env": os.environ.get("PYTHONPATH", ""),
+    "packages": versions,
+    "missing_packages": missing,
+}, sort_keys=True))
+"""
+    probe = _run_cmd([str(runtime_exe), "-c", code], timeout_seconds=180, env=env)
+    payload = _parse_json_maybe(str(probe.get("stdout") or ""))
+    if not probe["ok"] or not isinstance(payload, dict):
+        raise RuntimeError(
+            "Runtime toolchain probe failed. "
+            f"stderr tail: {probe['stderr_tail'] or '<empty>'}",
+        )
+    reported_exe_raw = str(payload.get("runtime_executable") or "").strip()
+    if not reported_exe_raw:
+        raise RuntimeError("Runtime toolchain probe payload did not include runtime_executable.")
+    reported_exe = Path(reported_exe_raw).resolve()
+    if reported_exe != runtime_exe:
+        raise RuntimeError(
+            "Runtime toolchain probe executable mismatch: "
+            f"requested '{runtime_exe}', reported '{reported_exe}'.",
+        )
     return {
-        "python": sys.version.split()[0],
-        "executable": str(Path(sys.executable).resolve()),
-        "versions": versions,
-        "missing": missing,
+        "probe_source": "runtime_subprocess",
+        "runtime_requested_executable": str(runtime_exe),
+        "runtime_reported": payload,
+        "probe_command": probe["argv"],
+        "probe_duration_seconds": probe["duration_seconds"],
+        "harness_interpreter": {
+            "executable": str(harness_exe),
+            "python_version": sys.version.split()[0],
+        },
+        "interpreter_conflation": {
+            "same_executable": same_interpreter,
+            "allow_interpreter_conflation": allow_interpreter_conflation,
+        },
     }
 
 
@@ -308,29 +475,42 @@ def _resolve_retained_paths(cache_root: Path, context: dict[str, Any]) -> dict[s
     if not cache_root.is_dir():
         raise RuntimeError(f"Retained cache root is missing: {cache_root}")
     revision = str(context["frozen_revision"])
-    snapshot_name = f"snapshot-{_slug_model_id(FROZEN_MODEL_ID)}-{revision}"
+    snapshot_prefix = f"snapshot-{_slug_model_id(FROZEN_MODEL_ID)}"
+    snapshot_name = f"{snapshot_prefix}-{revision}"
     snapshot_dir = cache_root / snapshot_name
     if not snapshot_dir.is_dir():
         raise RuntimeError(f"Frozen SmolLM snapshot is missing: {snapshot_dir}")
 
     artifact_prefix = str(context["artifact_prefix"])
     artifact_id = str(context["artifact_id"])
-    preferred = cache_root / f"{artifact_prefix}-{artifact_id[:12]}"
-    optimized_dir: Path | None = preferred if preferred.is_dir() else None
-    if optimized_dir is None:
-        candidates = sorted(cache_root.glob(f"{artifact_prefix}-*"))
-        for candidate in candidates:
-            if not candidate.is_dir():
-                continue
-            if (candidate / "inference_model.json").is_file() and (candidate / "model.onnx").is_file():
-                optimized_dir = candidate
-                break
-    if optimized_dir is None:
-        raise RuntimeError(f"Unable to locate optimized package under {cache_root} for prefix '{artifact_prefix}'.")
+    artifact_short = artifact_id[:12]
+    expected_optimized_name = f"{artifact_prefix}-{artifact_short}"
+    optimized_dir = cache_root / expected_optimized_name
+    if not optimized_dir.is_dir():
+        raise RuntimeError(
+            "Exact optimized package directory for artifact id was not found: "
+            f"expected '{expected_optimized_name}' under {cache_root}.",
+        )
+    if not (optimized_dir / "inference_model.json").is_file() or not (optimized_dir / "model.onnx").is_file():
+        raise RuntimeError(f"Optimized package '{optimized_dir}' is missing required package files.")
+
+    sibling_inventory = _cache_sibling_inventory(
+        cache_root=cache_root,
+        artifact_prefix=artifact_prefix,
+        snapshot_prefix=snapshot_prefix,
+    )
     return {
+        "cache_root": cache_root,
         "snapshot_dir": snapshot_dir,
         "optimized_dir": optimized_dir,
+        "snapshot_prefix": snapshot_prefix,
+        "snapshot_name": snapshot_name,
+        "optimized_expected_name": expected_optimized_name,
         "optimized_package_name": optimized_dir.name,
+        "optimized_artifact_id": artifact_id,
+        "optimized_artifact_short": artifact_short,
+        "selection_exact_id_match": optimized_dir.name == expected_optimized_name,
+        "sibling_inventory_preexisting": sibling_inventory,
     }
 
 
@@ -462,6 +642,35 @@ def _run_foundry_batch(
     }
 
 
+def _chat_output_text(response: Any) -> str:
+    choices = getattr(response, "choices", [])
+    if choices:
+        message = getattr(choices[0], "message", None)
+        content = getattr(message, "content", None)
+        if isinstance(content, str):
+            return content
+    return str(response)
+
+
+def _run_foundry_chat(client: Any, *, prompt: str, max_tokens: int) -> str:
+    if hasattr(client, "settings"):
+        client.settings.max_tokens = int(max_tokens)
+        try:
+            client.settings.temperature = 0.0
+        except Exception:
+            pass
+        try:
+            client.settings.top_p = 1.0
+        except Exception:
+            pass
+        try:
+            client.settings.do_sample = False
+        except Exception:
+            pass
+    response = client.complete_chat([{"role": "user", "content": prompt}])
+    return _chat_output_text(response)
+
+
 def _to_prompt_records(
     *,
     prompts: list[dict[str, Any]],
@@ -539,6 +748,50 @@ def _evaluate_pair(
         "baseline_comparison_regressions": baseline_regressions,
         "integrity_failures": list(outcome.recipe_verification.integrity_failures),
         "recipe_status": outcome.recipe_verification.status.value,
+    }
+
+
+def _evaluate_pair_detailed(
+    *,
+    profile: Any,
+    prompts: list[dict[str, Any]],
+    baseline_outputs: dict[str, str],
+    optimized_outputs: dict[str, str],
+    deterministic_inference: Any,
+) -> dict[str, Any]:
+    baseline_records = _to_prompt_records(
+        prompts=prompts,
+        outputs=baseline_outputs,
+        deterministic_inference=deterministic_inference,
+    )
+    optimized_records = _to_prompt_records(
+        prompts=prompts,
+        outputs=optimized_outputs,
+        deterministic_inference=deterministic_inference,
+    )
+    outcome = evaluate_quality_validation(
+        profile=profile,
+        model_task="text-generation",
+        baseline_outputs=baseline_records,
+        optimized_outputs=optimized_records,
+        require_baseline_comparison=True,
+    )
+    summary = _evaluate_pair(
+        profile=profile,
+        prompts=prompts,
+        baseline_outputs=baseline_outputs,
+        optimized_outputs=optimized_outputs,
+        deterministic_inference=deterministic_inference,
+    )
+    return {
+        "summary": summary,
+        "promotion_evidence": _jsonable(outcome.promotion_evidence),
+        "recipe_verification": _jsonable(outcome.recipe_verification),
+        "model_capability": _jsonable(outcome.model_capability),
+        "baseline_comparison": _jsonable(outcome.baseline_comparison),
+        "optimized_functional": _jsonable(outcome.optimized_functional),
+        "baseline_functional": _jsonable(outcome.baseline_functional),
+        "metrics_capture": _jsonable(outcome.metrics),
     }
 
 
@@ -726,6 +979,145 @@ def _run_repeated_trials(
             "optimized_unique_json_outputs": optimized_unique_outputs,
         },
         "baseline_outputs_for_reuse": [dict(row["outputs_bounded"]) for row in baseline_runs],
+    }
+
+
+def _bounded_outputs(outputs: dict[str, str], *, max_chars: int = 280) -> dict[str, str]:
+    return {prompt_id: _sanitize_text(str(text), max_chars=max_chars) for prompt_id, text in outputs.items()}
+
+
+def _run_full_suite_candidate_matrix(
+    *,
+    runtime_python: Path,
+    env: dict[str, str],
+    profile: Any,
+    prompts: list[dict[str, Any]],
+    deterministic_inference: Any,
+    request_payload: dict[str, Any],
+    baseline_dir: Path,
+    baseline_model_name: str,
+    default_dir: Path,
+    default_model_name: str,
+    block64_dir: Path | None,
+    block64_model_name: str | None,
+    trials: int,
+) -> dict[str, Any]:
+    candidates: list[dict[str, Any]] = [
+        {
+            "candidate_id": "default_int4",
+            "model_dir": default_dir,
+            "model_name": default_model_name,
+        }
+    ]
+    if block64_dir is not None and block64_model_name is not None:
+        candidates.append(
+            {
+                "candidate_id": "block_size_64",
+                "model_dir": block64_dir,
+                "model_name": block64_model_name,
+            }
+        )
+
+    matrix_rows: list[dict[str, Any]] = []
+    for candidate in candidates:
+        candidate_id = str(candidate["candidate_id"])
+        model_dir = Path(str(candidate["model_dir"]))
+        model_name = str(candidate["model_name"])
+        trial_rows: list[dict[str, Any]] = []
+        complete_batches = 0
+        can_promote_count = 0
+        structural_regression_count = 0
+        for trial_index in range(1, trials + 1):
+            baseline_run = _run_foundry_batch(
+                runtime_python=runtime_python,
+                env=env,
+                model_dir=baseline_dir,
+                model_name=baseline_model_name,
+                request_payload=request_payload,
+                timeout_seconds=max(1800, int(request_payload["batch_timeout_seconds"]) + 180),
+            )
+            candidate_run = _run_foundry_batch(
+                runtime_python=runtime_python,
+                env=env,
+                model_dir=model_dir,
+                model_name=model_name,
+                request_payload=request_payload,
+                timeout_seconds=max(1800, int(request_payload["batch_timeout_seconds"]) + 180),
+            )
+            evaluation = _evaluate_pair_detailed(
+                profile=profile,
+                prompts=prompts,
+                baseline_outputs=baseline_run["prompt_outputs"],
+                optimized_outputs=candidate_run["prompt_outputs"],
+                deterministic_inference=deterministic_inference,
+            )
+            baseline_ok = bool(baseline_run["worker_payload"].get("ok"))
+            candidate_ok = bool(candidate_run["worker_payload"].get("ok"))
+            both_complete = (
+                baseline_ok
+                and candidate_ok
+                and len(baseline_run["prompt_outputs"]) == len(prompts)
+                and len(candidate_run["prompt_outputs"]) == len(prompts)
+            )
+            if both_complete:
+                complete_batches += 1
+            if bool(evaluation["summary"]["can_promote"]):
+                can_promote_count += 1
+            integrity_failures = list(evaluation["summary"]["integrity_failures"])
+            if any("optimized_structural_regression:format-json-answer-unit" in row for row in integrity_failures):
+                structural_regression_count += 1
+            trial_rows.append(
+                {
+                    "trial": trial_index,
+                    "baseline_worker_ok": baseline_ok,
+                    "candidate_worker_ok": candidate_ok,
+                    "baseline_batch_seconds": baseline_run["worker_payload"].get("duration_seconds"),
+                    "candidate_batch_seconds": candidate_run["worker_payload"].get("duration_seconds"),
+                    "baseline_outputs_bounded": _bounded_outputs(baseline_run["prompt_outputs"]),
+                    "candidate_outputs_bounded": _bounded_outputs(candidate_run["prompt_outputs"]),
+                    "evaluation": evaluation,
+                }
+            )
+        matrix_rows.append(
+            {
+                "candidate_id": candidate_id,
+                "model_name": model_name,
+                "trial_count": trials,
+                "complete_batch_rate": f"{complete_batches}/{trials}",
+                "can_promote_rate": f"{can_promote_count}/{trials}",
+                "json_structural_regression_rate": f"{structural_regression_count}/{trials}",
+                "trials": trial_rows,
+            }
+        )
+
+    default_row = next((row for row in matrix_rows if row["candidate_id"] == "default_int4"), None)
+    block64_row = next((row for row in matrix_rows if row["candidate_id"] == "block_size_64"), None)
+    if block64_row is None:
+        conclusion = {
+            "block64_candidate_supported": False,
+            "result": "block64_unavailable",
+            "reason": "block_size_64 variant did not build successfully in this run.",
+        }
+    else:
+        default_structural = str(default_row.get("json_structural_regression_rate")) if isinstance(default_row, dict) else ""
+        block64_promote = str(block64_row.get("can_promote_rate"))
+        block64_structural = str(block64_row.get("json_structural_regression_rate"))
+        remains_candidate = block64_promote == f"{trials}/{trials}" and block64_structural == f"0/{trials}"
+        conclusion = {
+            "block64_candidate_supported": remains_candidate,
+            "result": (
+                "block64_remains_promotion_eligible_full_suite"
+                if remains_candidate
+                else "block64_withdrawn_due_to_full_suite_failure"
+            ),
+            "default_int4_structural_regression_rate": default_structural,
+            "block64_can_promote_rate": block64_promote,
+            "block64_structural_regression_rate": block64_structural,
+        }
+    return {
+        "prompt_order": [str(row["prompt_id"]) for row in prompts],
+        "candidates": matrix_rows,
+        "conclusion": conclusion,
     }
 
 
@@ -958,6 +1350,263 @@ def _onnx_op_summary(model_path: Path) -> dict[str, Any]:
     }
 
 
+def _profile_foundry_load_and_batch(
+    *,
+    runtime_python: Path,
+    env: dict[str, str],
+    model_dir: Path,
+    model_name: str,
+    prompts: list[dict[str, Any]],
+    max_tokens: int,
+) -> dict[str, Any]:
+    payload = {
+        "model_dir": str(model_dir),
+        "model_name": model_name,
+        "prompts": [{"prompt_id": str(row["prompt_id"]), "prompt": str(row["prompt"])} for row in prompts],
+        "max_tokens": int(max_tokens),
+    }
+    worker_code = """
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+from foundry_local_sdk import Configuration, FoundryLocalManager
+
+payload_path = Path(sys.argv[1]).resolve()
+payload = json.loads(payload_path.read_text(encoding='utf-8'))
+model_dir = Path(payload['model_dir']).resolve()
+model_name = str(payload['model_name'])
+prompts = payload['prompts']
+max_tokens = int(payload['max_tokens'])
+
+rss_supported = False
+rss_error = ''
+peak_rss_bytes = None
+rss_samples = []
+process = None
+try:
+    import psutil
+    process = psutil.Process(os.getpid())
+    rss_supported = True
+except Exception as exc:
+    rss_error = str(exc)
+
+def sample(stage: str):
+    global peak_rss_bytes
+    if process is None:
+        return
+    try:
+        rss = int(process.memory_info().rss)
+    except Exception:
+        return
+    if peak_rss_bytes is None or rss > peak_rss_bytes:
+        peak_rss_bytes = rss
+    rss_samples.append({'stage': stage, 'rss_bytes': rss})
+
+sample('before_initialize')
+initialize_start = time.perf_counter()
+FoundryLocalManager.initialize(Configuration(
+    app_name='fl-model-onboarding-smollm-json-regression-profile',
+    model_cache_dir=str(model_dir.parent),
+))
+initialize_end = time.perf_counter()
+sample('after_initialize')
+manager = FoundryLocalManager.instance
+candidate = next((row for row in manager.catalog.get_cached_models() if model_name in row.id), None)
+if candidate is None:
+    raise RuntimeError(f\"Profile candidate '{model_name}' not found in cache root '{model_dir.parent}'.\")
+load_start = time.perf_counter()
+candidate.load()
+load_end = time.perf_counter()
+sample('after_load')
+client = candidate.get_chat_client()
+prompt_runs = []
+generation_start = time.perf_counter()
+for row in prompts:
+    prompt_id = str(row['prompt_id'])
+    prompt_text = str(row['prompt'])
+    if hasattr(client, 'settings'):
+        client.settings.max_tokens = max_tokens
+        try:
+            client.settings.temperature = 0.0
+        except Exception:
+            pass
+    infer_start = time.perf_counter()
+    response = client.complete_chat([{'role': 'user', 'content': prompt_text}])
+    infer_end = time.perf_counter()
+    choices = getattr(response, 'choices', [])
+    if choices:
+        message = getattr(choices[0], 'message', None)
+        content = getattr(message, 'content', None)
+        output = content if isinstance(content, str) else str(response)
+    else:
+        output = str(response)
+    sample(f'after_prompt_{prompt_id}')
+    prompt_runs.append({
+        'prompt_id': prompt_id,
+        'duration_seconds': round(infer_end - infer_start, 4),
+        'output_bounded': output[:200],
+    })
+generation_end = time.perf_counter()
+unload_start = time.perf_counter()
+candidate.unload()
+unload_end = time.perf_counter()
+sample('after_unload')
+
+print(json.dumps({
+    'ok': True,
+    'initialize_seconds': round(initialize_end - initialize_start, 4),
+    'load_seconds': round(load_end - load_start, 4),
+    'generation_seconds': round(generation_end - generation_start, 4),
+    'unload_seconds': round(unload_end - unload_start, 4),
+    'prompt_runs': prompt_runs,
+    'peak_rss_bytes': peak_rss_bytes,
+    'rss_supported': rss_supported,
+    'rss_error': rss_error if not rss_supported else '',
+    'rss_samples': rss_samples,
+}, sort_keys=True))
+"""
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
+        json.dump(payload, handle)
+        payload_path = Path(handle.name)
+    try:
+        result = _run_cmd(
+            [str(runtime_python), "-c", worker_code, str(payload_path)],
+            timeout_seconds=1800,
+            env=env,
+        )
+    finally:
+        payload_path.unlink(missing_ok=True)
+    parsed = _parse_json_maybe(str(result.get("stdout") or ""))
+    if not result["ok"] or not isinstance(parsed, dict):
+        return {
+            "ok": False,
+            "error": "foundry profile subprocess failed",
+            "stderr_tail": result["stderr_tail"],
+            "stdout_tail": result["stdout_tail"],
+            "duration_seconds": result["duration_seconds"],
+        }
+    parsed["command_duration_seconds"] = result["duration_seconds"]
+    return parsed
+
+
+def _token_trace_with_oga(model_dir: Path, prompt: str, *, max_new_tokens: int) -> dict[str, Any]:
+    import onnxruntime_genai as og
+
+    model = og.Model(str(model_dir))
+    tokenizer = og.Tokenizer(model)
+    prompt_tokens = tokenizer.encode(prompt)
+    params = og.GeneratorParams(model)
+    options = {
+        "max_length": len(prompt_tokens) + max_new_tokens,
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "do_sample": False,
+    }
+    params.set_search_options(**options)
+    generator = og.Generator(model, params)
+    stream = tokenizer.create_stream()
+    generator.append_tokens(prompt_tokens)
+    token_ids: list[int] = []
+    output_text = ""
+    while not generator.is_done() and len(token_ids) < max_new_tokens:
+        generator.generate_next_token()
+        next_tokens = generator.get_next_tokens()
+        token_id = int(next_tokens[0])
+        token_ids.append(token_id)
+        output_text += stream.decode(token_id)
+    del generator
+    del stream
+    del tokenizer
+    del model
+    gc.collect()
+    return {
+        "ok": True,
+        "token_ids": token_ids,
+        "generated_count": len(token_ids),
+        "output_bounded": _sanitize_text(output_text, max_chars=280),
+        "options": options,
+    }
+
+
+def _compare_token_traces(reference: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    ref_ids = [int(row) for row in reference.get("token_ids", [])]
+    cand_ids = [int(row) for row in candidate.get("token_ids", [])]
+    compared = min(len(ref_ids), len(cand_ids))
+    matches = 0
+    first_divergence: int | None = None
+    for index in range(compared):
+        if ref_ids[index] == cand_ids[index]:
+            matches += 1
+            continue
+        first_divergence = index + 1
+        break
+    if first_divergence is None and len(ref_ids) != len(cand_ids):
+        first_divergence = compared + 1
+    return {
+        "compared_steps": compared,
+        "matching_steps": matches,
+        "step_match_rate": (f"{matches}/{compared}" if compared > 0 else "0/0"),
+        "first_divergence_step_1_indexed": first_divergence,
+        "reference_generated_count": len(ref_ids),
+        "candidate_generated_count": len(cand_ids),
+    }
+
+
+def _attempt_numeric_fidelity_probe(
+    *,
+    baseline_dir: Path,
+    default_dir: Path,
+    block64_dir: Path | None,
+) -> dict[str, Any]:
+    method = {
+        "kind": "oga_next_token_trace_divergence",
+        "prompt": NUMERIC_FIDELITY_PROMPT,
+        "max_new_tokens": NUMERIC_FIDELITY_MAX_TOKENS,
+        "notes": "Deterministic decode options requested (do_sample=false, temperature=0, top_p=1).",
+    }
+    try:
+        baseline_trace = _token_trace_with_oga(
+            baseline_dir,
+            NUMERIC_FIDELITY_PROMPT,
+            max_new_tokens=NUMERIC_FIDELITY_MAX_TOKENS,
+        )
+        default_trace = _token_trace_with_oga(
+            default_dir,
+            NUMERIC_FIDELITY_PROMPT,
+            max_new_tokens=NUMERIC_FIDELITY_MAX_TOKENS,
+        )
+        payload: dict[str, Any] = {
+            "status": "available",
+            "method": method,
+            "baseline_vs_default": {
+                "comparison": _compare_token_traces(baseline_trace, default_trace),
+                "baseline_output_bounded": baseline_trace["output_bounded"],
+                "candidate_output_bounded": default_trace["output_bounded"],
+            },
+        }
+        if block64_dir is not None:
+            block64_trace = _token_trace_with_oga(
+                block64_dir,
+                NUMERIC_FIDELITY_PROMPT,
+                max_new_tokens=NUMERIC_FIDELITY_MAX_TOKENS,
+            )
+            payload["baseline_vs_block64"] = {
+                "comparison": _compare_token_traces(baseline_trace, block64_trace),
+                "baseline_output_bounded": baseline_trace["output_bounded"],
+                "candidate_output_bounded": block64_trace["output_bounded"],
+            }
+        return payload
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "numeric_fidelity_unknown",
+            "method": method,
+            "error": _sanitize_text(str(exc), max_chars=600),
+        }
+
+
 def _copy_package(src: Path, dst: Path) -> None:
     if dst.exists():
         shutil.rmtree(dst)
@@ -1054,6 +1703,31 @@ def _run_hybrid_experiments(
     }
 
 
+def _classify_optimize_failure(stderr_text: str, stdout_text: str) -> dict[str, str]:
+    full = f"{stdout_text}\n{stderr_text}".strip()
+    lines = [line.strip() for line in full.splitlines() if line.strip()]
+    last_line = lines[-1] if lines else ""
+    lowered = full.lower()
+    if "assertionerror" in lowered and "block_size" in lowered:
+        classification = "invalid_block_size"
+    elif "no module named 'datasets'" in lowered:
+        classification = "missing_dependency_datasets"
+    elif "modulenotfounderror" in lowered:
+        classification = "missing_dependency"
+    elif "not implemented" in lowered:
+        classification = "runtime_not_implemented"
+    elif "traceback" in lowered:
+        classification = "python_exception"
+    elif "error" in lowered:
+        classification = "tool_error"
+    else:
+        classification = "unknown_failure"
+    return {
+        "failure_classification": classification,
+        "last_exception_line": _sanitize_text(last_line, max_chars=220),
+    }
+
+
 def _run_variant_experiments(
     *,
     runtime_python: Path,
@@ -1071,7 +1745,7 @@ def _run_variant_experiments(
         {"id": "int4_default", "olive_args": [], "trial_count": 3},
         {"id": "int4_block_size_16", "olive_args": ["--block_size", "16"], "trial_count": 3},
         {"id": "int4_block_size_32", "olive_args": ["--block_size", "32"], "trial_count": 3},
-        {"id": "int4_block_size_64", "olive_args": ["--block_size", "64"], "trial_count": 5},
+        {"id": "int4_block_size_64", "olive_args": ["--block_size", "64"], "trial_count": 3},
         {"id": "int4_block_size_-1", "olive_args": ["--block_size", "-1"], "trial_count": 0},
         {"id": "int4_act_precision_uint8", "olive_args": ["--act_precision", "uint8"], "trial_count": 0},
     ]
@@ -1115,10 +1789,14 @@ def _run_variant_experiments(
             "optimize_seconds": optimize["duration_seconds"],
             "optimize_stdout_excerpt": optimize["stdout_excerpt"],
             "optimize_stderr_excerpt": optimize["stderr_excerpt"],
+            "optimize_stdout_tail": optimize["stdout_tail"],
+            "optimize_stderr_tail": optimize["stderr_tail"],
             "trial_count": trial_count,
             "trials": [],
+            "variant_dir": str(variant_dir),
         }
         if not optimize["ok"] or not (variant_dir / "model.onnx").is_file():
+            row.update(_classify_optimize_failure(str(optimize.get("stderr") or ""), str(optimize.get("stdout") or "")))
             row["status"] = "optimize_failed_or_unsupported"
             report["variants"].append(row)
             continue
@@ -1127,6 +1805,15 @@ def _run_variant_experiments(
         _write_inference_model_name(variant_dir, model_name)
         row["graph_summary"] = _onnx_op_summary(variant_dir / "model.onnx")
         row["model_name"] = model_name
+        row["package_size_bytes"] = _directory_size_bytes(variant_dir)
+        row["foundry_profile"] = _profile_foundry_load_and_batch(
+            runtime_python=runtime_python,
+            env=env,
+            model_dir=variant_dir,
+            model_name=model_name,
+            prompts=prompts,
+            max_tokens=int(request_payload["prompts"][0]["max_tokens"]),
+        )
         can_promote = 0
         json_parse_ok = 0
         json_fenced = 0
@@ -1162,6 +1849,7 @@ def _run_variant_experiments(
                     "trial": trial_index,
                     "batch_ok": bool(batch["worker_payload"].get("ok")),
                     "batch_seconds": batch["worker_payload"].get("duration_seconds"),
+                    "outputs_bounded": _bounded_outputs(batch["prompt_outputs"]),
                     "json_prompt": json_features,
                     "quality_eval": {
                         "can_promote": eval_payload["can_promote"],
@@ -1237,6 +1925,54 @@ def _rank_remedies(variant_report: dict[str, Any]) -> dict[str, Any]:
     return {"ranked": ranked, "rejected": rejected}
 
 
+def _build_block_size_cost_matrix(
+    *,
+    selected_default_package_dir: Path,
+    selected_default_profile: dict[str, Any],
+    variants: dict[str, Any],
+) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = [
+        {
+            "variant": "default_int4_selected_round6_artifact",
+            "package_size_bytes": _directory_size_bytes(selected_default_package_dir),
+            "optimize_seconds": None,
+            "load_seconds": selected_default_profile.get("load_seconds"),
+            "generation_seconds": selected_default_profile.get("generation_seconds"),
+            "peak_rss_bytes": selected_default_profile.get("peak_rss_bytes"),
+            "quality_summary": None,
+        }
+    ]
+    for row in variants.get("variants", []):
+        if not isinstance(row, dict):
+            continue
+        variant_id = str(row.get("variant_id"))
+        if variant_id not in {"int4_default", "int4_block_size_16", "int4_block_size_32", "int4_block_size_64"}:
+            continue
+        foundry_profile = row.get("foundry_profile", {})
+        summary = row.get("summary", {})
+        rows.append(
+            {
+                "variant": variant_id,
+                "package_size_bytes": row.get("package_size_bytes"),
+                "optimize_seconds": row.get("optimize_seconds"),
+                "load_seconds": (foundry_profile.get("load_seconds") if isinstance(foundry_profile, dict) else None),
+                "generation_seconds": (
+                    foundry_profile.get("generation_seconds") if isinstance(foundry_profile, dict) else None
+                ),
+                "peak_rss_bytes": (foundry_profile.get("peak_rss_bytes") if isinstance(foundry_profile, dict) else None),
+                "quality_summary": summary if isinstance(summary, dict) else None,
+            }
+        )
+    return {
+        "rows": rows,
+        "notes": [
+            "optimize_seconds is omitted for selected Round 6 default artifact because it was prebuilt.",
+            "load/generation timings are direct Foundry SDK measurements on this host and are not cross-hardware comparable.",
+            "peak_rss_bytes uses best-effort psutil sampling when available.",
+        ],
+    }
+
+
 def _probe_lingering_processes() -> dict[str, Any]:
     command = (
         "$self=$PID;"
@@ -1273,6 +2009,41 @@ def _probe_lingering_processes() -> dict[str, Any]:
     }
 
 
+def _cleanup_exact_stray_root(path: Path) -> dict[str, Any]:
+    target = EXACT_STRAY_DIAGNOSTIC_ROOT.resolve()
+    resolved = path.resolve()
+    if resolved != target:
+        raise RuntimeError(
+            f"Refusing cleanup for non-whitelisted path '{resolved}'. Allowed path is '{target}'.",
+        )
+    if not resolved.exists():
+        return {
+            "path": str(resolved),
+            "existed": False,
+            "removed": False,
+            "bytes_freed": 0,
+            "entries_before": [],
+        }
+    entries_before: list[dict[str, Any]] = []
+    for entry in sorted(resolved.iterdir()):
+        entries_before.append(
+            {
+                "name": entry.name,
+                "is_dir": entry.is_dir(),
+                "size_bytes": (_directory_size_bytes(entry) if entry.is_dir() else _file_size_bytes(entry)),
+            }
+        )
+    bytes_before = _directory_size_bytes(resolved)
+    shutil.rmtree(resolved)
+    return {
+        "path": str(resolved),
+        "existed": True,
+        "removed": True,
+        "bytes_freed": bytes_before,
+        "entries_before": entries_before,
+    }
+
+
 def _safe_cleanup_external(path: Path, scratch_root: Path) -> dict[str, Any]:
     resolved = path.resolve()
     root = scratch_root.resolve()
@@ -1281,9 +2052,10 @@ def _safe_cleanup_external(path: Path, scratch_root: Path) -> dict[str, Any]:
     except ValueError as exc:
         return {"ok": False, "error": f"Refusing cleanup outside {root}: {resolved} ({exc})"}
     if not resolved.exists():
-        return {"ok": True, "removed": False}
+        return {"ok": True, "removed": False, "bytes_freed": 0}
+    bytes_before = _directory_size_bytes(resolved)
     shutil.rmtree(resolved)
-    return {"ok": True, "removed": True}
+    return {"ok": True, "removed": True, "bytes_freed": bytes_before}
 
 
 def _main() -> int:
@@ -1292,8 +2064,11 @@ def _main() -> int:
     parser.add_argument("--retained-cache-root", default=str(DEFAULT_RETAINED_CACHE_ROOT))
     parser.add_argument("--external-scratch-root", default=str(DEFAULT_EXTERNAL_SCRATCH_ROOT))
     parser.add_argument("--repro-trials", type=int, default=6)
+    parser.add_argument("--full-suite-trials", type=int, default=3)
     parser.add_argument("--output-report", default=str(REPORT_PATH))
     parser.add_argument("--retain-external", action="store_true")
+    parser.add_argument("--allow-interpreter-conflation", action="store_true")
+    parser.add_argument("--toolchain-probe-only", action="store_true")
     args = parser.parse_args()
 
     runtime_python = Path(args.runtime_python).resolve()
@@ -1304,6 +2079,14 @@ def _main() -> int:
         raise RuntimeError(f"Runtime python executable not found: {runtime_python}")
     scratch_root.mkdir(parents=True, exist_ok=True)
     env = _runtime_env()
+    if args.toolchain_probe_only:
+        payload = _load_toolchain_versions(
+            runtime_python,
+            env,
+            allow_interpreter_conflation=bool(args.allow_interpreter_conflation),
+        )
+        print(json.dumps(_sanitize_payload(payload), sort_keys=True))
+        return 0
 
     context = _load_round6_context()
     retained_paths = _resolve_retained_paths(retained_cache_root, context)
@@ -1321,19 +2104,28 @@ def _main() -> int:
     run_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     external_run_root = scratch_root / f"smollm-json-regression-{run_stamp}"
     external_run_root.mkdir(parents=True, exist_ok=False)
-    cleanup_result: dict[str, Any] = {"ok": False, "removed": False}
-
+    cleanup_result: dict[str, Any] = {"ok": False, "removed": False, "bytes_freed": 0}
+    report: dict[str, Any] = {}
     try:
-        toolchain_probe = _load_toolchain_versions(runtime_python, env)
+        toolchain_probe = _load_toolchain_versions(
+            runtime_python,
+            env,
+            allow_interpreter_conflation=bool(args.allow_interpreter_conflation),
+        )
+        snapshot_dir = Path(str(retained_paths["snapshot_dir"]))
+        optimized_dir = Path(str(retained_paths["optimized_dir"]))
+        selected_input_hashes_before = {
+            "snapshot": _directory_fingerprint(snapshot_dir),
+            "optimized_package": _directory_fingerprint(optimized_dir),
+        }
         baseline_dir = external_run_root / "baseline" / "mobius"
         baseline_build = _build_baseline_package(
             runtime_python=runtime_python,
             env=env,
-            snapshot_dir=Path(str(retained_paths["snapshot_dir"])),
+            snapshot_dir=snapshot_dir,
             output_dir=baseline_dir,
             baseline_model_name=str(context["baseline_model_name"]),
         )
-        optimized_dir = Path(str(retained_paths["optimized_dir"]))
         baseline_model_name = _read_inference_model_name(baseline_dir)
         optimized_model_name = _read_inference_model_name(optimized_dir)
 
@@ -1353,7 +2145,7 @@ def _main() -> int:
             request_payload=request_payload,
             timeout_seconds=max(1800, int(request_payload["batch_timeout_seconds"]) + 180),
         )
-        single_eval = _evaluate_pair(
+        single_eval = _evaluate_pair_detailed(
             profile=profile,
             prompts=prompts,
             baseline_outputs=baseline_single["prompt_outputs"],
@@ -1389,6 +2181,17 @@ def _main() -> int:
             request_payload=request_payload,
             trials=max(5, int(args.repro_trials)),
         )
+        single_prompt_reproducibility = {
+            "prompt_id": "format-json-answer-unit",
+            "trial_count": repeated["trial_count"],
+            "baseline_json_valid_rate": repeated["summary"]["baseline_json_valid_rate"],
+            "optimized_json_valid_rate": repeated["summary"]["optimized_json_valid_rate"],
+            "baseline_fenced_rate": repeated["summary"]["baseline_fenced_rate"],
+            "optimized_fenced_rate": repeated["summary"]["optimized_fenced_rate"],
+            "regression_signature_rate": repeated["summary"]["quality_regression_signature_rate"],
+            "baseline_unique_json_outputs": repeated["summary"]["baseline_unique_json_outputs"],
+            "optimized_unique_json_outputs": repeated["summary"]["optimized_unique_json_outputs"],
+        }
 
         control_probe_prompt = "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm."
         decoding_controls = {
@@ -1438,16 +2241,80 @@ def _main() -> int:
             request_payload=request_payload,
             external_root=external_run_root,
         )
+        block64_variant = next(
+            (
+                row
+                for row in variants.get("variants", [])
+                if isinstance(row, dict)
+                and row.get("variant_id") == "int4_block_size_64"
+                and row.get("status") == "evaluated"
+            ),
+            None,
+        )
+        block64_dir = Path(str(block64_variant["variant_dir"])) if isinstance(block64_variant, dict) else None
+        block64_model_name = str(block64_variant["model_name"]) if isinstance(block64_variant, dict) else None
+
+        full_suite_trials = max(3, int(args.full_suite_trials))
+        full_suite_evidence = _run_full_suite_candidate_matrix(
+            runtime_python=runtime_python,
+            env=env,
+            profile=profile,
+            prompts=prompts,
+            deterministic_inference=deterministic_profile,
+            request_payload=request_payload,
+            baseline_dir=baseline_dir,
+            baseline_model_name=baseline_model_name,
+            default_dir=optimized_dir,
+            default_model_name=optimized_model_name,
+            block64_dir=block64_dir,
+            block64_model_name=block64_model_name,
+            trials=full_suite_trials,
+        )
+        default_profile = _profile_foundry_load_and_batch(
+            runtime_python=runtime_python,
+            env=env,
+            model_dir=optimized_dir,
+            model_name=optimized_model_name,
+            prompts=prompts,
+            max_tokens=int(request_payload["prompts"][0]["max_tokens"]),
+        )
+        block_size_costs = _build_block_size_cost_matrix(
+            selected_default_package_dir=optimized_dir,
+            selected_default_profile=default_profile,
+            variants=variants,
+        )
+        numeric_fidelity = _attempt_numeric_fidelity_probe(
+            baseline_dir=baseline_dir,
+            default_dir=optimized_dir,
+            block64_dir=block64_dir,
+        )
+
         remedy_ranking = _rank_remedies(variants)
         lingering = _probe_lingering_processes()
+        stray_cleanup = _cleanup_exact_stray_root(EXACT_STRAY_DIAGNOSTIC_ROOT)
+
+        selected_input_hashes_after = {
+            "snapshot": _directory_fingerprint(snapshot_dir),
+            "optimized_package": _directory_fingerprint(optimized_dir),
+        }
+        selected_inputs_unchanged = (
+            selected_input_hashes_before["snapshot"]["manifest_sha256"]
+            == selected_input_hashes_after["snapshot"]["manifest_sha256"]
+            and selected_input_hashes_before["optimized_package"]["manifest_sha256"]
+            == selected_input_hashes_after["optimized_package"]["manifest_sha256"]
+        )
 
         all_models = context["manifest"].get("frozen_cli", {}).get("frozen_list", {}).get("json", {}).get("models", [])
         if not isinstance(all_models, list):
             all_models = []
         rerun_model_ids = [str(row.get("model_id")) for row in all_models if isinstance(row, dict) and row.get("model_id")]
 
-        report: dict[str, Any] = {
-            "schema_version": "1.0.0",
+        full_suite_conclusion = full_suite_evidence.get("conclusion", {})
+        block64_supported = bool(full_suite_conclusion.get("block64_candidate_supported"))
+        retry_ladder_justified = bool(block64_supported)
+
+        report = {
+            "schema_version": "1.1.0",
             "diagnostic_id": "smollm-round6-json-regression",
             "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "source_round": {
@@ -1486,6 +2353,19 @@ def _main() -> int:
                 .get("failure_excerpt", []),
             },
             "toolchain_probe": toolchain_probe,
+            "selected_input_evidence": {
+                "selection_by_exact_artifact_id": {
+                    "artifact_id": retained_paths["optimized_artifact_id"],
+                    "artifact_short": retained_paths["optimized_artifact_short"],
+                    "expected_directory_name": retained_paths["optimized_expected_name"],
+                    "selected_directory_name": retained_paths["optimized_package_name"],
+                    "exact_match": retained_paths["selection_exact_id_match"],
+                },
+                "preexisting_sibling_inventory": retained_paths["sibling_inventory_preexisting"],
+                "selected_input_hashes_before": selected_input_hashes_before,
+                "selected_input_hashes_after": selected_input_hashes_after,
+                "selected_inputs_unchanged_after_diagnostics": selected_inputs_unchanged,
+            },
             "reproduction_single_batch": {
                 "batch_request": request_payload,
                 "baseline_model_name": baseline_model_name,
@@ -1495,15 +2375,16 @@ def _main() -> int:
                 "json_prompt": single_json_features,
                 "quality_eval": single_eval,
                 "bounded_outputs": {
-                    "baseline": {
-                        prompt_id: _sanitize_text(str(text), max_chars=220)
-                        for prompt_id, text in baseline_single["prompt_outputs"].items()
-                    },
-                    "optimized": {
-                        prompt_id: _sanitize_text(str(text), max_chars=220)
-                        for prompt_id, text in optimized_single["prompt_outputs"].items()
-                    },
+                    "baseline": _bounded_outputs(baseline_single["prompt_outputs"]),
+                    "optimized": _bounded_outputs(optimized_single["prompt_outputs"]),
                 },
+            },
+            "single_prompt_reproducibility": single_prompt_reproducibility,
+            "full_suite_evidence": full_suite_evidence,
+            "cross_model_generalization": {
+                "status": "unproven_pending_full_five_model_rerun",
+                "reason": "Evidence in this diagnostic run is SmolLM-targeted only.",
+                "required_rerun_model_ids": rerun_model_ids,
             },
             "determinism_repeated_trials": repeated,
             "decoding_controls_probe": decoding_controls,
@@ -1511,6 +2392,8 @@ def _main() -> int:
             "graph_comparison": graph_compare,
             "layer_isolation_hybrid_swaps": hybrid,
             "int4_variant_experiments": variants,
+            "block_size_costs_and_performance": block_size_costs,
+            "numeric_fidelity_probe": numeric_fidelity,
             "root_cause_assessment": {
                 "primary_layer": "quantized_graph_behavior",
                 "confidence": "high",
@@ -1528,8 +2411,23 @@ def _main() -> int:
             "remedy_analysis": {
                 "ranked_candidates": remedy_ranking["ranked"],
                 "rejected_approaches": remedy_ranking["rejected"],
-                "safe_generic_fix_proven_for_target_model": True,
+                "safe_generic_fix_proven_for_target_model": block64_supported,
                 "safe_generic_fix_proven_for_full_round6_five_model_set": False,
+                "full_suite_candidate_conclusion": full_suite_conclusion,
+                "retry_ladder_round7_justification": {
+                    "justified": retry_ladder_justified,
+                    "reason": (
+                        "default remained structurally regressed while block64 remained promotion-eligible in full-suite repeats."
+                        if retry_ladder_justified
+                        else "block64 did not stay promotion-eligible across full-suite repeats."
+                    ),
+                    "constraints": [
+                        "default build first",
+                        "retry block64 only on baseline-pass/optimized-structural-regression",
+                        "max 2 builds",
+                        "no model-id routing",
+                    ],
+                },
                 "recommended_next_action": (
                     "Run unchanged-five-model Round 6 rerun with capability-level INT4 block_size=64 policy candidate "
                     "to validate generalization and guard against regressions."
@@ -1550,11 +2448,12 @@ def _main() -> int:
                 "external_run_root": str(external_run_root),
                 "retain_external_requested": bool(args.retain_external),
                 "lingering_process_probe": lingering,
+                "exact_stray_root_cleanup": stray_cleanup,
             },
         }
     finally:
         if args.retain_external:
-            cleanup_result = {"ok": True, "removed": False, "reason": "retain_external_requested"}
+            cleanup_result = {"ok": True, "removed": False, "bytes_freed": 0, "reason": "retain_external_requested"}
         else:
             cleanup_result = _safe_cleanup_external(external_run_root, scratch_root)
 

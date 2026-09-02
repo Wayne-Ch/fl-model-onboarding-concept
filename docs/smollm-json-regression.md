@@ -1,53 +1,61 @@
-# SmolLM2 Round 6 JSON regression diagnosis
+# SmolLM2 Round 6 JSON regression follow-up
 
 ## Scope
 
-- Target blocker: `HuggingFaceTB/SmolLM2-360M-Instruct` optimized JSON-format regression in Recipe Agent v1 Round 6.
-- Frozen identity: `HuggingFaceTB/SmolLM2-360M-Instruct` @ `a10cc1512eabd3dde888204e902eca88bddb4951`.
-- Strict contract preserved: no fence stripping, parser-only acceptance, validator relaxation, or output rewriting.
+- Target blocker: optimized JSON-format regression for `HuggingFaceTB/SmolLM2-360M-Instruct`.
+- Frozen revision: `a10cc1512eabd3dde888204e902eca88bddb4951`.
+- Scope guard held: diagnostics-only artifacts; no production/config/profile/contract changes.
 
-## Answers to the five blocker questions
+## A) Audit-gap fixes completed
 
-1. **Deterministic or variance?**  
-   Bounded repeats were deterministic in this toolchain path: baseline JSON prompt stayed valid/unfenced (`6/6`), optimized stayed fenced/invalid (`6/6`), and recipe integrity regression signature reproduced (`6/6`).
+1. **Runtime toolchain probe now uses explicit runtime interpreter**
+   - `run_smollm_json_regression_diagnostics.py` now executes a runtime-subprocess probe with `--runtime-python`.
+   - It records requested executable vs reported executable and package versions.
+   - It fails when harness/runtime are the same unless explicitly acknowledged with `--allow-interpreter-conflation`.
 
-2. **Exact outputs/structure/timing/prompt-template inputs?**  
-   The fixed quality prompt `format-json-answer-unit` produced:
-   - baseline: `{"answer":12,"unit":"cm"}` shape (valid JSON, unfenced),
-   - optimized: markdown-prefixed fenced JSON (invalid strict JSON contract due ` ``` ` + parse failure).  
-   Bounded timings and per-prompt outputs are captured in `evaluation/recipe-agent-v1/diagnostics/smollm-json-regression/diagnostic-report.json` under `reproduction_single_batch` and `determinism_repeated_trials`.
+2. **Selected-input identity, sibling inventory, and hash stability**
+   - Selection is now strict by exact artifact id short-hash directory (`artifact_prefix-<artifact_id[:12]>`), not best-effort fallback.
+   - Report records preexisting sibling inventory for matching snapshot/artifact prefixes.
+   - Report records full selected snapshot/package fingerprints before and after diagnostics and confirms they remain unchanged.
 
-3. **Which layer introduces the difference?**  
-   Evidence points to the **quantized graph layer**:
-   - `genai_config.json` and tokenizer/chat-template fingerprints matched baseline vs optimized.
-   - Hybrid swap tests showed:
-     - baseline package + optimized graph reproduces fenced regression,
-     - optimized package + baseline graph returns clean JSON and passes.
+3. **Contained cleanup of exact stray root**
+   - Cleanup target is hard-capped to exactly the configured stray diagnostics root (`%SystemDrive%\\fmo-r6-smollm-diagnostics`).
+   - Report records entries observed, bytes freed, and selected-input fingerprints remain unchanged after cleanup.
 
-4. **Smallest generic fix that keeps CPU INT4 + strict JSON contract?**  
-   The strongest tested generic candidate is capability-level Olive INT4 policy `--block_size 64`.  
-   On SmolLM2 this removed the fence regression and passed quality integrity in bounded repeats (`can_promote 5/5`, JSON parse ok `5/5`, fenced `0/5`) without changing prompts/contracts/gates.
+4. **Failed variant auditability**
+   - Variant failures now record longer sanitized stderr/stdout tails, failure classification, and last exception line.
 
-5. **Generalization status and required rerun?**  
-   Candidate is **proven on target model only**, not yet proven across the frozen set.  
-   Mandatory next step is an unchanged full five-model Round 6 rerun with strict gates intact.
+## B) Full 4-prompt suite evidence (blocking ask)
 
-## Decoding-control probe notes
+Using the fixed `textgen-basic-quality-v1` prompt order through the same runtime batch-worker path:
 
-- Foundry SDK settings accepted in probe: `max_tokens`, `temperature`, `top_p`, `seed`, `do_sample` (settable surface).
-- OGA search options accepted: `max_length`, `temperature`, `top_p`, `do_sample`; rejected: `max_tokens`, `seed`.
-- Round 6 quality evidence still records partial determinism support in gate metadata; diagnostics preserved that contract.
+- **default INT4 (selected Round 6 artifact):** 3/3 complete batches, structural JSON regression present in 3/3, not promotion-eligible.
+- **block_size=64 candidate:** 3/3 complete batches, 0/3 structural JSON regressions, promotion-eligible 3/3.
 
-## Rejected or non-viable variants
+Each full-suite trial persists bounded per-prompt baseline/candidate outputs, batch timings, and full `evaluate_quality_validation` evidence (promotion, recipe verification, model capability, baseline comparison, functional checks).
 
-- `int4_default`: regression persists (`can_promote 0/3`, fenced `3/3`).
-- `int4_block_size_16`: non-JSON failure mode, still blocked (`can_promote 0/3`).
-- `int4_block_size_32`: non-JSON failure and additional degradation (`can_promote 0/3`).
-- `int4_block_size_-1`: unsupported/failing optimize path in this toolchain.
-- `int4_act_precision_uint8`: optimize path fails in this toolchain environment.
+## C) Block-size paradox evidence
+
+Report now includes a direct cost/perf matrix for default/16/32/64:
+
+- package bytes,
+- Olive optimize wall time (when rebuilt),
+- Foundry load + generation timing,
+- best-effort peak RSS (psutil sampling when available).
+
+Numeric fidelity probe was attempted via bounded OGA next-token trace divergence on a fixed prompt.  
+If the probe is unavailable in a runtime/API context, the report marks fidelity unknown with exact error.  
+Regardless of probe availability, full-suite strict quality evidence remains the gating guard.
+
+## D) Required conclusion and next gate
+
+- `block_size=64` remains a **SmolLM-targeted candidate** under this follow-up evidence.
+- Cross-model generalization is still **unproven** until an unchanged full frozen five-model rerun completes.
+- If production direction proceeds, this evidence supports a deterministic hard-capped retry ladder concept for Round 7:
+  default build first, retry block64 only on baseline-pass/optimized-structural-regression, max two builds, no model-id logic.
 
 ## Artifacts
 
 - Harness: `evaluation/recipe-agent-v1/diagnostics/smollm-json-regression/run_smollm_json_regression_diagnostics.py`
 - Report: `evaluation/recipe-agent-v1/diagnostics/smollm-json-regression/diagnostic-report.json`
-- Artifact test: `evaluation/recipe-agent-v1/diagnostics/smollm-json-regression/test_smollm_json_regression_artifacts.py`
+- Artifact tests: `evaluation/recipe-agent-v1/diagnostics/smollm-json-regression/test_smollm_json_regression_artifacts.py`
