@@ -1,0 +1,596 @@
+{
+  "artifacts_used": {
+    "optimized_package_name": "tinyllama-1-1b-chat-v1-0-b1747dcf0660",
+    "optimized_package_ref": "scratch://round-5/r5-0902d/cache/tinyllama-1-1b-chat-v1-0-b1747dcf0660",
+    "retained_round5_runtime_root": "scratch://round-5/r5-0902d"
+  },
+  "diagnosis": {
+    "likely_cause": [
+      "Retained frozen snapshot baseline and optimized probes completed; prior Round 5 timeout appears intermittent/transient.",
+      "Current quality harness is vulnerable because each prompt pays another subprocess boundary and model discovery/load cycle."
+    ],
+    "primary_diagnosis": "round5_timeout_not_reproduced_with_retained_snapshot",
+    "recommended_tests": [
+      {
+        "assertion": "Quality execution invokes FL SDK load/unload once per artifact, not once per prompt.",
+        "id": "quality-worker-load-once-call-count",
+        "scope": "unit"
+      },
+      {
+        "assertion": "A forced hang in one prompt yields bounded timeout diagnostics with prompt id and phase (load vs infer).",
+        "id": "quality-worker-timeout-attribution",
+        "scope": "unit"
+      },
+      {
+        "assertion": "Given identical captured prompt outputs, the promotion decision and regression labels remain identical between legacy per-prompt executor and load-once executor.",
+        "id": "quality-worker-semantic-equivalence",
+        "scope": "integration"
+      }
+    ],
+    "round5_timeout_error_signature": "Baseline quality prompt 'factual-red-planet' failed: Command timed out after 900s: ('<redacted-absolute-path> Files\\\\Python311\\\\python.exe', '-m', 'fl_model_onboarding.runtime_worker', 'foundry-infer', '--model-dir', '<redacted-absolute-path>', '--model-name', 'tinyllama-1-1b-chat-v1-0-onboarding-30c0d2e5-338-mobius-baseline:1', '--request-file', '<redacted-absolute-path>')",
+    "smallest_generic_fix": {
+      "does_not_change": [
+        "prompt set",
+        "deterministic max_tokens",
+        "functional scoring",
+        "baseline-vs-optimized pass criteria"
+      ],
+      "proposal": "Use one bounded quality worker per artifact (baseline and optimized) that loads once, executes all fixed prompts, records per-prompt timings/output, then unloads once."
+    }
+  },
+  "diagnostic_id": "tinyllama-round5-baseline-timeout",
+  "external_cleanup": {
+    "cleanup_result": {
+      "ok": true,
+      "removed": true
+    },
+    "preserved_shared_snapshot_cache": "scratch://round-5/r5-0902d/cache",
+    "scratch_root": "<redacted-absolute-path>"
+  },
+  "frozen_model": {
+    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+    "snapshot_cache_ref": "scratch://round-5/r5-0902d/cache/snapshot-tinyllama-...-fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+    "snapshot_cache_status": "present"
+  },
+  "generated_utc": "2026-09-02T14:29:07Z",
+  "measurements": {
+    "current_design_per_prompt_runtime_worker": {
+      "baseline": {
+        "prompt_count_attempted": 4,
+        "results": [
+          {
+            "duration_seconds": 13.13,
+            "ok": true,
+            "output_excerpt": "17 + 28 = 45\n\nTo answer this question using only digits, we can use the following formula:\n\n45 = 17 + 28\n\nThe answer is: 45.",
+            "output_text": "17 + 28 = 45\n\nTo answer this question using only digits, we can use the following formula:\n\n45 = 17 + 28\n\nThe answer is: 45.",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "returncode": 0,
+            "stderr_excerpt": "",
+            "timed_out": false
+          },
+          {
+            "duration_seconds": 8.833,
+            "ok": true,
+            "output_excerpt": "The correct answer is Mars.",
+            "output_text": "The correct answer is Mars.",
+            "prompt_id": "factual-red-planet",
+            "returncode": 0,
+            "stderr_excerpt": "",
+            "timed_out": false
+          },
+          {
+            "duration_seconds": 8.957,
+            "ok": true,
+            "output_excerpt": "Output: \"Blue River\"",
+            "output_text": "Output: \"Blue River\"",
+            "prompt_id": "instruction-two-words-blue-river",
+            "returncode": 0,
+            "stderr_excerpt": "",
+            "timed_out": false
+          },
+          {
+            "duration_seconds": 10.625,
+            "ok": true,
+            "output_excerpt": "```\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+            "output_text": "```\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+            "prompt_id": "format-json-answer-unit",
+            "returncode": 0,
+            "stderr_excerpt": "",
+            "timed_out": false
+          }
+        ],
+        "timed_out": false,
+        "total_seconds": 41.545
+      },
+      "optimized": {
+        "prompt_count_attempted": 4,
+        "results": [
+          {
+            "duration_seconds": 7.058,
+            "ok": true,
+            "output_excerpt": "Answer: 35\n\n17 + 28 = 45\n\nExplanation:\n\n1. 17 is added to 28, and the result is 45.\n\n2. 45 is added to 28, and the result is",
+            "output_text": "Answer: 35\n\n17 + 28 = 45\n\nExplanation:\n\n1. 17 is added to 28, and the result is 45.\n\n2. 45 is added to 28, and the result is",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "returncode": 0,
+            "stderr_excerpt": "",
+            "timed_out": false
+          },
+          {
+            "duration_seconds": 5.007,
+            "ok": true,
+            "output_excerpt": "Answer: Mars.",
+            "output_text": "Answer: Mars.",
+            "prompt_id": "factual-red-planet",
+            "returncode": 0,
+            "stderr_excerpt": "",
+            "timed_out": false
+          },
+          {
+            "duration_seconds": 6.536,
+            "ok": true,
+            "output_excerpt": "To output exactly two words, we can use the `split()` function with a regular expression to split the input string into an array of words. Here's the modifie...",
+            "output_text": "To output exactly two words, we can use the `split()` function with a regular expression to split the input string into an array of words. Here's the modified program:\n\n```python\nimport re\n\ndef split_words(input_strin...",
+            "prompt_id": "instruction-two-words-blue-river",
+            "returncode": 0,
+            "stderr_excerpt": "",
+            "timed_out": false
+          },
+          {
+            "duration_seconds": 6.39,
+            "ok": true,
+            "output_excerpt": "```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```\n\nThis is a valid JSON object with keys `answer` and `unit`. The `answer` key contains the value `12`, while th...",
+            "output_text": "```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```\n\nThis is a valid JSON object with keys `answer` and `unit`. The `answer` key contains the value `12`, while the `unit` key contains the value `",
+            "prompt_id": "format-json-answer-unit",
+            "returncode": 0,
+            "stderr_excerpt": "",
+            "timed_out": false
+          }
+        ],
+        "timed_out": false,
+        "total_seconds": 24.991
+      },
+      "quality_eval": {
+        "baseline_comparison_gate": "failed",
+        "baseline_comparison_regressions": [
+          "baseline_failed_functional_checks"
+        ],
+        "can_promote": false,
+        "evaluated": true,
+        "max_tokens_used": 64,
+        "metrics_gate": "unavailable",
+        "optimized_failures": [
+          {
+            "failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "prompt_id": "arithmetic-addition-17-plus-28"
+          },
+          {
+            "failures": [
+              "allowed_answers_failed"
+            ],
+            "prompt_id": "factual-red-planet"
+          },
+          {
+            "failures": [
+              "required_token_missing:blue",
+              "required_token_missing:river",
+              "relevance_keyword_missing",
+              "max_words_exceeded"
+            ],
+            "prompt_id": "instruction-two-words-blue-river"
+          },
+          {
+            "failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "prompt_id": "format-json-answer-unit"
+          }
+        ],
+        "optimized_functional_gate": "failed"
+      }
+    },
+    "flsdk_load_generate_unload": {
+      "baseline": {
+        "candidate_count": 1,
+        "catalog_query_seconds": 1.7005,
+        "initialize_seconds": 0.1036,
+        "latency_runs": [
+          {
+            "duration_seconds": 0.2576,
+            "max_tokens": 1,
+            "output_text": "Rep"
+          },
+          {
+            "duration_seconds": 0.9054,
+            "max_tokens": 8,
+            "output_text": "Reply with one word: Mars"
+          },
+          {
+            "duration_seconds": 1.0008,
+            "max_tokens": 64,
+            "output_text": "Reply with one word: Mars"
+          }
+        ],
+        "load_seconds": 4.145,
+        "model_cache_dir_name": "tinyllama",
+        "ok": true,
+        "quality_runs": [
+          {
+            "duration_seconds": 5.6734,
+            "ok": true,
+            "output_text": "17 + 28 = 45\n\nTo answer this question using only digits, we can use the following formula:\n\n45 = 17 + 28\n\nThe answer is: 45.",
+            "prompt_id": "arithmetic-addition-17-plus-28"
+          },
+          {
+            "duration_seconds": 1.0108,
+            "ok": true,
+            "output_text": "The correct answer is Mars.",
+            "prompt_id": "factual-red-planet"
+          },
+          {
+            "duration_seconds": 0.9282,
+            "ok": true,
+            "output_text": "Output: \"Blue River\"",
+            "prompt_id": "instruction-two-words-blue-river"
+          },
+          {
+            "duration_seconds": 2.9907,
+            "ok": true,
+            "output_text": "```\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+            "prompt_id": "format-json-answer-unit"
+          }
+        ],
+        "quality_total_seconds": 10.6033,
+        "selected_candidate_id": "tinyllama-1-1b-chat-v1-0-onboarding-30c0d2e5-338-mobius-baseline:1",
+        "unload_seconds": 0.1797
+      },
+      "optimized": {
+        "candidate_count": 5,
+        "catalog_query_seconds": 1.8483,
+        "initialize_seconds": 0.1017,
+        "latency_runs": [
+          {
+            "duration_seconds": 0.3564,
+            "max_tokens": 1,
+            "output_text": "Response"
+          },
+          {
+            "duration_seconds": 0.3577,
+            "max_tokens": 8,
+            "output_text": "Response: Mars."
+          },
+          {
+            "duration_seconds": 0.3683,
+            "max_tokens": 64,
+            "output_text": "Response: Mars."
+          }
+        ],
+        "load_seconds": 0.9731,
+        "model_cache_dir_name": "cache",
+        "ok": true,
+        "quality_runs": [
+          {
+            "duration_seconds": 2.2665,
+            "ok": true,
+            "output_text": "Answer: 35\n\n17 + 28 = 45\n\nExplanation:\n\n1. 17 is added to 28, and the result is 45.\n\n2. 45 is added to 28, and the result is",
+            "prompt_id": "arithmetic-addition-17-plus-28"
+          },
+          {
+            "duration_seconds": 0.6126,
+            "ok": true,
+            "output_text": "Answer: Mars.",
+            "prompt_id": "factual-red-planet"
+          },
+          {
+            "duration_seconds": 2.407,
+            "ok": true,
+            "output_text": "To output exactly two words, we can use the `split()` function with a regular expression to split the input string into an array of words. Here's the modified program:\n\n```python\nimport re\n\ndef split_words(input_strin...",
+            "prompt_id": "instruction-two-words-blue-river"
+          },
+          {
+            "duration_seconds": 2.3123,
+            "ok": true,
+            "output_text": "```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```\n\nThis is a valid JSON object with keys `answer` and `unit`. The `answer` key contains the value `12`, while the `unit` key contains the value `",
+            "prompt_id": "format-json-answer-unit"
+          }
+        ],
+        "quality_total_seconds": 7.5985,
+        "selected_candidate_id": "tinyllama-1-1b-chat-v1-0-onboarding-b1747dcf0660:1",
+        "unload_seconds": 0.0493
+      }
+    },
+    "oga_load_first_token_generate": {
+      "baseline": {
+        "load_seconds": 3.344106,
+        "ok": true,
+        "runs": [
+          {
+            "first_token_seconds": 3.4e-05,
+            "generated_tokens": 1,
+            "max_new_tokens": 1,
+            "output_text": ".",
+            "total_seconds": 0.000105
+          },
+          {
+            "first_token_seconds": 3.6e-05,
+            "generated_tokens": 8,
+            "max_new_tokens": 8,
+            "output_text": ".\n\n2. Mars Rover",
+            "total_seconds": 0.735084
+          },
+          {
+            "first_token_seconds": 5.1e-05,
+            "generated_tokens": 64,
+            "max_new_tokens": 64,
+            "output_text": ".\n\n2. Mars Rover: Mars Rover is a popular name for a spacecraft that explores the Red Planet.\n\n3. Mars Exploration: Mars Exploration is a term used to describe the ongoing exploration of Mars by NASA and other space a...",
+            "total_seconds": 7.169921
+          }
+        ],
+        "unload_seconds": 0.213479
+      },
+      "baseline_worker_status": {
+        "duration_seconds": 12.129,
+        "ok": true,
+        "stderr_excerpt": "",
+        "timed_out": false
+      },
+      "optimized": {
+        "load_seconds": 1.206135,
+        "ok": true,
+        "runs": [
+          {
+            "first_token_seconds": 5.5e-05,
+            "generated_tokens": 1,
+            "max_new_tokens": 1,
+            "output_text": ".",
+            "total_seconds": 0.00017
+          },
+          {
+            "first_token_seconds": 4.3e-05,
+            "generated_tokens": 8,
+            "max_new_tokens": 8,
+            "output_text": ".\n\n2. Mars Rover",
+            "total_seconds": 0.259292
+          },
+          {
+            "first_token_seconds": 4.7e-05,
+            "generated_tokens": 64,
+            "max_new_tokens": 64,
+            "output_text": ".\n\n2. Mars Rover: Mars Rover is a popular name for the rover that NASA plans to send to the Red Planet.\n\n3. Mars Mission: Mars Mission is a more formal name for the Mars exploration program.\n\n4. Mars Exploration Progr...",
+            "total_seconds": 2.282814
+          }
+        ],
+        "unload_seconds": 0.045456
+      },
+      "optimized_worker_status": {
+        "duration_seconds": 4.674,
+        "ok": true,
+        "stderr_excerpt": "",
+        "timed_out": false
+      }
+    },
+    "single_worker_load_once_design": {
+      "baseline": {
+        "candidate_count": 1,
+        "catalog_query_seconds": 1.7005,
+        "initialize_seconds": 0.1036,
+        "latency_runs": [
+          {
+            "duration_seconds": 0.2576,
+            "max_tokens": 1,
+            "output_text": "Rep"
+          },
+          {
+            "duration_seconds": 0.9054,
+            "max_tokens": 8,
+            "output_text": "Reply with one word: Mars"
+          },
+          {
+            "duration_seconds": 1.0008,
+            "max_tokens": 64,
+            "output_text": "Reply with one word: Mars"
+          }
+        ],
+        "load_seconds": 4.145,
+        "model_cache_dir_name": "tinyllama",
+        "ok": true,
+        "quality_runs": [
+          {
+            "duration_seconds": 5.6734,
+            "ok": true,
+            "output_text": "17 + 28 = 45\n\nTo answer this question using only digits, we can use the following formula:\n\n45 = 17 + 28\n\nThe answer is: 45.",
+            "prompt_id": "arithmetic-addition-17-plus-28"
+          },
+          {
+            "duration_seconds": 1.0108,
+            "ok": true,
+            "output_text": "The correct answer is Mars.",
+            "prompt_id": "factual-red-planet"
+          },
+          {
+            "duration_seconds": 0.9282,
+            "ok": true,
+            "output_text": "Output: \"Blue River\"",
+            "prompt_id": "instruction-two-words-blue-river"
+          },
+          {
+            "duration_seconds": 2.9907,
+            "ok": true,
+            "output_text": "```\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+            "prompt_id": "format-json-answer-unit"
+          }
+        ],
+        "quality_total_seconds": 10.6033,
+        "selected_candidate_id": "tinyllama-1-1b-chat-v1-0-onboarding-30c0d2e5-338-mobius-baseline:1",
+        "unload_seconds": 0.1797
+      },
+      "baseline_worker_status": {
+        "duration_seconds": 20.329,
+        "ok": true,
+        "stderr_excerpt": "",
+        "timed_out": false
+      },
+      "optimized": {
+        "candidate_count": 5,
+        "catalog_query_seconds": 1.8483,
+        "initialize_seconds": 0.1017,
+        "latency_runs": [
+          {
+            "duration_seconds": 0.3564,
+            "max_tokens": 1,
+            "output_text": "Response"
+          },
+          {
+            "duration_seconds": 0.3577,
+            "max_tokens": 8,
+            "output_text": "Response: Mars."
+          },
+          {
+            "duration_seconds": 0.3683,
+            "max_tokens": 64,
+            "output_text": "Response: Mars."
+          }
+        ],
+        "load_seconds": 0.9731,
+        "model_cache_dir_name": "cache",
+        "ok": true,
+        "quality_runs": [
+          {
+            "duration_seconds": 2.2665,
+            "ok": true,
+            "output_text": "Answer: 35\n\n17 + 28 = 45\n\nExplanation:\n\n1. 17 is added to 28, and the result is 45.\n\n2. 45 is added to 28, and the result is",
+            "prompt_id": "arithmetic-addition-17-plus-28"
+          },
+          {
+            "duration_seconds": 0.6126,
+            "ok": true,
+            "output_text": "Answer: Mars.",
+            "prompt_id": "factual-red-planet"
+          },
+          {
+            "duration_seconds": 2.407,
+            "ok": true,
+            "output_text": "To output exactly two words, we can use the `split()` function with a regular expression to split the input string into an array of words. Here's the modified program:\n\n```python\nimport re\n\ndef split_words(input_strin...",
+            "prompt_id": "instruction-two-words-blue-river"
+          },
+          {
+            "duration_seconds": 2.3123,
+            "ok": true,
+            "output_text": "```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```\n\nThis is a valid JSON object with keys `answer` and `unit`. The `answer` key contains the value `12`, while the `unit` key contains the value `",
+            "prompt_id": "format-json-answer-unit"
+          }
+        ],
+        "quality_total_seconds": 7.5985,
+        "selected_candidate_id": "tinyllama-1-1b-chat-v1-0-onboarding-b1747dcf0660:1",
+        "unload_seconds": 0.0493
+      },
+      "optimized_worker_status": {
+        "duration_seconds": 13.104,
+        "ok": true,
+        "stderr_excerpt": "",
+        "timed_out": false
+      },
+      "quality_eval": {
+        "baseline_comparison_gate": "failed",
+        "baseline_comparison_regressions": [
+          "baseline_failed_functional_checks"
+        ],
+        "can_promote": false,
+        "evaluated": true,
+        "max_tokens_used": 64,
+        "metrics_gate": "unavailable",
+        "optimized_failures": [
+          {
+            "failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "prompt_id": "arithmetic-addition-17-plus-28"
+          },
+          {
+            "failures": [
+              "allowed_answers_failed"
+            ],
+            "prompt_id": "factual-red-planet"
+          },
+          {
+            "failures": [
+              "required_token_missing:blue",
+              "required_token_missing:river",
+              "relevance_keyword_missing",
+              "max_words_exceeded"
+            ],
+            "prompt_id": "instruction-two-words-blue-river"
+          },
+          {
+            "failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "prompt_id": "format-json-answer-unit"
+          }
+        ],
+        "optimized_functional_gate": "failed"
+      }
+    }
+  },
+  "quality_profile": {
+    "deterministic_inference": {
+      "max_tokens": 64,
+      "seed": 17,
+      "temperature": 0.0
+    },
+    "profile_id": "textgen-basic-quality-v1",
+    "prompt_ids": [
+      "arithmetic-addition-17-plus-28",
+      "factual-red-planet",
+      "instruction-two-words-blue-river",
+      "format-json-answer-unit"
+    ],
+    "task": "text-generation",
+    "version": "1.0.0"
+  },
+  "round5_failure": {
+    "error_signature_excerpt": "Baseline quality prompt 'factual-red-planet' failed: Command timed out after 900s: ('<redacted-absolute-path> Files\\\\Python311\\\\python.exe', '-m', 'fl_model_onboarding.runtime_worker', 'foundry-infer', '--model-dir', '<redacted-absolute-path>', '--model-name', 'tinyllama-1-1b-chat-v1-0-onboarding-30c0d2e5-338-mobius-baseline:1', '--request-file', '<redacted-absolute-path>')",
+    "recorded_timeout_seconds": 900
+  },
+  "schema_version": "1.0.0",
+  "source_round": {
+    "manifest_path": "evaluation/recipe-agent-v1/round-5/round-manifest.json",
+    "report_path": "evaluation/recipe-agent-v1/round-5/round-5-report.md",
+    "round_id": "r5-0902d",
+    "summary_path": "evaluation/recipe-agent-v1/round-5/round-5-summary.json"
+  },
+  "toolchain": {
+    "expected_from_round5_probe": {
+      "fl-model-onboarding": "0.1.0",
+      "fl_model_onboarding.runtime_worker": null,
+      "foundry": "0.11.0",
+      "foundry-local-sdk": "1.2.0",
+      "mobius": null,
+      "mobius-onnx": "0.1.0",
+      "olive": null,
+      "olive-ai": "0.13.0",
+      "onnx": "1.22.0",
+      "onnxruntime": "1.29.0",
+      "onnxruntime-genai": "0.14.0"
+    },
+    "observed_now": {
+      "packages": {
+        "fl-model-onboarding": "0.1.0",
+        "foundry-local-sdk": "1.2.0",
+        "mobius-onnx": "0.1.0",
+        "olive-ai": "0.13.0",
+        "onnx": "1.22.0",
+        "onnxruntime": "1.29.0",
+        "onnxruntime-genai": "0.14.0"
+      },
+      "python_executable_name": "python.exe",
+      "python_version": "3.11.9"
+    }
+  }
+}
