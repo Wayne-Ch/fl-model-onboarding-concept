@@ -1,0 +1,17 @@
+{
+  "round": "round-7",
+  "subrun_id": "r7-20260903T175557Z",
+  "status": "aborted",
+  "classification": "aborted_before_full_run_after_new_coordinator_directive",
+  "valid_baseline": false,
+  "summary": "Run was intentionally stopped after coordinator directive requiring Smol retry-orchestration root-cause fix before any full rerun.",
+  "observed_progress": {
+    "models_started": [
+      "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    ],
+    "models_completed": [],
+    "active_state_at_stop": "runtime_validating",
+    "active_job_id_at_stop": "91ed3384-a63a-4b55-94e7-38ecb0acb184"
+  },
+  "superseded_by_subrun_id": "r7-20260903T181703Z"
+}

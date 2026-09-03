@@ -1,0 +1,23 @@
+{
+  "round": "round-7",
+  "subrun_id": "r7-20260903T181703Z",
+  "status": "invalid",
+  "classification": "invalid_shared_shutdown_cancellation_diagnostic",
+  "valid_baseline": false,
+  "invalid_reasons": [
+    "service_shutdown_worker_timeout: Local onboarding worker did not stop after cancellation while fallback candidate preflight was in flight"
+  ],
+  "observed_progress": {
+    "tinyllama_default_selected": true,
+    "smollm_default_failed_with_retryable_structural_regression": true,
+    "smollm_fallback_candidate_registered": true,
+    "smollm_fallback_active_stage_at_abort": "preflight"
+  },
+  "corrective_commits": [
+    {
+      "sha": "33a42ee",
+      "title": "Fix preflight cancellation on service shutdown"
+    }
+  ],
+  "superseded_by_subrun_id": null
+}
