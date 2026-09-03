@@ -1622,18 +1622,26 @@ def test_reuse_materialization_resumes_after_interrupted_gates_on_fresh_service(
                 idempotency_key=idempotency_key,
                 model_id=_model(),
             )
-        assert not service_a._attempt_sync_guards, "guard leaked after simulated crash"
 
         interrupted = next(
             candidate_attempt
             for candidate_attempt in store.list_attempts()
             if candidate_attempt.idempotency_key == idempotency_key
         )
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service_a,
+            attempt_id=interrupted.attempt_id,
+        )
+        assert set(lingering_keys).issubset({source_attempt_id}), (
+            "unexpected attempt sync guard(s) remained after simulated crash "
+            f"materialization path: {lingering_keys}"
+        )
         assert interrupted.state == AttemptState.RUNNING
         assert len(interrupted.gate_results) == raise_after
         assert store.get_attempt_reuse_source(interrupted.attempt_id) == winner_candidate.attempt_id
     finally:
         service_a.close()
+    assert not service_a._attempt_sync_guards, "attempt sync guards must be empty after service close"
 
     # Fresh service instance -- a stand-in for a fresh process after a crash --
     # sharing only the persisted, on-disk service/job and recipe-attempt
@@ -1680,6 +1688,7 @@ def test_reuse_materialization_resumes_after_interrupted_gates_on_fresh_service(
         assert not service_b._attempt_sync_guards
     finally:
         service_b.close()
+    assert not service_b._attempt_sync_guards
 
 
 def test_reuse_materialization_resumes_after_interrupted_start_with_no_gates_on_fresh_service(
@@ -1714,18 +1723,26 @@ def test_reuse_materialization_resumes_after_interrupted_start_with_no_gates_on_
                 idempotency_key=idempotency_key,
                 model_id=_model(),
             )
-        assert not service_a._attempt_sync_guards
 
         interrupted = next(
             candidate_attempt
             for candidate_attempt in store.list_attempts()
             if candidate_attempt.idempotency_key == idempotency_key
         )
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service_a,
+            attempt_id=interrupted.attempt_id,
+        )
+        assert set(lingering_keys).issubset({source_attempt_id}), (
+            "unexpected attempt sync guard(s) remained after no-gates crash "
+            f"materialization path: {lingering_keys}"
+        )
         assert interrupted.state == AttemptState.RUNNING
         assert len(interrupted.gate_results) == 0
         assert store.get_attempt_reuse_source(interrupted.attempt_id) == winner_candidate.attempt_id
     finally:
         service_a.close()
+    assert not service_a._attempt_sync_guards
 
     service_b = _service(tmp_path)
     try:
@@ -1748,6 +1765,7 @@ def test_reuse_materialization_resumes_after_interrupted_start_with_no_gates_on_
         assert len(final_attempt.gate_results) == 7
     finally:
         service_b.close()
+    assert not service_b._attempt_sync_guards
 
 
 def test_running_attempt_without_reuse_marker_fails_closed_instead_of_resuming(
@@ -2204,12 +2222,19 @@ def test_get_recipe_attempt_poll_recovers_abandoned_running_reuse_attempt_withou
                 idempotency_key=consumer_key,
                 model_id=_model(),
             )
-        assert not service._attempt_sync_guards
 
         interrupted = next(
             candidate_attempt
             for candidate_attempt in store.list_attempts()
             if candidate_attempt.idempotency_key == consumer_key
+        )
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service,
+            attempt_id=interrupted.attempt_id,
+        )
+        assert set(lingering_keys).issubset({source_attempt_id}), (
+            "unexpected attempt sync guard(s) remained after simulated poll "
+            f"recovery crash path: {lingering_keys}"
         )
         assert interrupted.state == AttemptState.RUNNING
         assert len(interrupted.gate_results) == raise_after
@@ -2228,7 +2253,14 @@ def test_get_recipe_attempt_poll_recovers_abandoned_running_reuse_attempt_withou
         assert len(service._jobs) == jobs_before
         assert dispatch_counts["run"] == 0
         assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
-        assert not service._attempt_sync_guards
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service,
+            attempt_id=interrupted.attempt_id,
+        )
+        assert set(lingering_keys).issubset({source_attempt_id}), (
+            "unexpected attempt sync guard(s) remained after poll recovery: "
+            f"{lingering_keys}"
+        )
 
         final_attempt = store.get_attempt(interrupted.attempt_id)
         assert final_attempt.state == AttemptState.SUCCEEDED
@@ -2247,6 +2279,7 @@ def test_get_recipe_attempt_poll_recovers_abandoned_running_reuse_attempt_withou
         assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
     finally:
         service.close()
+    assert not service._attempt_sync_guards
 
 
 def test_fresh_service_startup_recovers_abandoned_running_reuse_attempt_with_no_poll_or_resubmission(
@@ -2363,7 +2396,14 @@ def test_get_recipe_attempt_poll_fails_abandoned_reuse_attempt_terminally_when_s
         assert final_attempt.failure is not None
         assert "not marked selected" in final_attempt.failure.message
         assert store.get_reuse_dispatch_evidence(interrupted.attempt_id) is None
-        assert not service._attempt_sync_guards
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service,
+            attempt_id=interrupted.attempt_id,
+        )
+        assert set(lingering_keys).issubset({source_attempt_id}), (
+            "unexpected attempt sync guard(s) remained after terminal untrusted-"
+            f"source failure: {lingering_keys}"
+        )
 
         # Idempotent: polling again observes the same terminal failure, never
         # re-raises or flips to a different outcome.
@@ -2371,6 +2411,7 @@ def test_get_recipe_attempt_poll_fails_abandoned_reuse_attempt_terminally_when_s
         assert polled_again["state"] == "failed"
     finally:
         service.close()
+    assert not service._attempt_sync_guards
 
 
 def test_get_recipe_attempt_poll_never_auto_resumes_ordinary_non_reuse_running_attempt(
@@ -2471,7 +2512,14 @@ def test_abandoned_reuse_poll_and_resubmit_race_is_safe(
 
         assert dispatch_counts["run"] == 0
         assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
-        assert not service._attempt_sync_guards
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service,
+            attempt_id=interrupted.attempt_id,
+        )
+        assert set(lingering_keys).issubset({source_attempt_id}), (
+            "unexpected attempt sync guard(s) remained after poll/resubmit race: "
+            f"{lingering_keys}"
+        )
 
         final_attempt = store.get_attempt(interrupted.attempt_id)
         assert final_attempt.state == AttemptState.SUCCEEDED
@@ -2480,6 +2528,7 @@ def test_abandoned_reuse_poll_and_resubmit_race_is_safe(
         assert evidence is not None
     finally:
         service.close()
+    assert not service._attempt_sync_guards
 
 
 # --------------------------------------------------------------------------
