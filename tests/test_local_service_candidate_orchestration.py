@@ -309,6 +309,30 @@ def _wait_for_lineage_finalized(service: LocalOnboardingService, parent_attempt_
     raise AssertionError(f"Timed out waiting for lineage '{parent_attempt_id}' to finalize")
 
 
+def _attempt_sync_guard_keys(service: LocalOnboardingService) -> tuple[str, ...]:
+    with service._lock:
+        return tuple(sorted(service._attempt_sync_guards.keys()))
+
+
+def _wait_for_attempt_sync_guard_released(
+    service: LocalOnboardingService,
+    *,
+    attempt_id: str,
+    timeout_seconds: float = 10.0,
+) -> tuple[str, ...]:
+    deadline = time.time() + timeout_seconds
+    last_keys: tuple[str, ...] = ()
+    while time.time() < deadline:
+        keys = _attempt_sync_guard_keys(service)
+        if attempt_id not in keys:
+            return keys
+        last_keys = keys
+        time.sleep(0.02)
+    raise AssertionError(
+        f"Timed out waiting for attempt sync guard '{attempt_id}' to release; lingering keys: {list(last_keys)}"
+    )
+
+
 def _install_runner_dispatch_spy(
     service: LocalOnboardingService,
     monkeypatch: pytest.MonkeyPatch,
@@ -1772,12 +1796,20 @@ def test_running_attempt_without_reuse_marker_fails_closed_instead_of_resuming(
             )
         assert excinfo.value.code == "RECIPE_ATTEMPT_ALREADY_STARTED"
         assert excinfo.value.status_code == 409
-        assert not service._attempt_sync_guards
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service,
+            attempt_id=untrusted_attempt.attempt_id,
+        )
+        assert set(lingering_keys).issubset({source_attempt_id}), (
+            "unexpected attempt sync guard(s) remained after fail-closed reuse "
+            f"materialization: {lingering_keys}"
+        )
 
         # Still RUNNING, untouched -- never silently finished.
         assert store.get_attempt(untrusted_attempt.attempt_id).state == AttemptState.RUNNING
     finally:
         service.close()
+    assert not service._attempt_sync_guards
 
 
 def test_non_reuse_generated_attempt_idempotent_replay_is_unaffected(tmp_path: Path) -> None:
@@ -2494,12 +2526,18 @@ def test_reuse_materialization_atomic_finish_evidence_injected_failure_rolls_bac
                 idempotency_key=idempotency_key,
                 model_id=_model(),
             )
-        assert not service_a._attempt_sync_guards, "guard leaked after simulated crash"
-
         interrupted = next(
             candidate_attempt
             for candidate_attempt in store.list_attempts()
             if candidate_attempt.idempotency_key == idempotency_key
+        )
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service_a,
+            attempt_id=interrupted.attempt_id,
+        )
+        assert set(lingering_keys).issubset({source_attempt_id}), (
+            "unexpected attempt sync guard(s) remained after injected "
+            f"atomic-finish crash: {lingering_keys}"
         )
         assert interrupted.state == AttemptState.RUNNING
         assert len(interrupted.gate_results) == 7  # every winner gate was already durably copied
@@ -2508,6 +2546,7 @@ def test_reuse_materialization_atomic_finish_evidence_injected_failure_rolls_bac
         assert store.get_reuse_dispatch_evidence(interrupted.attempt_id) is None
     finally:
         service_a.close()
+    assert not service_a._attempt_sync_guards, "attempt sync guards must be empty after service close"
 
     service_b = _service(tmp_path)
     try:
@@ -2523,7 +2562,11 @@ def test_reuse_materialization_atomic_finish_evidence_injected_failure_rolls_bac
         assert resumed_job.job_id == source_job.job_id
         assert dispatch_counts["run"] == 0
         assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
-        assert not service_b._attempt_sync_guards
+        lingering_keys = _wait_for_attempt_sync_guard_released(
+            service_b,
+            attempt_id=interrupted.attempt_id,
+        )
+        assert not lingering_keys, f"unexpected lingering attempt sync guards: {lingering_keys}"
 
         final_attempt = service_b._recipe_attempt_store.get_attempt(interrupted.attempt_id)
         assert final_attempt.state == AttemptState.SUCCEEDED
@@ -2543,6 +2586,7 @@ def test_reuse_materialization_atomic_finish_evidence_injected_failure_rolls_bac
         assert service_b._recipe_attempt_store.get_reuse_dispatch_evidence(interrupted.attempt_id) == evidence
     finally:
         service_b.close()
+    assert not service_b._attempt_sync_guards
 
 
 def _seed_legacy_succeeded_reuse_attempt_missing_evidence(
