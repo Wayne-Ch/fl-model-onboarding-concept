@@ -260,6 +260,69 @@ def test_preflight_olive_help_success_with_unsupported_version_still_available(t
     assert result.ok
 
 
+def test_preflight_olive_probe_uses_extended_timeout(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def __init__(self) -> None:
+            self.timeouts: dict[tuple[str, ...], int] = {}
+
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            argv = tuple(spec.argv)
+            self.timeouts[argv] = spec.timeout_seconds
+            if argv == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="0.11.0\n", stderr="")
+            if argv == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0 help\n", stderr="")
+            if argv == ("mobius", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0\n", stderr="")
+            if argv == ("olive", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive help\n", stderr="")
+            if argv == ("olive", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0\n", stderr="")
+            if _is_python_probe(spec):
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    runner = Runner()
+    request = _request(tmp_path, tmp_path / "out")
+    result = PreflightInspector(runner, FakeFoundry(), FakeHF()).inspect(request)
+    assert result.ok
+    assert runner.timeouts[("mobius", "--help")] == 30
+    assert runner.timeouts[("mobius", "--version")] == 30
+    assert runner.timeouts[("olive", "--help")] == 90
+    assert runner.timeouts[("olive", "--version")] == 90
+
+
+def test_preflight_olive_probe_tolerates_slow_startup(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            argv = tuple(spec.argv)
+            if argv == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="0.11.0\n", stderr="")
+            if argv == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0 help\n", stderr="")
+            if argv == ("mobius", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0\n", stderr="")
+            if argv in {("olive", "--help"), ("olive", "--version")}:
+                if spec.timeout_seconds <= 30:
+                    raise TimeoutError(f"Command timed out after {spec.timeout_seconds}s: {spec.argv}")
+                if argv == ("olive", "--help"):
+                    return CommandResult(spec=spec, exit_code=0, stdout="olive help\n", stderr="")
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0\n", stderr="")
+            if _is_python_probe(spec):
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    request = _request(tmp_path, tmp_path / "out")
+    result = PreflightInspector(Runner(), FakeFoundry(), FakeHF()).inspect(request)
+    olive = next(tool for tool in result.tools if tool.name == "olive")
+    assert olive.available is True
+    assert result.ok
+
+
 def test_preflight_package_probe_uses_current_sys_executable(tmp_path: Path) -> None:
     (tmp_path / "cache").mkdir()
 

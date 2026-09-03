@@ -31,6 +31,8 @@ from .preflight_cache import PreflightResultCache, build_preflight_cache_key
 _SEMVER_RE = re.compile(r"(?P<version>\d+\.\d+\.\d+(?:\.\d+)?)")
 _COMMAND_NOT_FOUND_DETAIL = "command-not-found"
 _MISSING_MODULE_MARKER = "no module named"
+_DEFAULT_COMMAND_PROBE_TIMEOUT_SECONDS = 30
+_OLIVE_COMMAND_PROBE_TIMEOUT_SECONDS = 90
 
 
 @dataclass(frozen=True)
@@ -115,7 +117,12 @@ class PreflightInspector:
         tools = (
             self._probe_command("foundry", ("--version",)),
             self._probe_command("mobius", ("--help",), version_args=("--version",)),
-            self._probe_command("olive", ("--help",), version_args=("--version",)),
+            self._probe_command(
+                "olive",
+                ("--help",),
+                version_args=("--version",),
+                timeout_seconds=_OLIVE_COMMAND_PROBE_TIMEOUT_SECONDS,
+            ),
             self._probe_python_module("onnxruntime", "onnxruntime"),
             self._probe_python_module("onnxruntime-genai", "onnxruntime_genai"),
             self._probe_python_module("foundry-local-sdk", "foundry_local_sdk"),
@@ -340,8 +347,9 @@ class PreflightInspector:
         availability_args: tuple[str, ...],
         *,
         version_args: tuple[str, ...] | None = None,
+        timeout_seconds: int = _DEFAULT_COMMAND_PROBE_TIMEOUT_SECONDS,
     ) -> ToolAvailability:
-        spec = CommandSpec(argv=(name, *availability_args), timeout_seconds=30)
+        spec = CommandSpec(argv=(name, *availability_args), timeout_seconds=timeout_seconds)
         try:
             result = self._runner.run(spec)
             output = (result.stdout or result.stderr or "").strip()
@@ -358,7 +366,11 @@ class PreflightInspector:
             parsed_version = _extract_version(first_line) if first_line else None
             detail = first_line or "probe-ok"
             if version_args:
-                version, version_probe_error = self._probe_command_version(name, version_args)
+                version, version_probe_error = self._probe_command_version(
+                    name,
+                    version_args,
+                    timeout_seconds=timeout_seconds,
+                )
                 if version:
                     parsed_version = version
                 elif version_probe_error:
@@ -391,8 +403,10 @@ class PreflightInspector:
         self,
         name: str,
         version_args: tuple[str, ...],
+        *,
+        timeout_seconds: int = _DEFAULT_COMMAND_PROBE_TIMEOUT_SECONDS,
     ) -> tuple[str | None, str | None]:
-        spec = CommandSpec(argv=(name, *version_args), timeout_seconds=30)
+        spec = CommandSpec(argv=(name, *version_args), timeout_seconds=timeout_seconds)
         try:
             result = self._runner.run(spec)
         except Exception as exc:
