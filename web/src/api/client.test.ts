@@ -399,4 +399,353 @@ describe("api client", () => {
       "factual-red-planet:shared_capability_failure"
     );
   });
+
+  it("parses candidate_plan on a generated recipe preview response", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            generated_recipe: {
+              eligible_for_automatic_recipe_attempt: true,
+              requires_explicit_attempt_confirmation: true,
+              experimental_until_verified: true,
+              fingerprint: "2".repeat(64),
+              capability: { outcome: "exact", reason_code: "resolved", reason: "ok", matched_aliases: [] },
+              validation_gates: [],
+              candidate_plan: {
+                policy_id: "cpu-int4-recipe-selection-v1",
+                policy_version: "1.0.0",
+                policy_fingerprint: "b6b2e91a",
+                max_candidates: 2,
+                candidates: [
+                  {
+                    candidate_index: 0,
+                    candidate_id: "default-int4",
+                    role: "default",
+                    quantization_override: null,
+                    eligibility_trigger: null
+                  },
+                  {
+                    candidate_index: 1,
+                    candidate_id: "int4-block-size-64",
+                    role: "quality_retry",
+                    quantization_override: { block_size: 64 },
+                    eligibility_trigger: "retryable_optimized_structural_regression"
+                  }
+                ]
+              }
+            }
+          })
+        )
+      )
+    };
+    const client = createApiClient({ transport });
+
+    const preview = await client.getGeneratedRecipePreview("owner/model", "llm");
+
+    expect(preview.candidatePlan?.policyId).toBe("cpu-int4-recipe-selection-v1");
+    expect(preview.candidatePlan?.maxCandidates).toBe(2);
+    expect(preview.candidatePlan?.candidates[0].role).toBe("default");
+    expect(preview.candidatePlan?.candidates[1].role).toBe("quality_retry");
+    expect(preview.candidatePlan?.candidates[1].quantizationOverride?.blockSize).toBe(64);
+    expect(preview.candidatePlan?.candidates[1].eligibilityTrigger).toBe(
+      "retryable_optimized_structural_regression"
+    );
+  });
+
+  it("treats a preview response with no candidate_plan key as legacy (undefined, not null-shaped)", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            generated_recipe: {
+              eligible_for_automatic_recipe_attempt: false,
+              requires_explicit_attempt_confirmation: true,
+              experimental_until_verified: true,
+              capability: { outcome: "not-eligible", reason_code: "unsupported-task", reason: "n/a", matched_aliases: [] },
+              validation_gates: []
+            }
+          })
+        )
+      )
+    };
+    const client = createApiClient({ transport });
+
+    const preview = await client.getGeneratedRecipePreview("owner/model", "llm");
+
+    expect(preview.candidatePlan).toBeUndefined();
+  });
+
+  it("parses workflow_outcome selected + candidate_selection for a verified fallback with a visibly failed default", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            attempt_id: "attempt-default",
+            recipe_fingerprint: "d".repeat(64),
+            state: "failed",
+            gates: [],
+            workflow_outcome: "selected",
+            candidate_selection: {
+              policy_id: "cpu-int4-recipe-selection-v1",
+              policy_version: "1.0.0",
+              policy_fingerprint: "b6b2e91a",
+              max_candidates: 2,
+              lineage_selection_state: "selected",
+              selected_candidate: {
+                candidate_attempt_id: "cand-1",
+                attempt_id: "attempt-fallback",
+                candidate_index: 1,
+                candidate_id: "int4-block-size-64",
+                selected_by: "validation",
+                selection_reason: "Candidate 1 ('int4-block-size-64') verified.",
+                selected_utc: "2026-01-01T00:00:00Z"
+              },
+              candidates: [
+                {
+                  candidate_attempt_id: "cand-0",
+                  attempt_id: "attempt-default",
+                  candidate_index: 0,
+                  candidate_id: "default-int4",
+                  role: "default",
+                  attempt_state: "failed",
+                  recipe_fingerprint: "d".repeat(64),
+                  quantization_override: null,
+                  eligibility_trigger: null,
+                  disposition: "retryable_optimized_structural_regression",
+                  disposition_reasons: ["json_format_invalid"],
+                  selection_status: "not_selected",
+                  artifact_ref: null,
+                  package_ref: null,
+                  invocation_counters: {
+                    mobius_build_invocation_count: 1,
+                    olive_optimize_invocation_count: 1,
+                    total_invocation_count: 2,
+                    wall_clock_seconds: null,
+                    estimated_cost_usd: null
+                  },
+                  validated_scope: {
+                    target_device: "cpu",
+                    target_ep: null,
+                    toolchain_fingerprint: null,
+                    environment_scope: null
+                  }
+                },
+                {
+                  candidate_attempt_id: "cand-1",
+                  attempt_id: "attempt-fallback",
+                  candidate_index: 1,
+                  candidate_id: "int4-block-size-64",
+                  role: "quality_retry",
+                  attempt_state: "succeeded",
+                  recipe_fingerprint: "e".repeat(64),
+                  quantization_override: { block_size: 64 },
+                  eligibility_trigger: "retryable_optimized_structural_regression",
+                  disposition: null,
+                  disposition_reasons: [],
+                  selection_status: "selected",
+                  artifact_ref: "job://job-1/artifact/artifact-1",
+                  package_ref: "job://job-1/package",
+                  invocation_counters: {
+                    mobius_build_invocation_count: 0,
+                    olive_optimize_invocation_count: 1,
+                    total_invocation_count: 1,
+                    wall_clock_seconds: null,
+                    estimated_cost_usd: null
+                  },
+                  validated_scope: {
+                    target_device: "cpu",
+                    target_ep: "CPUExecutionProvider",
+                    toolchain_fingerprint: "tc-1",
+                    environment_scope: "foundry-local-onboarding:1"
+                  }
+                }
+              ],
+              aggregate_invocation_counters: {
+                mobius_build_invocation_count: 1,
+                olive_optimize_invocation_count: 2,
+                total_invocation_count: 3,
+                wall_clock_seconds: null,
+                estimated_cost_usd: null
+              },
+              reuse: null
+            }
+          })
+        )
+      )
+    };
+    const client = createApiClient({ transport });
+
+    const attempt = await client.getGeneratedRecipeAttempt("attempt-default");
+
+    expect(attempt.workflowOutcome).toBe("selected");
+    expect(attempt.candidateSelection?.selectedCandidate?.candidateIndex).toBe(1);
+    expect(attempt.candidateSelection?.candidates[0].attemptState).toBe("failed");
+    expect(attempt.candidateSelection?.candidates[0].selectionStatus).toBe("not_selected");
+    // A real, measured zero must survive as 0 -- never coerced to "unmeasured".
+    expect(attempt.candidateSelection?.candidates[1].invocationCounters.mobiusBuildInvocationCount).toBe(0);
+    expect(attempt.candidateSelection?.aggregateInvocationCounters?.mobiusBuildInvocationCount).toBe(1);
+    // An unmeasured field must stay undefined -- never coerced to 0.
+    expect(attempt.candidateSelection?.aggregateInvocationCounters?.wallClockSeconds).toBeUndefined();
+  });
+
+  it("defaults workflow_outcome to not_applicable for a legacy attempt payload with no 3C1 fields", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            attempt_id: "attempt-legacy",
+            recipe_fingerprint: "a".repeat(64),
+            state: "succeeded",
+            gates: []
+          })
+        )
+      )
+    };
+    const client = createApiClient({ transport });
+
+    const attempt = await client.getGeneratedRecipeAttempt("attempt-legacy");
+
+    expect(attempt.workflowOutcome).toBe("not_applicable");
+    expect(attempt.candidateSelection).toBeUndefined();
+  });
+
+  it("parses a reused attempt with an empty timeline and zeroed, explicit no-build reuse evidence", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            attempt_id: "attempt-reused",
+            recipe_fingerprint: "f".repeat(64),
+            state: "succeeded",
+            gates: [],
+            workflow_outcome: "reused",
+            candidate_selection: {
+              policy_id: null,
+              policy_version: null,
+              policy_fingerprint: null,
+              max_candidates: null,
+              lineage_selection_state: null,
+              selected_candidate: null,
+              candidates: [],
+              aggregate_invocation_counters: null,
+              reuse: {
+                reused_without_build: true,
+                source_attempt_id: "attempt-winner",
+                source_candidate_attempt_id: "cand-winner",
+                source_parent_attempt_id: "attempt-parent",
+                policy_id: "cpu-int4-recipe-selection-v1",
+                policy_version: "1.0.0",
+                policy_fingerprint: "b6b2e91a",
+                quality_profile_fingerprint: "q-profile",
+                runner_dispatch_count: 0,
+                mobius_invocation_count: 0,
+                olive_invocation_count: 0,
+                recorded_utc: "2026-01-01T00:00:00Z"
+              }
+            }
+          })
+        )
+      )
+    };
+    const client = createApiClient({ transport });
+
+    const attempt = await client.getGeneratedRecipeAttempt("attempt-reused");
+
+    expect(attempt.workflowOutcome).toBe("reused");
+    expect(attempt.candidateSelection?.candidates).toHaveLength(0);
+    expect(attempt.candidateSelection?.lineageSelectionState).toBeUndefined();
+    expect(attempt.candidateSelection?.aggregateInvocationCounters).toBeUndefined();
+    expect(attempt.candidateSelection?.reuse?.reusedWithoutBuild).toBe(true);
+    expect(attempt.candidateSelection?.reuse?.mobiusInvocationCount).toBe(0);
+    expect(attempt.candidateSelection?.reuse?.oliveInvocationCount).toBe(0);
+  });
+
+  it("rejects a malformed candidate_selection whose candidates field is not an array", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            attempt_id: "attempt-malformed",
+            recipe_fingerprint: "a".repeat(64),
+            state: "running",
+            gates: [],
+            workflow_outcome: "pending",
+            candidate_selection: {
+              candidates: "not-an-array"
+            }
+          })
+        )
+      )
+    };
+    const client = createApiClient({ transport });
+
+    await expect(client.getGeneratedRecipeAttempt("attempt-malformed")).rejects.toThrowError(
+      "Expected candidates array"
+    );
+  });
+
+  it("rejects an attempt payload with an unrecognized workflow_outcome code", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            attempt_id: "attempt-bad-outcome",
+            recipe_fingerprint: "a".repeat(64),
+            state: "running",
+            gates: [],
+            workflow_outcome: "mystery_outcome"
+          })
+        )
+      )
+    };
+    const client = createApiClient({ transport });
+
+    await expect(client.getGeneratedRecipeAttempt("attempt-bad-outcome")).rejects.toThrowError(
+      'Unknown workflow_outcome "mystery_outcome"'
+    );
+  });
+
+  it("rejects a candidate timeline entry with an unrecognized role code", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            attempt_id: "attempt-bad-role",
+            recipe_fingerprint: "a".repeat(64),
+            state: "running",
+            gates: [],
+            workflow_outcome: "pending",
+            candidate_selection: {
+              candidates: [
+                {
+                  candidate_attempt_id: "cand-0",
+                  attempt_id: "attempt-bad-role",
+                  candidate_index: 0,
+                  candidate_id: "default-int4",
+                  role: "mystery_role",
+                  attempt_state: "running",
+                  recipe_fingerprint: "a".repeat(64),
+                  eligibility_trigger: null,
+                  disposition: null,
+                  disposition_reasons: [],
+                  selection_status: "not_selected",
+                  artifact_ref: null,
+                  package_ref: null,
+                  invocation_counters: {},
+                  validated_scope: {}
+                }
+              ]
+            }
+          })
+        )
+      )
+    };
+    const client = createApiClient({ transport });
+
+    await expect(client.getGeneratedRecipeAttempt("attempt-bad-role")).rejects.toThrowError(
+      'Unknown candidate role "mystery_role"'
+    );
+  });
 });
+

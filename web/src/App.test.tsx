@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { OnboardingShell } from "./App";
@@ -242,7 +242,25 @@ function generatedFor(model: ModelSummary): GeneratedRecipePreview {
       "fl_sdk_inference",
       "quality_validation"
     ],
-    verifiedReuse: undefined
+    verifiedReuse: undefined,
+    candidatePlan: eligible
+      ? {
+          policyId: "cpu-int4-recipe-selection-v1",
+          policyVersion: "1.0.0",
+          policyFingerprint: "b6b2e91a",
+          maxCandidates: 2,
+          candidates: [
+            { candidateIndex: 0, candidateId: "default-int4", role: "default" },
+            {
+              candidateIndex: 1,
+              candidateId: "int4-block-size-64",
+              role: "quality_retry",
+              quantizationOverride: { blockSize: 64 },
+              eligibilityTrigger: "retryable_optimized_structural_regression"
+            }
+          ]
+        }
+      : undefined
   };
 }
 
@@ -331,7 +349,8 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
         recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
         state: "running",
         buildJobId: "job-1",
-        gates: []
+        gates: [],
+        workflowOutcome: "not_applicable"
       }
     })
   );
@@ -340,7 +359,8 @@ function createClient(overrides: Partial<ApiClient> = {}): ApiClient {
     recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
     state: "running",
     buildJobId: "job-1",
-    gates: []
+    gates: [],
+    workflowOutcome: "not_applicable"
   }));
 
   const base: ApiClient = {
@@ -451,7 +471,8 @@ describe("OnboardingShell", () => {
           recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
           state: "running",
           buildJobId: "job-1",
-          gates: []
+          gates: [],
+          workflowOutcome: "not_applicable"
         }
       })
     );
@@ -479,6 +500,98 @@ describe("OnboardingShell", () => {
     expect(client.startBuild).not.toHaveBeenCalled();
   });
 
+  it("shows the Build plan preview before confirmation and the plain-language result panel once verified", async () => {
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: {
+          attemptId: "attempt-default",
+          recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+          state: "running",
+          buildJobId: "job-1",
+          gates: [],
+          workflowOutcome: "not_applicable"
+        }
+      })
+    );
+    const getGeneratedRecipeAttempt = vi.fn(async (): Promise<RecipeAttemptStatus> => ({
+      attemptId: "attempt-fallback",
+      recipeFingerprint: "3333333333333333333333333333333333333333333333333333333333333333",
+      state: "succeeded",
+      buildJobId: "job-1",
+      gates: [],
+      workflowOutcome: "selected",
+      candidateSelection: {
+        lineageSelectionState: "selected",
+        maxCandidates: 2,
+        selectedCandidate: {
+          candidateAttemptId: "cand-1",
+          attemptId: "attempt-fallback",
+          candidateIndex: 1,
+          candidateId: "int4-block-size-64"
+        },
+        candidates: [
+          {
+            candidateAttemptId: "cand-0",
+            attemptId: "attempt-default",
+            candidateIndex: 0,
+            candidateId: "default-int4",
+            role: "default",
+            attemptState: "failed",
+            recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
+            dispositionReasons: [],
+            selectionStatus: "not_selected",
+            invocationCounters: { mobiusBuildInvocationCount: 1, oliveOptimizeInvocationCount: 1 },
+            validatedScope: {}
+          },
+          {
+            candidateAttemptId: "cand-1",
+            attemptId: "attempt-fallback",
+            candidateIndex: 1,
+            candidateId: "int4-block-size-64",
+            role: "quality_retry",
+            attemptState: "succeeded",
+            recipeFingerprint: "3333333333333333333333333333333333333333333333333333333333333333",
+            dispositionReasons: [],
+            selectionStatus: "selected",
+            invocationCounters: { mobiusBuildInvocationCount: 0, oliveOptimizeInvocationCount: 1 },
+            validatedScope: {}
+          }
+        ],
+        aggregateInvocationCounters: { mobiusBuildInvocationCount: 1, oliveOptimizeInvocationCount: 2 }
+      }
+    }));
+    const client = createClient({
+      startGeneratedRecipeAttempt,
+      getGeneratedRecipeAttempt,
+      getBuildStatus: vi.fn(async () => statusFor(generatedEligibleModel, "succeeded", { artifactId: "artifact-1" })),
+      getBuildEvents: vi.fn(async () => eventsAt({ sequence: 1, stage: "succeeded", message: "done" }))
+    });
+    const user = userEvent.setup();
+    const { container } = render(<OnboardingShell client={client} />);
+
+    await screen.findByText(/Connected/);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.selectOptions(screen.getByLabelText("Model"), generatedEligibleModel.id);
+
+    await screen.findByText("Build plan");
+    const buildPlanList = container.querySelector(".build-plan > ol") as HTMLElement;
+    expect(within(buildPlanList).getByText(/First recipe/)).toBeInTheDocument();
+    expect(within(buildPlanList).getByText(/Automatic quality retry/)).toBeInTheDocument();
+
+    await user.click(
+      screen.getByLabelText(
+        "Confirm automatic recipe attempt for fingerprint 2222222222222222222222222222222222222222222222222222222222222222"
+      )
+    );
+    await user.click(await screen.findByRole("button", { name: "Run automatic recipe attempt" }));
+
+    await screen.findByText("Automatic quality retry verified and selected.");
+    expect(screen.getByText("This recipe ran but did not pass the required quality checks.")).toBeInTheDocument();
+    expect(screen.getByText("Selected as the verified recipe.")).toBeInTheDocument();
+  });
+
   it("shows baseline-unavailable recipe gate status from generated attempts", async () => {
     const startGeneratedRecipeAttempt = vi.fn(
       async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
@@ -489,7 +602,8 @@ describe("OnboardingShell", () => {
           recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
           state: "running",
           buildJobId: "job-1",
-          gates: []
+          gates: [],
+          workflowOutcome: "not_applicable"
         }
       })
     );
@@ -528,7 +642,8 @@ describe("OnboardingShell", () => {
         evidenceRefs: ["job://job-1"],
         sourceOwner: "fl-onboarding",
         nextAction: "Produce a baseline package."
-      }
+      },
+      workflowOutcome: "not_applicable"
     }));
     const client = createClient({
       startGeneratedRecipeAttempt,
@@ -567,7 +682,8 @@ describe("OnboardingShell", () => {
           recipeFingerprint: "2222222222222222222222222222222222222222222222222222222222222222",
           state: "running",
           buildJobId: "job-1",
-          gates: []
+          gates: [],
+          workflowOutcome: "not_applicable"
         }
       })
     );
@@ -600,7 +716,8 @@ describe("OnboardingShell", () => {
             reasons: ["optimized:factual-red-planet:determinism_unsupported:seed"]
           }
         }
-      }
+      },
+      workflowOutcome: "not_applicable"
     }));
     const client = createClient({
       startGeneratedRecipeAttempt,

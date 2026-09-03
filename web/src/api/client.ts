@@ -19,8 +19,20 @@ import type {
   BuildFailure,
   BuildRequest,
   BuildStatus,
+  CandidateAttemptState,
   CandidateGateOutcome,
+  CandidateInvocationCounters,
+  CandidateLineageSelectionState,
   CandidateOutcome,
+  CandidatePlanEntry,
+  CandidateQuantizationOverride,
+  CandidateReuseEvidence,
+  CandidateRole,
+  CandidateSelectedSummary,
+  CandidateSelectionPlan,
+  CandidateSelectionStatus,
+  CandidateTimelineEntry,
+  CandidateValidatedScope,
   GeneratedRecipePreview,
   HealthSnapshot,
   JobEvent,
@@ -29,13 +41,15 @@ import type {
   ModelPreflight,
   ModelSummary,
   ModelTask,
+  RecipeAttemptCandidateSelection,
   RecipeAttemptQualityValidation,
   RecipeIntegritySummary,
   RecipeAttemptStatus,
   RecipeStatus,
   SupportedOptimization,
   TestedStatus,
-  TextInferenceResult
+  TextInferenceResult,
+  WorkflowOutcome
 } from "./types";
 
 const DEFAULT_API_BASE_URL = "";
@@ -287,6 +301,62 @@ function parseCandidateOutcome(input: unknown): CandidateOutcome | undefined {
   };
 }
 
+function parseCandidateRole(value: string, context: string): CandidateRole {
+  if (value === "default" || value === "quality_retry") {
+    return value;
+  }
+  throw new ApiParseError(`Unknown candidate role "${value}" at ${context}.`);
+}
+
+function parseCandidateQuantizationOverride(input: unknown): CandidateQuantizationOverride | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate quantization override");
+  const blockSize = readNumber(record, ["block_size"]);
+  if (blockSize === undefined) {
+    throw new ApiParseError("Expected numeric block_size on candidate quantization override.");
+  }
+  return { blockSize };
+}
+
+function parseCandidatePlanEntry(input: unknown): CandidatePlanEntry {
+  const record = asRecord(input, "candidate plan entry");
+  const candidateIndex = readNumber(record, ["candidate_index"]);
+  if (candidateIndex === undefined) {
+    throw new ApiParseError("Expected numeric candidate_index on candidate plan entry.");
+  }
+  return {
+    candidateIndex,
+    candidateId: readString(record, ["candidate_id"]),
+    role: parseCandidateRole(readString(record, ["role"]), "candidate plan entry"),
+    quantizationOverride: parseCandidateQuantizationOverride(readUnknown(record, ["quantization_override"])),
+    eligibilityTrigger: readOptionalString(record, ["eligibility_trigger"])
+  };
+}
+
+function parseCandidateSelectionPlan(input: unknown): CandidateSelectionPlan | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate selection plan");
+  const maxCandidates = readNumber(record, ["max_candidates"]);
+  if (maxCandidates === undefined) {
+    throw new ApiParseError("Expected numeric max_candidates on candidate selection plan.");
+  }
+  const candidatesRaw = readUnknown(record, ["candidates"]);
+  if (!Array.isArray(candidatesRaw)) {
+    throw new ApiParseError("Expected candidates array on candidate selection plan.");
+  }
+  return {
+    policyId: readString(record, ["policy_id"]),
+    policyVersion: readString(record, ["policy_version"]),
+    policyFingerprint: readString(record, ["policy_fingerprint"]),
+    maxCandidates,
+    candidates: candidatesRaw.map(parseCandidatePlanEntry)
+  };
+}
+
 function parseGeneratedRecipePreview(input: unknown): GeneratedRecipePreview | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
@@ -348,7 +418,8 @@ function parseGeneratedRecipePreview(input: unknown): GeneratedRecipePreview | u
           promotedUtc: readString(verifiedReuse, ["promoted_utc"]),
           recipe: readRecord(verifiedReuse, ["recipe"]) ?? undefined
         }
-      : undefined
+      : undefined,
+    candidatePlan: parseCandidateSelectionPlan(readUnknown(record, ["candidate_plan"]))
   };
 }
 
@@ -431,6 +502,177 @@ function parseAttemptQualityValidation(
   };
 }
 
+function parseCandidateAttemptState(value: string): CandidateAttemptState {
+  if (
+    value === "generated" ||
+    value === "running" ||
+    value === "succeeded" ||
+    value === "failed" ||
+    value === "cancelled"
+  ) {
+    return value;
+  }
+  throw new ApiParseError(`Unknown candidate attempt_state "${value}".`);
+}
+
+function parseCandidateSelectionStatus(value: string): CandidateSelectionStatus {
+  if (value === "not_selected" || value === "selected") {
+    return value;
+  }
+  throw new ApiParseError(`Unknown candidate selection_status "${value}".`);
+}
+
+function parseCandidateLineageSelectionState(
+  input: unknown
+): CandidateLineageSelectionState | undefined {
+  if (input === undefined || input === null) {
+    return undefined;
+  }
+  if (input === "pending" || input === "selected" || input === "exhausted") {
+    return input;
+  }
+  throw new ApiParseError(`Unknown lineage_selection_state "${String(input)}".`);
+}
+
+function parseWorkflowOutcome(input: unknown): WorkflowOutcome {
+  if (input === undefined || input === null) {
+    return "not_applicable";
+  }
+  if (
+    input === "not_applicable" ||
+    input === "pending" ||
+    input === "selected" ||
+    input === "exhausted" ||
+    input === "reused"
+  ) {
+    return input;
+  }
+  throw new ApiParseError(`Unknown workflow_outcome "${String(input)}".`);
+}
+
+function parseCandidateInvocationCounters(input: unknown): CandidateInvocationCounters {
+  if (!input) {
+    return {};
+  }
+  const record = asRecord(input, "candidate invocation counters");
+  return {
+    mobiusBuildInvocationCount: readNumber(record, ["mobius_build_invocation_count"]),
+    oliveOptimizeInvocationCount: readNumber(record, ["olive_optimize_invocation_count"]),
+    totalInvocationCount: readNumber(record, ["total_invocation_count"]),
+    wallClockSeconds: readNumber(record, ["wall_clock_seconds"]),
+    estimatedCostUsd: readNumber(record, ["estimated_cost_usd"])
+  };
+}
+
+function parseCandidateValidatedScope(input: unknown): CandidateValidatedScope {
+  if (!input) {
+    return {};
+  }
+  const record = asRecord(input, "candidate validated scope");
+  return {
+    targetDevice: readOptionalString(record, ["target_device"]),
+    targetEp: readOptionalString(record, ["target_ep"]),
+    toolchainFingerprint: readOptionalString(record, ["toolchain_fingerprint"]),
+    environmentScope: readOptionalString(record, ["environment_scope"])
+  };
+}
+
+function parseCandidateTimelineEntry(input: unknown): CandidateTimelineEntry {
+  const record = asRecord(input, "candidate timeline entry");
+  const candidateIndex = readNumber(record, ["candidate_index"]);
+  if (candidateIndex === undefined) {
+    throw new ApiParseError("Expected numeric candidate_index on candidate timeline entry.");
+  }
+  return {
+    candidateAttemptId: readString(record, ["candidate_attempt_id"]),
+    attemptId: readString(record, ["attempt_id"]),
+    candidateIndex,
+    candidateId: readString(record, ["candidate_id"]),
+    role: parseCandidateRole(readString(record, ["role"]), "candidate timeline entry"),
+    attemptState: parseCandidateAttemptState(readString(record, ["attempt_state"])),
+    recipeFingerprint: readString(record, ["recipe_fingerprint"]),
+    quantizationOverride: parseCandidateQuantizationOverride(readUnknown(record, ["quantization_override"])),
+    eligibilityTrigger: readOptionalString(record, ["eligibility_trigger"]),
+    disposition: readOptionalString(record, ["disposition"]),
+    dispositionReasons: readStringArray(record, ["disposition_reasons"]),
+    selectionStatus: parseCandidateSelectionStatus(readString(record, ["selection_status"])),
+    artifactRef: readOptionalString(record, ["artifact_ref"]),
+    packageRef: readOptionalString(record, ["package_ref"]),
+    invocationCounters: parseCandidateInvocationCounters(readUnknown(record, ["invocation_counters"])),
+    validatedScope: parseCandidateValidatedScope(readUnknown(record, ["validated_scope"]))
+  };
+}
+
+function parseCandidateSelectedSummary(input: unknown): CandidateSelectedSummary | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate selected summary");
+  const candidateIndex = readNumber(record, ["candidate_index"]);
+  if (candidateIndex === undefined) {
+    throw new ApiParseError("Expected numeric candidate_index on candidate selected summary.");
+  }
+  return {
+    candidateAttemptId: readString(record, ["candidate_attempt_id"]),
+    attemptId: readString(record, ["attempt_id"]),
+    candidateIndex,
+    candidateId: readString(record, ["candidate_id"]),
+    selectedBy: readOptionalString(record, ["selected_by"]),
+    selectionReason: readOptionalString(record, ["selection_reason"]),
+    selectedUtc: readOptionalString(record, ["selected_utc"])
+  };
+}
+
+function parseCandidateReuseEvidence(input: unknown): CandidateReuseEvidence | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate reuse evidence");
+  const runnerDispatchCount = readNumber(record, ["runner_dispatch_count"]);
+  const mobiusInvocationCount = readNumber(record, ["mobius_invocation_count"]);
+  const oliveInvocationCount = readNumber(record, ["olive_invocation_count"]);
+  if (runnerDispatchCount === undefined || mobiusInvocationCount === undefined || oliveInvocationCount === undefined) {
+    throw new ApiParseError("Expected numeric dispatch/invocation counts on candidate reuse evidence.");
+  }
+  return {
+    reusedWithoutBuild: readBoolean(record, ["reused_without_build"], false),
+    sourceAttemptId: readString(record, ["source_attempt_id"]),
+    sourceCandidateAttemptId: readString(record, ["source_candidate_attempt_id"]),
+    sourceParentAttemptId: readString(record, ["source_parent_attempt_id"]),
+    policyId: readString(record, ["policy_id"]),
+    policyVersion: readString(record, ["policy_version"]),
+    policyFingerprint: readString(record, ["policy_fingerprint"]),
+    qualityProfileFingerprint: readString(record, ["quality_profile_fingerprint"]),
+    runnerDispatchCount,
+    mobiusInvocationCount,
+    oliveInvocationCount,
+    recordedUtc: readString(record, ["recorded_utc"])
+  };
+}
+
+function parseRecipeAttemptCandidateSelection(input: unknown): RecipeAttemptCandidateSelection | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "recipe attempt candidate selection");
+  const candidatesRaw = readUnknown(record, ["candidates"]);
+  if (!Array.isArray(candidatesRaw)) {
+    throw new ApiParseError("Expected candidates array on recipe attempt candidate selection.");
+  }
+  const aggregate = readUnknown(record, ["aggregate_invocation_counters"]);
+  return {
+    policyId: readOptionalString(record, ["policy_id"]),
+    policyVersion: readOptionalString(record, ["policy_version"]),
+    policyFingerprint: readOptionalString(record, ["policy_fingerprint"]),
+    maxCandidates: readNumber(record, ["max_candidates"]),
+    lineageSelectionState: parseCandidateLineageSelectionState(readUnknown(record, ["lineage_selection_state"])),
+    selectedCandidate: parseCandidateSelectedSummary(readUnknown(record, ["selected_candidate"])),
+    candidates: candidatesRaw.map(parseCandidateTimelineEntry),
+    aggregateInvocationCounters: aggregate ? parseCandidateInvocationCounters(aggregate) : undefined,
+    reuse: parseCandidateReuseEvidence(readUnknown(record, ["reuse"]))
+  };
+}
+
 function parseRecipeAttempt(input: unknown): RecipeAttemptStatus {
   const record = asRecord(input, "recipe attempt");
   const gatesRaw = readUnknown(record, ["gates"]);
@@ -471,7 +713,9 @@ function parseRecipeAttempt(input: unknown): RecipeAttemptStatus {
           sourceOwner: readString(failureRecord, ["source_owner"]),
           nextAction: readString(failureRecord, ["next_action"])
         }
-      : undefined
+      : undefined,
+    workflowOutcome: parseWorkflowOutcome(readUnknown(record, ["workflow_outcome"])),
+    candidateSelection: parseRecipeAttemptCandidateSelection(readUnknown(record, ["candidate_selection"]))
   };
 }
 

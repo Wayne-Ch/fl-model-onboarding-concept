@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, createApiClient } from "./api/client";
+import { BuildPlanPreview, CandidateSelectionSummary } from "./components/CandidateSelection";
 import type {
   ApiClient,
   BuildRequest,
@@ -807,6 +808,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
                 Gate sequence: {generatedRecipe.validationGates.join(" -> ")}
               </p>
             ) : null}
+            {generatedRecipe?.candidatePlan ? <BuildPlanPreview plan={generatedRecipe.candidatePlan} /> : null}
             {selectedModel.metadata.recipeStatus === "experimental" ? (
               <div>
                 <label htmlFor="experimental-opt-in">
@@ -983,6 +985,8 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             )}
           </section>
         ) : null}
+
+        {currentAttempt ? <CandidateSelectionSummary attempt={currentAttempt} /> : null}
 
         {currentAttempt ? (
           <section className="panel">
