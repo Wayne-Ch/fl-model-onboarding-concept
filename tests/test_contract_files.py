@@ -38,6 +38,86 @@ def test_openapi_contains_required_paths() -> None:
     assert attempt_gate_status == ["passed", "failed", "not_run", "unavailable"]
 
 
+def test_openapi_candidate_selection_response_contract() -> None:
+    """Slice 3C1: candidate plan (preview) and candidate timeline/selection/
+    reuse-evidence (attempt) schemas exactly match the runtime-serialized
+    field names/enums the service actually emits."""
+    path = Path("contracts") / "openapi.yaml"
+    spec = yaml.safe_load(path.read_text(encoding="utf-8"))
+    schemas = spec["components"]["schemas"]
+
+    preview = schemas["GeneratedRecipePreview"]["properties"]
+    assert "candidate_plan" in preview
+    assert "candidate_selection_reuse" in preview
+
+    plan = schemas["CandidateSelectionPlan"]
+    assert set(plan["required"]) == {
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "max_candidates",
+        "candidates",
+    }
+    role_enum = schemas["CandidateRole"]["enum"]
+    assert role_enum == ["default", "quality_retry"]
+
+    plan_entry_required = set(schemas["CandidatePlanEntry"]["required"])
+    assert plan_entry_required == {"candidate_index", "candidate_id", "role", "eligibility_trigger"}
+
+    attempt = schemas["RecipeAttempt"]["properties"]
+    assert attempt["workflow_outcome"]["enum"] == [
+        "not_applicable",
+        "pending",
+        "selected",
+        "exhausted",
+        "reused",
+    ]
+    assert "candidate_selection" in attempt
+
+    selection = schemas["RecipeAttemptCandidateSelection"]["properties"]
+    assert selection["lineage_selection_state"]["enum"] == ["pending", "selected", "exhausted"]
+    assert set(selection.keys()) == {
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "max_candidates",
+        "lineage_selection_state",
+        "selected_candidate",
+        "candidates",
+        "aggregate_invocation_counters",
+        "reuse",
+    }
+
+    timeline_entry_required = set(schemas["CandidateTimelineEntry"]["required"])
+    assert {
+        "candidate_attempt_id",
+        "attempt_id",
+        "candidate_index",
+        "candidate_id",
+        "role",
+        "attempt_state",
+        "selection_status",
+        "invocation_counters",
+        "validated_scope",
+    }.issubset(timeline_entry_required)
+
+    reuse_required = set(schemas["CandidateReuseEvidence"]["required"])
+    assert reuse_required == {
+        "reused_without_build",
+        "source_attempt_id",
+        "source_candidate_attempt_id",
+        "source_parent_attempt_id",
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "quality_profile_fingerprint",
+        "runner_dispatch_count",
+        "mobius_invocation_count",
+        "olive_invocation_count",
+        "recorded_utc",
+    }
+
+
 def test_state_machine_contract_contains_cancellable_flags() -> None:
     path = Path("contracts") / "job-state-machine.json"
     contract = json.loads(path.read_text(encoding="utf-8"))

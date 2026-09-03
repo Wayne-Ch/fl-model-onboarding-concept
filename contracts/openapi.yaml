@@ -880,6 +880,115 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+        candidate_selection_reuse:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateSelectionReusePreview"
+            - type: "null"
+        candidate_plan:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateSelectionPlan"
+            - type: "null"
+
+    CandidateRole:
+      type: string
+      description: >
+        Stable, user-understandable role code for a candidate in the CPU
+        INT4 retry policy. Frontend clients should translate these into
+        plain language (for example "First recipe" / "Automatic quality
+        retry") rather than surfacing the code directly.
+      enum: [default, quality_retry]
+
+    CandidateQuantizationOverride:
+      type: object
+      required: [block_size]
+      properties:
+        block_size:
+          type: integer
+          description: Olive INT4 quantization block_size override (only block_size=64 is currently trusted).
+
+    CandidatePlanEntry:
+      type: object
+      required: [candidate_index, candidate_id, role, eligibility_trigger]
+      properties:
+        candidate_index:
+          type: integer
+          minimum: 0
+        candidate_id:
+          type: string
+        role:
+          $ref: "#/components/schemas/CandidateRole"
+        quantization_override:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateQuantizationOverride"
+            - type: "null"
+        eligibility_trigger:
+          type: string
+          nullable: true
+          description: >
+            Allowlisted, machine-readable trigger code required to make this
+            candidate eligible; always null for the always-eligible default
+            candidate (index 0).
+
+    CandidateSelectionPlan:
+      type: object
+      required: [policy_id, policy_version, policy_fingerprint, max_candidates, candidates]
+      description: >
+        Additive candidate-plan summary (Slice 3C1), present only when the
+        generated recipe is CPU INT4-eligible under the approved selection
+        policy; null for noneligible/static/legacy generated recipes.
+      properties:
+        policy_id:
+          type: string
+        policy_version:
+          type: string
+        policy_fingerprint:
+          type: string
+        max_candidates:
+          type: integer
+          minimum: 1
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidatePlanEntry"
+
+    CandidateSelectionReusePreview:
+      type: object
+      required:
+        - available
+        - source_parent_attempt_id
+        - winner_candidate_attempt_id
+        - winner_attempt_id
+        - winner_candidate_index
+        - winner_candidate_id
+        - winner_recipe_fingerprint
+        - selection_reason
+        - policy_fingerprint
+        - quality_profile_fingerprint
+        - winner_job_id
+      properties:
+        available:
+          type: boolean
+        source_parent_attempt_id:
+          type: string
+        winner_candidate_attempt_id:
+          type: string
+        winner_attempt_id:
+          type: string
+        winner_candidate_index:
+          type: integer
+          minimum: 0
+        winner_candidate_id:
+          type: string
+        winner_recipe_fingerprint:
+          type: string
+        selection_reason:
+          type: string
+        policy_fingerprint:
+          type: string
+        quality_profile_fingerprint:
+          type: string
+        winner_job_id:
+          type: string
 
     GeneratedRecipePreviewResponse:
       type: object
@@ -1061,6 +1170,230 @@ components:
             - $ref: "#/components/schemas/ModelCapabilitySummary"
             - type: "null"
 
+    CandidateInvocationCounters:
+      type: object
+      description: >
+        Nullable, typed invocation/cost evidence. A field is null exactly
+        when it has never been measured/instrumented -- never coerced to or
+        confused with a real zero count.
+      properties:
+        mobius_build_invocation_count:
+          type: integer
+          nullable: true
+        olive_optimize_invocation_count:
+          type: integer
+          nullable: true
+        total_invocation_count:
+          type: integer
+          nullable: true
+        wall_clock_seconds:
+          type: number
+          nullable: true
+        estimated_cost_usd:
+          type: number
+          nullable: true
+
+    CandidateValidatedScope:
+      type: object
+      description: >
+        Nullable-until-verified selection-scope provenance for a candidate.
+        Absence of any single field must never be read as an implicit match
+        for that scope.
+      properties:
+        target_device:
+          type: string
+          nullable: true
+        target_ep:
+          type: string
+          nullable: true
+        toolchain_fingerprint:
+          type: string
+          nullable: true
+        environment_scope:
+          type: string
+          nullable: true
+
+    CandidateTimelineEntry:
+      type: object
+      required:
+        - candidate_attempt_id
+        - attempt_id
+        - candidate_index
+        - candidate_id
+        - role
+        - attempt_state
+        - recipe_fingerprint
+        - eligibility_trigger
+        - disposition
+        - disposition_reasons
+        - selection_status
+        - artifact_ref
+        - package_ref
+        - invocation_counters
+        - validated_scope
+      properties:
+        candidate_attempt_id:
+          type: string
+        attempt_id:
+          type: string
+        candidate_index:
+          type: integer
+          minimum: 0
+        candidate_id:
+          type: string
+        role:
+          $ref: "#/components/schemas/CandidateRole"
+        attempt_state:
+          type: string
+          description: >
+            The candidate's own linked attempt's real, persisted lifecycle
+            state -- never rewritten or relabeled once a different candidate
+            in the same lineage is later selected.
+          enum: [generated, running, succeeded, failed, cancelled]
+        recipe_fingerprint:
+          type: string
+        quantization_override:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateQuantizationOverride"
+            - type: "null"
+        eligibility_trigger:
+          type: string
+          nullable: true
+        disposition:
+          type: string
+          nullable: true
+        disposition_reasons:
+          type: array
+          items:
+            type: string
+        selection_status:
+          type: string
+          enum: [not_selected, selected]
+        artifact_ref:
+          type: string
+          nullable: true
+        package_ref:
+          type: string
+          nullable: true
+        invocation_counters:
+          $ref: "#/components/schemas/CandidateInvocationCounters"
+        validated_scope:
+          $ref: "#/components/schemas/CandidateValidatedScope"
+
+    CandidateSelectedSummary:
+      type: object
+      required: [candidate_attempt_id, attempt_id, candidate_index, candidate_id]
+      properties:
+        candidate_attempt_id:
+          type: string
+        attempt_id:
+          type: string
+        candidate_index:
+          type: integer
+          minimum: 0
+        candidate_id:
+          type: string
+        selected_by:
+          type: string
+          nullable: true
+        selection_reason:
+          type: string
+          nullable: true
+        selected_utc:
+          type: string
+          format: date-time
+          nullable: true
+
+    CandidateReuseEvidence:
+      type: object
+      description: >
+        Durable, measured-zero candidate-selection-reuse dispatch evidence:
+        the returned job/artifact aliases a previously selected winner's own
+        build -- it never implies a new build completed for this attempt.
+      required:
+        - reused_without_build
+        - source_attempt_id
+        - source_candidate_attempt_id
+        - source_parent_attempt_id
+        - policy_id
+        - policy_version
+        - policy_fingerprint
+        - quality_profile_fingerprint
+        - runner_dispatch_count
+        - mobius_invocation_count
+        - olive_invocation_count
+        - recorded_utc
+      properties:
+        reused_without_build:
+          type: boolean
+        source_attempt_id:
+          type: string
+        source_candidate_attempt_id:
+          type: string
+        source_parent_attempt_id:
+          type: string
+        policy_id:
+          type: string
+        policy_version:
+          type: string
+        policy_fingerprint:
+          type: string
+        quality_profile_fingerprint:
+          type: string
+        runner_dispatch_count:
+          type: integer
+          minimum: 0
+        mobius_invocation_count:
+          type: integer
+          minimum: 0
+        olive_invocation_count:
+          type: integer
+          minimum: 0
+        recorded_utc:
+          type: string
+          format: date-time
+
+    RecipeAttemptCandidateSelection:
+      type: object
+      description: >
+        Additive candidate-selection/timeline/reuse summary (Slice 3C1).
+        Null on the parent `RecipeAttempt` exactly when `workflow_outcome`
+        is `not_applicable`.
+      required: [policy_id, policy_version, policy_fingerprint, max_candidates, lineage_selection_state, candidates, aggregate_invocation_counters]
+      properties:
+        policy_id:
+          type: string
+          nullable: true
+        policy_version:
+          type: string
+          nullable: true
+        policy_fingerprint:
+          type: string
+          nullable: true
+        max_candidates:
+          type: integer
+          nullable: true
+        lineage_selection_state:
+          type: string
+          nullable: true
+          enum: [pending, selected, exhausted]
+        selected_candidate:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateSelectedSummary"
+            - type: "null"
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidateTimelineEntry"
+        aggregate_invocation_counters:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateInvocationCounters"
+            - type: "null"
+        reuse:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateReuseEvidence"
+            - type: "null"
+
     RecipeAttempt:
       type: object
       required:
@@ -1117,6 +1450,20 @@ components:
         quality_validation:
           oneOf:
             - $ref: "#/components/schemas/RecipeAttemptQualityValidation"
+            - type: "null"
+        workflow_outcome:
+          type: string
+          description: >
+            Overall candidate-selection workflow outcome for this attempt.
+            Always one of the five stable codes below; distinguishes the
+            *workflow's* outcome (e.g. `selected` once a fallback candidate
+            is verified) from this attempt's own, never-rewritten
+            `state` (which stays `failed` for a regressed default even when
+            `workflow_outcome` is `selected` via its fallback sibling).
+          enum: [not_applicable, pending, selected, exhausted, reused]
+        candidate_selection:
+          oneOf:
+            - $ref: "#/components/schemas/RecipeAttemptCandidateSelection"
             - type: "null"
 
     GeneratedRecipeAttemptCreateResponse:

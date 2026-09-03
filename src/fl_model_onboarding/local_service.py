@@ -366,6 +366,7 @@ class GeneratedRecipePreviewContext:
     eligible_for_automatic_attempt: bool
     verified_reuse: dict[str, object] | None
     candidate_selection_reuse: dict[str, object] | None
+    candidate_plan: dict[str, object] | None
 
 
 @dataclass(frozen=True)
@@ -1122,6 +1123,48 @@ class LocalOnboardingService:
         }
 
     @staticmethod
+    def _candidate_role(candidate_index: int) -> str:
+        """Stable, user-understandable role code for a policy candidate
+        index: ``"default"`` for the always-eligible index 0, and
+        ``"quality_retry"`` for every conditional fallback candidate (index
+        >= 1). Frontend (Slice 3C2) is expected to translate these into
+        plain-language labels (e.g. "First recipe" / "Automatic quality
+        retry") rather than surfacing the machine code directly.
+        """
+        return "default" if candidate_index == 0 else "quality_retry"
+
+    @classmethod
+    def _candidate_plan_payload(cls, policy: RecipeSelectionPolicy) -> dict[str, object]:
+        """Public, additive candidate-plan summary for the generated-recipe
+        preview response (Slice 3C1). Pure projection of the approved,
+        already-validated selection policy: never touches the store, never
+        depends on any particular model/attempt, and is always the exact
+        same shape for every CPU INT4-eligible preview. Candidate order is
+        the policy's own already-validated, index-ordered tuple, so this is
+        always deterministic.
+        """
+        return {
+            "policy_id": policy.policy_id,
+            "policy_version": policy.version,
+            "policy_fingerprint": policy.fingerprint,
+            "max_candidates": policy.max_candidates,
+            "candidates": [
+                {
+                    "candidate_index": candidate.candidate_index,
+                    "candidate_id": candidate.candidate_id,
+                    "role": cls._candidate_role(candidate.candidate_index),
+                    "quantization_override": (
+                        {"block_size": candidate.quantization_override.block_size}
+                        if candidate.quantization_override is not None
+                        else None
+                    ),
+                    "eligibility_trigger": candidate.eligibility_trigger,
+                }
+                for candidate in policy.candidates
+            ],
+        }
+
+    @staticmethod
     def _candidate_selection_reuse_payload(
         resolution: CandidateSelectionReuseResolution,
     ) -> dict[str, object]:
@@ -1816,6 +1859,7 @@ class LocalOnboardingService:
         generated_recipe: GeneratedRecipe | None = None
         verified_reuse: dict[str, object] | None = None
         candidate_selection_reuse: dict[str, object] | None = None
+        candidate_plan: dict[str, object] | None = None
         eligible = False
 
         if task != CandidateModality.LLM:
@@ -1852,6 +1896,8 @@ class LocalOnboardingService:
                 compile_error = _sanitize_text(str(exc) or "Generated recipe compilation failed.")
             if generated_recipe is not None:
                 generated_record = self._recipe_attempt_store.upsert_generated_recipe(generated_recipe)
+                if self._generated_record_is_cpu_int4_eligible(generated_record):
+                    candidate_plan = self._candidate_plan_payload(self._recipe_selection_policy)
                 reusable_candidate_selection = self._resolve_reusable_candidate_selection(record=generated_record)
                 if reusable_candidate_selection is not None:
                     candidate_selection_reuse = self._candidate_selection_reuse_payload(
@@ -1881,6 +1927,7 @@ class LocalOnboardingService:
             eligible_for_automatic_attempt=eligible,
             verified_reuse=verified_reuse,
             candidate_selection_reuse=candidate_selection_reuse,
+            candidate_plan=candidate_plan,
         )
 
     def _generated_recipe_payload(self, context: GeneratedRecipePreviewContext) -> dict[str, object]:
@@ -1900,6 +1947,7 @@ class LocalOnboardingService:
                 "validation_gates": validation_gates,
                 "verified_reuse": context.verified_reuse,
                 "candidate_selection_reuse": context.candidate_selection_reuse,
+                "candidate_plan": context.candidate_plan,
             }
         provenance = candidate.provenance
         return {
@@ -1919,6 +1967,7 @@ class LocalOnboardingService:
             "validation_gates": validation_gates,
             "verified_reuse": context.verified_reuse,
             "candidate_selection_reuse": context.candidate_selection_reuse,
+            "candidate_plan": context.candidate_plan,
         }
 
     def model_detail(self, *, model_id: str) -> dict[str, object]:
@@ -2339,6 +2388,7 @@ class LocalOnboardingService:
             job_id=job_id,
             workspace_root=workspace_root,
         )
+        workflow_outcome, candidate_selection = self._candidate_selection_summary_for_attempt(attempt)
         return {
             "attempt_id": attempt.attempt_id,
             "idempotency_key": attempt.idempotency_key,
@@ -2381,6 +2431,220 @@ class LocalOnboardingService:
                 else None
             ),
             "quality_validation": quality_validation,
+            "workflow_outcome": workflow_outcome,
+            "candidate_selection": candidate_selection,
+        }
+
+    def _candidate_selection_summary_for_attempt(
+        self,
+        attempt: Any,
+    ) -> tuple[str, dict[str, object] | None]:
+        """Additive, backward-compatible candidate-selection/reuse summary
+        for one recipe attempt (Slice 3C1).
+
+        Returns ``(workflow_outcome, candidate_selection)`` where
+        ``workflow_outcome`` is always one of the five stable machine-
+        readable codes ``not_applicable`` / ``pending`` / ``selected`` /
+        ``exhausted`` / ``reused``, and ``candidate_selection`` is ``None``
+        exactly when ``workflow_outcome == "not_applicable"`` -- i.e. this
+        attempt is neither part of any registered candidate-selection
+        lineage (legacy/static/non-CPU-INT4-eligible generated attempts) nor
+        itself a candidate-selection-reuse materialization. Every existing
+        legacy attempt payload therefore still validates: the two new keys
+        are purely additive, and the richer ``candidate_selection`` object
+        is only ever populated once real candidate-plan/timeline/reuse
+        evidence exists for this exact attempt.
+
+        Never rewrites or relabels any candidate's own terminal
+        ``attempt_state``: a failed default candidate is always reported as
+        ``failed`` here even when ``workflow_outcome`` is ``selected``
+        because a *different* (fallback) candidate was the one actually
+        verified and selected.
+        """
+        candidate = self._recipe_attempt_store.find_candidate_attempt_by_attempt_id(attempt.attempt_id)
+        if candidate is None:
+            reuse_evidence = self._recipe_attempt_store.get_reuse_dispatch_evidence(attempt.attempt_id)
+            if reuse_evidence is None:
+                return "not_applicable", None
+            return "reused", {
+                "policy_id": reuse_evidence.policy_id,
+                "policy_version": reuse_evidence.policy_version,
+                "policy_fingerprint": reuse_evidence.policy_fingerprint,
+                "max_candidates": None,
+                "lineage_selection_state": None,
+                "selected_candidate": None,
+                "candidates": [],
+                "aggregate_invocation_counters": None,
+                "reuse": self._candidate_reuse_evidence_payload(reuse_evidence),
+            }
+
+        try:
+            lineage = self._recipe_attempt_store.get_candidate_lineage(candidate.parent_attempt_id)
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+        if lineage is None:
+            # A registered candidate row must always belong to a lineage row
+            # (the store never allows one to exist without the other); this
+            # can only mean on-disk corruption. Never present that silently
+            # as a normal "not_applicable" summary.
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(
+                    f"Candidate '{candidate.candidate_attempt_id}' has no parent lineage "
+                    f"'{candidate.parent_attempt_id}'; candidate-selection store state is corrupt."
+                ),
+                status_code=500,
+            )
+
+        candidates = self._recipe_attempt_store.list_candidate_attempts(candidate.parent_attempt_id)
+        selected_candidate_payload: dict[str, object] | None = None
+        if (
+            lineage.selection_state == CandidateLineageSelectionState.SELECTED
+            and lineage.selected_candidate_attempt_id is not None
+        ):
+            winner = next(
+                (row for row in candidates if row.candidate_attempt_id == lineage.selected_candidate_attempt_id),
+                None,
+            )
+            if winner is None:
+                raise ServiceError(
+                    code="RECIPE_ATTEMPT_STORE_ERROR",
+                    message=_sanitize_text(
+                        f"Lineage '{lineage.parent_attempt_id}' selected candidate "
+                        f"'{lineage.selected_candidate_attempt_id}' is not among its registered candidates."
+                    ),
+                    status_code=500,
+                )
+            selected_candidate_payload = {
+                "candidate_attempt_id": winner.candidate_attempt_id,
+                "attempt_id": winner.attempt_id,
+                "candidate_index": winner.candidate_index,
+                "candidate_id": winner.candidate_id,
+                "selected_by": winner.selected_by,
+                "selection_reason": winner.selection_reason,
+                "selected_utc": winner.selected_utc.isoformat() if winner.selected_utc is not None else None,
+            }
+
+        candidate_selection = {
+            "policy_id": lineage.policy_id,
+            "policy_version": lineage.policy_version,
+            "policy_fingerprint": lineage.policy_fingerprint,
+            "max_candidates": lineage.policy_max_candidates,
+            "lineage_selection_state": lineage.selection_state.value,
+            "selected_candidate": selected_candidate_payload,
+            "candidates": [self._candidate_timeline_entry_payload(row) for row in candidates],
+            "aggregate_invocation_counters": self._aggregate_candidate_invocation_counters(candidates),
+            "reuse": None,
+        }
+        return lineage.selection_state.value, candidate_selection
+
+    @classmethod
+    def _candidate_timeline_entry_payload(cls, candidate: CandidateAttemptRecord) -> dict[str, object]:
+        """Per-candidate timeline entry: this never rewrites or infers the
+        candidate's own terminal lifecycle state -- ``attempt_state`` is
+        always the linked attempt's real, persisted state (e.g. ``failed``
+        for a default candidate that regressed, even once a fallback
+        candidate is later verified and selected)."""
+        counters = candidate.invocation_counters
+        return {
+            "candidate_attempt_id": candidate.candidate_attempt_id,
+            "attempt_id": candidate.attempt_id,
+            "candidate_index": candidate.candidate_index,
+            "candidate_id": candidate.candidate_id,
+            "role": cls._candidate_role(candidate.candidate_index),
+            "attempt_state": candidate.attempt_state.value,
+            "recipe_fingerprint": candidate.recipe_fingerprint,
+            "quantization_override": (
+                {"block_size": candidate.quantization_override_block_size}
+                if candidate.quantization_override_block_size is not None
+                else None
+            ),
+            "eligibility_trigger": candidate.eligibility_trigger,
+            "disposition": candidate.disposition,
+            "disposition_reasons": list(candidate.disposition_reasons),
+            "selection_status": candidate.selection_status.value,
+            "artifact_ref": candidate.artifact_ref,
+            "package_ref": candidate.package_ref,
+            "invocation_counters": {
+                "mobius_build_invocation_count": counters.mobius_build_invocation_count,
+                "olive_optimize_invocation_count": counters.olive_optimize_invocation_count,
+                "total_invocation_count": counters.total_invocation_count,
+                "wall_clock_seconds": counters.wall_clock_seconds,
+                "estimated_cost_usd": counters.estimated_cost_usd,
+            },
+            "validated_scope": {
+                "target_device": candidate.validated_target_device,
+                "target_ep": candidate.validated_target_ep,
+                "toolchain_fingerprint": candidate.validated_toolchain_fingerprint,
+                "environment_scope": candidate.validated_environment_scope,
+            },
+        }
+
+    @staticmethod
+    def _aggregate_candidate_invocation_counters(
+        candidates: tuple[CandidateAttemptRecord, ...],
+    ) -> dict[str, object]:
+        """Sum real, persisted per-candidate invocation evidence across every
+        registered candidate in a lineage. Never a hardcoded/inferred
+        constant: each field is derived purely from whatever
+        `CandidateInvocationCounters` values are already durably recorded.
+        A field stays ``None`` ("unknown") whenever *no* candidate in the
+        lineage has recorded that metric yet; it is never coerced to ``0``.
+        Once at least one candidate has recorded a real value, only the
+        known values are summed (an as-yet-unmeasured sibling candidate is
+        excluded from the sum rather than either dropping the whole
+        aggregate to null or silently treating it as zero).
+        """
+
+        def _sum_known(values: list[float | int | None]) -> float | int | None:
+            known = [value for value in values if value is not None]
+            if not known:
+                return None
+            return sum(known)
+
+        return {
+            "mobius_build_invocation_count": _sum_known(
+                [row.invocation_counters.mobius_build_invocation_count for row in candidates]
+            ),
+            "olive_optimize_invocation_count": _sum_known(
+                [row.invocation_counters.olive_optimize_invocation_count for row in candidates]
+            ),
+            "total_invocation_count": _sum_known(
+                [row.invocation_counters.total_invocation_count for row in candidates]
+            ),
+            "wall_clock_seconds": _sum_known(
+                [row.invocation_counters.wall_clock_seconds for row in candidates]
+            ),
+            "estimated_cost_usd": _sum_known(
+                [row.invocation_counters.estimated_cost_usd for row in candidates]
+            ),
+        }
+
+    @staticmethod
+    def _candidate_reuse_evidence_payload(reuse_evidence: Any) -> dict[str, object]:
+        """Durable, measured-zero candidate-selection-reuse dispatch
+        evidence for an attempt that was returned as an alias of a
+        previously selected/verified winner's own build/artifact -- never a
+        new build. ``reused_without_build`` is always ``True`` and every
+        invocation count is always the real, persisted ``0`` recorded at
+        dispatch time (never inferred or synthesized here)."""
+        return {
+            "reused_without_build": reuse_evidence.reused_without_build,
+            "source_attempt_id": reuse_evidence.source_attempt_id,
+            "source_candidate_attempt_id": reuse_evidence.source_candidate_attempt_id,
+            "source_parent_attempt_id": reuse_evidence.parent_attempt_id,
+            "policy_id": reuse_evidence.policy_id,
+            "policy_version": reuse_evidence.policy_version,
+            "policy_fingerprint": reuse_evidence.policy_fingerprint,
+            "quality_profile_fingerprint": reuse_evidence.quality_profile_fingerprint,
+            "runner_dispatch_count": reuse_evidence.runner_dispatch_count,
+            "mobius_invocation_count": reuse_evidence.mobius_invocation_count,
+            "olive_invocation_count": reuse_evidence.olive_invocation_count,
+            "recorded_utc": reuse_evidence.recorded_utc.isoformat(),
         }
 
     @staticmethod
