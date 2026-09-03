@@ -330,12 +330,63 @@ def _hash_file(path: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
+def _assert_no_case_insensitive_relative_path_collisions(
+    entries: Sequence[PreOliveManifestEntry],
+) -> None:
+    """3A2 hardening follow-up: reject a manifest that contains two distinct
+    relative paths differing only by case (for example ``Model.onnx`` vs
+    ``model.onnx``). Such a manifest can be built faithfully from a
+    case-sensitive source filesystem, but silently collapses -- one file
+    silently overwriting the other -- the moment it is materialized onto a
+    case-insensitive destination filesystem (Windows/NTFS by default), which
+    is exactly what every real ``materialize_pre_olive_copy`` destination is.
+    Fails closed before any copy is attempted rather than allowing a silent
+    data-loss reuse."""
+    seen: dict[str, str] = {}
+    for entry in entries:
+        lowered = entry.relative_path.lower()
+        collision = seen.get(lowered)
+        if collision is not None and collision != entry.relative_path:
+            raise PreOliveReuseError(
+                "Refusing to reuse a pre-Olive artifact whose manifest contains "
+                f"case-insensitive relative-path collision: '{collision}' vs "
+                f"'{entry.relative_path}'; this would silently collide on a "
+                "case-insensitive destination filesystem.",
+            )
+        seen[lowered] = entry.relative_path
+
+
+def _assert_no_link_in_relative_path_chain(base: Path, relative_path: str) -> None:
+    """3A2 hardening follow-up: verify every path component from `base` down
+    to and including the leaf named by `relative_path` -- not merely the
+    fully-composed leaf path itself -- is not a symlink/Windows reparse
+    point, checked fresh immediately before this specific file is copied.
+
+    `_path_is_link_or_reparse_point` on the fully-composed leaf path alone
+    only inspects the final path component's own attributes; on Windows,
+    `lstat` still transparently follows an *intermediate* directory reparse
+    point (a junction) while resolving the rest of the path. Without this
+    check, an intermediate ancestor directory swapped for a junction in the
+    window between the initial manifest revalidation and this file's copy
+    (a Windows junction race) would go undetected even though the leaf name
+    itself is not a reparse point. Checking every ancestor component here,
+    fresh per file, closes that race."""
+    current = base
+    for part in Path(relative_path).parts:
+        current = current / part
+        if _path_is_link_or_reparse_point(current):
+            raise PreOliveReuseError(
+                f"Refusing to use a path with a symlink/reparse point ancestor: {current}",
+            )
+
+
 def _build_directory_manifest(root: Path) -> PreOliveManifest:
     """Walk `root` and build a deterministic manifest of every regular file
     under it, hashing each file with a bounded-memory streaming read.
     Fails closed (raises `PreOliveReuseError`) on a missing/non-directory
     root, any symlink/reparse point encountered anywhere in the tree
-    (rejected rather than followed), or any non-file/non-directory entry."""
+    (rejected rather than followed), any non-file/non-directory entry, or a
+    case-insensitive relative-path collision between two distinct entries."""
     if _path_is_link_or_reparse_point(root):
         raise PreOliveReuseError(
             f"Refusing to traverse a symlink/reparse point manifest root: {root}",
@@ -364,6 +415,7 @@ def _build_directory_manifest(root: Path) -> PreOliveManifest:
                 )
             else:
                 raise PreOliveReuseError(f"Unsupported filesystem entry (not file/directory): {child}")
+    _assert_no_case_insensitive_relative_path_collisions(entries)
     entries.sort(key=lambda entry: entry.relative_path)
     total_bytes = sum(entry.size_bytes for entry in entries)
     manifest_payload = [
@@ -553,11 +605,13 @@ def materialize_pre_olive_copy(
                     "Pre-Olive artifact copy cancelled before completion.",
                     classification=FailureClassification.CANCELLED,
                 )
+            # 3A2 hardening follow-up: check every ancestor directory component of
+            # this entry (not just the fully-composed leaf path) for a symlink/
+            # reparse point, fresh right before this specific file is copied. See
+            # `_assert_no_link_in_relative_path_chain` for why the leaf-only check
+            # this replaced could miss an intermediate junction race.
+            _assert_no_link_in_relative_path_chain(source_dir, entry.relative_path)
             source_file = source_dir / entry.relative_path
-            if _path_is_link_or_reparse_point(source_file):
-                raise PreOliveReuseError(
-                    f"Source file became a symlink/reparse point during copy: {entry.relative_path}",
-                )
             destination_file = destination_dir / entry.relative_path
             destination_file.parent.mkdir(parents=True, exist_ok=True)
             _stream_copy_file(source_file, destination_file)
@@ -1540,6 +1594,7 @@ class ProductionBuildStageRunner:
         recipe_attempt_store: RecipeAttemptStore | None = None,
         recipe_execution_resolver: RecipeExecutionResolver | None = None,
         runtime_python_executable: Path | str | None = None,
+        on_mobius_ready: Callable[[BuildJob, Path], None] | None = None,
     ) -> None:
         self._process_runner = process_runner
         self._build_timeout_seconds = build_timeout_seconds
@@ -1552,6 +1607,15 @@ class ProductionBuildStageRunner:
             recipe_registry=self._recipe_registry,
             recipe_attempt_store=recipe_attempt_store,
         )
+        # Slice 3B1: an optional, typed, additive result hook invoked exactly once
+        # right after a real Mobius build succeeds -- while `mobius_dir` is
+        # guaranteed to still exist on disk and before any future retention
+        # cleanup could remove it -- so a caller (`local_service.py`) can capture
+        # a `PreOliveArtifactDescriptor` for later trusted-candidate reuse without
+        # this runner knowing anything about candidates/lineages/policies itself.
+        # Never invoked on the `run_fallback_with_pre_olive_reuse` path, which
+        # never runs Mobius. Defaults to a no-op for every existing caller.
+        self._on_mobius_ready = on_mobius_ready
 
     def run(
         self,
@@ -1677,6 +1741,8 @@ class ProductionBuildStageRunner:
             json.dumps({"Name": baseline_model_name}, indent=2),
             encoding="utf-8",
         )
+        if self._on_mobius_ready is not None:
+            self._on_mobius_ready(job, mobius_dir)
 
         transition(job, JobState.MOBIUS_VALIDATING, "Mobius output created; ONNX validation follows Olive.")
         persist()

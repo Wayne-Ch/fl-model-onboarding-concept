@@ -597,6 +597,154 @@ def test_build_directory_manifest_rejects_real_symlink_when_supported(tmp_path: 
         production_runner_module._build_directory_manifest(root)
 
 
+# --- 5b. 3A2 hardening follow-up: intermediate-ancestor reparse points and ---
+# --- case-insensitive manifest collisions ------------------------------------
+
+
+def test_assert_no_link_in_relative_path_chain_rejects_intermediate_ancestor_reparse_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unit-level regression for the 3A2 hardening follow-up: an intermediate
+    ancestor directory component -- neither the manifest root nor the leaf
+    file itself -- that has become a symlink/reparse point must be rejected,
+    even though the fully-composed leaf path's own symlink/reparse
+    attributes alone would never reveal this (a real Windows junction
+    transparently redirects path resolution through the intermediate
+    component)."""
+    base = tmp_path / "chain-base"
+    (base / "sub").mkdir(parents=True)
+    (base / "sub" / "model.onnx").write_bytes(b"onnx")
+
+    real_check = production_runner_module._path_is_link_or_reparse_point
+
+    def fake_check(path: Path) -> bool:
+        if path.name == "sub":
+            return True
+        return real_check(path)
+
+    monkeypatch.setattr(production_runner_module, "_path_is_link_or_reparse_point", fake_check)
+
+    with pytest.raises(PreOliveReuseError):
+        production_runner_module._assert_no_link_in_relative_path_chain(base, "sub/model.onnx")
+
+
+def test_assert_no_link_in_relative_path_chain_allows_clean_chain(tmp_path: Path) -> None:
+    base = tmp_path / "chain-base-clean"
+    (base / "sub").mkdir(parents=True)
+    (base / "sub" / "model.onnx").write_bytes(b"onnx")
+
+    production_runner_module._assert_no_link_in_relative_path_chain(base, "sub/model.onnx")
+
+
+def test_materialize_pre_olive_copy_rejects_mocked_windows_junction_race_on_intermediate_ancestor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulates a Windows junction race inside `materialize_pre_olive_copy`:
+    an intermediate ancestor directory (not the root, not the leaf file) is
+    swapped for a junction/reparse point in the window between the initial
+    pre-copy revalidation walk and this specific entry's copy. The leaf-only
+    check this hardening replaced would miss this entirely -- only the
+    per-entry ancestor-chain check added for the 3A2 follow-up catches it.
+    """
+    source_root = tmp_path / "race-source"
+    (source_root / "sub").mkdir(parents=True)
+    (source_root / "sub" / "model.onnx").write_bytes(b"onnx")
+    (source_root / "top.json").write_text("{}", encoding="utf-8")
+
+    identity = _identity()
+    descriptor = capture_pre_olive_artifact(
+        mobius_source_dir=source_root,
+        authorized_root=tmp_path,
+        generation_identity=identity,
+        mobius_args=_SMOLLM2_MOBIUS_ARGS,
+        source_attempt_id="race-attempt",
+        source_candidate_id="0",
+    )
+
+    destination = tmp_path / "race-destination" / "mobius"
+    real_check = production_runner_module._path_is_link_or_reparse_point
+    encounters = {"sub": 0}
+
+    def fake_check(path: Path) -> bool:
+        if path.name == "sub" and path.parent == source_root:
+            encounters["sub"] += 1
+            # The first encounter is the pre-copy revalidation walk, where
+            # "sub" is still a real directory. Only the *second* encounter --
+            # the per-entry ancestor check inside the copy loop itself --
+            # observes the simulated mid-copy junction race.
+            return encounters["sub"] >= 2
+        return real_check(path)
+
+    monkeypatch.setattr(production_runner_module, "_path_is_link_or_reparse_point", fake_check)
+
+    with pytest.raises(PreOliveReuseError):
+        materialize_pre_olive_copy(
+            descriptor,
+            destination_dir=destination,
+            authorized_roots=(tmp_path,),
+        )
+    assert not destination.exists()
+    assert source_root.exists()
+
+
+def test_assert_no_case_insensitive_relative_path_collisions_rejects_distinct_case_variants() -> None:
+    entries = (
+        production_runner_module.PreOliveManifestEntry(
+            relative_path="Model.onnx", size_bytes=4, sha256="a" * 64,
+        ),
+        production_runner_module.PreOliveManifestEntry(
+            relative_path="model.onnx", size_bytes=4, sha256="a" * 64,
+        ),
+    )
+    with pytest.raises(PreOliveReuseError):
+        production_runner_module._assert_no_case_insensitive_relative_path_collisions(entries)
+
+
+def test_assert_no_case_insensitive_relative_path_collisions_allows_identical_or_distinct_paths() -> None:
+    entries = (
+        production_runner_module.PreOliveManifestEntry(
+            relative_path="model.onnx", size_bytes=4, sha256="a" * 64,
+        ),
+        production_runner_module.PreOliveManifestEntry(
+            relative_path="tokenizer.json", size_bytes=2, sha256="b" * 64,
+        ),
+    )
+    # Must not raise.
+    production_runner_module._assert_no_case_insensitive_relative_path_collisions(entries)
+
+
+def test_build_directory_manifest_rejects_case_insensitive_collision_via_monkeypatched_listing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_build_directory_manifest` must reject a directory listing containing
+    two distinct relative paths that differ only by case (e.g. `Model.onnx`
+    vs `model.onnx`) -- a manifest that is faithful to a case-sensitive
+    source filesystem but would silently collapse one file into the other
+    the moment it is copied onto a case-insensitive destination. This
+    machine's real filesystem may itself be case-insensitive, so the
+    directory listing is monkeypatched to simulate the collision."""
+    root = tmp_path / "case-collision-root"
+    root.mkdir()
+    (root / "model.onnx").write_bytes(b"onnx")
+
+    real_iterdir = Path.iterdir
+
+    def fake_iterdir(self: Path):
+        if self == root:
+            yield root / "model.onnx"
+            yield root / "Model.onnx"
+            return
+        yield from real_iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", fake_iterdir)
+
+    with pytest.raises(PreOliveReuseError):
+        production_runner_module._build_directory_manifest(root)
+
+
 # --- 6. Partial copy / cancellation / failure cleanup ------------------------
 
 

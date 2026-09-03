@@ -1163,3 +1163,48 @@ def test_plain_attempts_without_any_candidate_plan_are_unaffected(tmp_path: Path
     assert store.get_attempt(attempt.attempt_id).state == AttemptState.SUCCEEDED
     assert store.get_candidate_lineage(attempt.attempt_id) is None
     assert store.list_candidate_attempts(attempt.attempt_id) == ()
+
+
+# --------------------------------------------------------------------------
+# Slice 3B1: reverse lookup by attempt_id (parent or child)
+# --------------------------------------------------------------------------
+
+
+def test_find_candidate_attempt_by_attempt_id_resolves_parent_and_child(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _generated, default_attempt = _create_and_start_attempt(store, idempotency_key="reverse-lookup-default")
+    _register_default(store, default_attempt.attempt_id)
+    _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
+
+    fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store,
+        idempotency_key="reverse-lookup-fallback",
+        model_id="example-org/candidate-model",
+    )
+    _succeed_attempt(store, fallback_attempt.attempt_id)
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+
+    by_parent = store.find_candidate_attempt_by_attempt_id(default_attempt.attempt_id)
+    assert by_parent is not None
+    assert by_parent.candidate_index == 0
+    assert by_parent.parent_attempt_id == default_attempt.attempt_id
+    assert by_parent.attempt_id == default_attempt.attempt_id
+
+    by_child = store.find_candidate_attempt_by_attempt_id(fallback_attempt.attempt_id)
+    assert by_child is not None
+    assert by_child.candidate_attempt_id == fallback_candidate.candidate_attempt_id
+    assert by_child.candidate_index == 1
+    assert by_child.parent_attempt_id == default_attempt.attempt_id
+    assert by_child.attempt_id == fallback_attempt.attempt_id
+
+
+def test_find_candidate_attempt_by_attempt_id_returns_none_for_untracked_attempt(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _generated, attempt = _create_and_start_attempt(store, idempotency_key="reverse-lookup-none")
+    _succeed_attempt(store, attempt.attempt_id)
+    assert store.find_candidate_attempt_by_attempt_id(attempt.attempt_id) is None
+

@@ -2457,6 +2457,35 @@ class RecipeAttemptStore:
         with self._connect() as connection:
             return self._load_candidate_lineage(connection, parent_id)
 
+    def find_candidate_attempt_by_attempt_id(self, attempt_id: str) -> CandidateAttemptRecord | None:
+        """Read-only reverse lookup (Slice 3B1 orchestration helper): the
+        candidate-plan row, if any, whose linked ``RecipeAttempt`` is
+        ``attempt_id`` -- regardless of whether ``attempt_id`` is the
+        lineage's own parent attempt (candidate 0, where ``attempt_id ==
+        parent_attempt_id``) or a distinct child candidate's attempt (for
+        example candidate 1's fallback attempt). Returns ``None`` when
+        ``attempt_id`` is not part of any registered candidate lineage (for
+        example a static recipe build or a legacy generated attempt with no
+        registered policy), letting a caller cheaply tell "not a candidate at
+        all" apart from "is a candidate" without needing to already know
+        which lineage it belongs to.
+        """
+        attempt_id_value = _coerce_str(attempt_id, "attempt_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT candidate_attempt_id
+                FROM candidate_attempts
+                WHERE attempt_id = ?
+                ORDER BY candidate_index ASC
+                LIMIT 1
+                """,
+                (attempt_id_value,),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._load_candidate_attempt(connection, row["candidate_attempt_id"])
+
     def find_reusable_candidate_selection(
         self,
         query: CandidateSelectionReuseQuery,

@@ -22,6 +22,7 @@ from .adapters.foundry_cli import FoundryCliCatalogAdapter
 from .adapters.huggingface_metadata import HuggingFaceMetadataAdapter
 from .adapters.interfaces import (
     FoundryCatalogClient,
+    HuggingFaceAcquisitionClient,
     HuggingFaceMetadata,
     HuggingFaceMetadataClient,
     ProcessRunner,
@@ -59,12 +60,20 @@ from .paths import ensure_dir
 from .preflight import PreflightInspector
 from .production_runner import (
     FoundrySdkTextInferenceBackend,
+    PreOliveArtifactDescriptor,
+    PreOliveGenerationIdentity,
+    PreOliveReuseError,
     ProductionBuildStageRunner,
+    capture_pre_olive_artifact,
+    pre_olive_generation_identity_from_generated_record,
+    production_invocation_evidence_to_candidate_counters,
     production_package_paths,
+    revalidate_pre_olive_source,
 )
 from .quality_validation import (
     GateState,
     PromptExecutionRecord,
+    QualityRetryEvaluation,
     QualityValidationProfileRegistry,
     evaluate_quality_validation,
     load_quality_validation_profile_registry,
@@ -78,10 +87,16 @@ from .recipe_attempt_store import (
     AttemptIdempotencyConflictError,
     AttemptState,
     AttemptStateTransitionError,
+    CandidateAttemptRecord,
+    CandidateInvocationCounters,
+    CandidateLineageSelectionState,
+    CandidatePlanValidationError,
     RecipeAttemptRequest,
     RecipeAttemptStore,
     RecipeAttemptStoreError,
+    TERMINAL_ATTEMPT_STATES,
     build_attempt_request_fingerprint,
+    build_attempt_request_from_generated,
     build_reuse_query_from_generated,
 )
 from .recipe_compiler import (
@@ -95,8 +110,16 @@ from .recipe_compiler import (
     RecipeGenerationProvenance,
     RecipeInputMetadata,
     RecipePromotionRecord,
+    TrustedCandidateCompilationError,
     compile_generated_recipe,
+    compile_trusted_candidate_recipe,
     promote_generated_recipe,
+)
+from .recipe_selection_policy import (
+    DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY,
+    DEFAULT_RECIPE_SELECTION_POLICY_REGISTRY,
+    RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+    RecipeSelectionPolicy,
 )
 from .recipes import (
     AncillaryFileRule,
@@ -133,6 +156,7 @@ _RECIPE_DEFAULT_DEVICE = "cpu"
 _RECIPE_DEFAULT_PRECISION = "auto"
 _RECIPE_QUALITY_PROFILE_ID = "textgen-basic-quality-v1"
 _AUTOMATIC_RECIPE_ATTEMPT_CONFIRMATION_PROVENANCE = "api.confirm_automatic_recipe_attempt"
+_FALLBACK_CANDIDATE_ATTEMPT_CONFIRMATION_PROVENANCE = "internal.fallback_candidate_attempt"
 _ATTEMPT_FAILURE_MESSAGE_MAX = 2048
 _QUALITY_EVIDENCE_SCHEMA_VERSION = "1.0.0"
 _QUALITY_EVIDENCE_FILENAME = "quality-validation-evidence.json"
@@ -348,6 +372,13 @@ class QualityValidationOutcome:
     message: str
     evidence_ref: str
     metrics_ref: str | None = None
+    # Slice 3B1: the typed quality-retry disposition/reasons derived from real gate
+    # evidence by `evaluate_quality_validation`, carried through so the candidate
+    # orchestration layer can decide whether a narrow, declarative fallback retry is
+    # allowed -- never inferred from message text. Stays `None` whenever quality
+    # validation never actually ran (missing/unavailable baseline, etc.), which the
+    # orchestration layer must always treat the same as "not retryable".
+    quality_retry_evaluation: QualityRetryEvaluation | None = None
 
 
 class BuildStageRunner(Protocol):
@@ -787,6 +818,7 @@ class LocalOnboardingService:
         recipe_attempt_store: RecipeAttemptStore | None = None,
         enable_production_runner: bool = False,
         runtime_python_executable: Path | str | None = None,
+        model_acquisition: HuggingFaceAcquisitionClient | None = None,
     ) -> None:
         data_root = default_data_root() if (db_path is None or model_cache_dir is None) else None
         self._workspace_base = (workspace_base or default_workspace_base()).resolve()
@@ -820,6 +852,25 @@ class LocalOnboardingService:
         )
         self._build_job_to_attempt: dict[str, str] = {}
         self._attempt_to_build_job: dict[str, str] = {}
+        # Slice 3B1: the approved default CPU INT4 candidate-selection policy this
+        # service resolves for every eligible generated attempt. Fixed for this
+        # slice -- not user-selectable -- matching the "approved selection
+        # policy/plan" scope described for Slice 3B1.
+        self._recipe_selection_policy: RecipeSelectionPolicy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+        # Slice 3B1: process-memory-only cache of a captured pre-Olive Mobius
+        # artifact descriptor for a default candidate's attempt_id, populated by
+        # `_capture_pre_olive_descriptor_if_eligible` (the `on_mobius_ready` hook)
+        # and consumed at most once by `_launch_fallback_candidate_attempt`.
+        # Deliberately never persisted: it is always lost on a service restart,
+        # which is why restart recovery below fails closed instead of silently
+        # rebuilding Mobius to resume a fallback candidate.
+        self._pre_olive_descriptors: dict[str, PreOliveArtifactDescriptor] = {}
+        # Slice 3B1: job_id -> (descriptor, fallback_generation_identity) for a
+        # fallback candidate job that has been enqueued but not yet dispatched to
+        # the build stage runner. Consumed exactly once by `_run_job`, which then
+        # calls `ProductionBuildStageRunner.run_fallback_with_pre_olive_reuse`
+        # instead of the ordinary `run()` for that job only.
+        self._fallback_launch_context: dict[str, tuple[PreOliveArtifactDescriptor, PreOliveGenerationIdentity]] = {}
 
         self._process_runner = process_runner or SafeSubprocessRunner()
         self._hf_metadata = hf_metadata or HuggingFaceMetadataAdapter()
@@ -833,9 +884,11 @@ class LocalOnboardingService:
         self._build_stage_runner = build_stage_runner or (
             ProductionBuildStageRunner(
                 self._process_runner,
+                model_acquisition=model_acquisition,
                 recipe_registry=self._recipe_registry,
                 recipe_attempt_store=self._recipe_attempt_store,
                 runtime_python_executable=runtime_python_executable,
+                on_mobius_ready=self._capture_pre_olive_descriptor_if_eligible,
             )
             if enable_production_runner
             else UnverifiedBuildStageRunner()
@@ -875,6 +928,8 @@ class LocalOnboardingService:
                 job.finished_utc = datetime.now(timezone.utc)
                 job.add_event("Interrupted job marked failed during service recovery.")
                 self._store.save_job(job)
+
+        self._recover_orphaned_candidate_lineages()
 
         self._worker = Thread(target=self._worker_loop, name="fl-onboard-worker", daemon=True)
         self._worker.start()
@@ -1920,6 +1975,10 @@ class LocalOnboardingService:
                 )
 
             started_attempt = self._recipe_attempt_store.start_attempt(attempt.attempt_id)
+            self._register_default_candidate_lineage_if_eligible(
+                attempt_id=attempt.attempt_id,
+                record=generated_record,
+            )
             job_id = str(uuid.uuid4())
             request = self._build_request_for_generated_attempt(
                 record=generated_record,
@@ -2322,6 +2381,7 @@ class LocalOnboardingService:
                 ),
                 evidence_ref=f"{evidence_prefix}/baseline-passed",
                 metrics_ref=metrics_ref,
+                quality_retry_evaluation=result.quality_retry_evaluation,
             )
 
         integrity_failures = list(recipe_verification.integrity_failures)
@@ -2343,6 +2403,7 @@ class LocalOnboardingService:
             message=f"Recipe integrity blocked: {'; '.join(integrity_failures)}. {advisory}",
             evidence_ref=evidence_ref,
             metrics_ref=metrics_ref,
+            quality_retry_evaluation=result.quality_retry_evaluation,
         )
 
     @staticmethod
@@ -2867,6 +2928,52 @@ class LocalOnboardingService:
                 message=_sanitize_text(str(exc)),
                 status_code=409,
             ) from exc
+
+        # Slice 3B1: a trusted candidate recipe (e.g. the block64 fallback) layers
+        # a policy-approved quantization override on top of the base compile via
+        # `compile_trusted_candidate_recipe`, which also folds its
+        # `TrustedCandidateProvenance` into the fingerprinted payload. Recompiling
+        # such a record must re-apply that exact same override -- by exact policy/
+        # candidate identity, never by raw block_size alone -- or the recompiled
+        # candidate's fingerprint (and therefore its Olive arguments) would never
+        # match the persisted record, and promotion would silently fail closed.
+        trusted_candidate_payload = provenance.get("trusted_candidate")
+        if isinstance(trusted_candidate_payload, dict):
+            policy_id = str(trusted_candidate_payload.get("policy_id") or "")
+            candidate_index_raw = trusted_candidate_payload.get("candidate_index")
+            try:
+                trusted_policy = DEFAULT_RECIPE_SELECTION_POLICY_REGISTRY.get(policy_id)
+            except ValueError as exc:
+                raise ServiceError(
+                    code="GENERATED_RECIPE_INVALID",
+                    message=f"Generated recipe references unknown trusted candidate policy '{policy_id}'.",
+                    status_code=500,
+                ) from exc
+            if (
+                not isinstance(candidate_index_raw, int)
+                or isinstance(candidate_index_raw, bool)
+                or candidate_index_raw < 0
+                or candidate_index_raw >= len(trusted_policy.candidates)
+            ):
+                raise ServiceError(
+                    code="GENERATED_RECIPE_INVALID",
+                    message="Generated recipe references an out-of-range trusted candidate index.",
+                    status_code=500,
+                )
+            trusted_candidate_selection = trusted_policy.candidates[candidate_index_raw]
+            try:
+                candidate = compile_trusted_candidate_recipe(
+                    candidate,
+                    policy=trusted_policy,
+                    candidate=trusted_candidate_selection,
+                )
+            except TrustedCandidateCompilationError as exc:
+                raise ServiceError(
+                    code="GENERATED_RECIPE_RECOMPILE_FAILED",
+                    message=_sanitize_text(str(exc)),
+                    status_code=409,
+                ) from exc
+
         if candidate.fingerprint != record.recipe_fingerprint:
             raise ServiceError(
                 code="GENERATED_RECIPE_IDENTITY_MISMATCH",
@@ -2877,6 +2984,463 @@ class LocalOnboardingService:
                 status_code=409,
             )
         return candidate
+
+    # --- Slice 3B1: candidate lineage/fallback orchestration -----------------
+    #
+    # Everything below wires the durable candidate lineage/evidence/selection/
+    # exhaustion API Slice 2 already added to `RecipeAttemptStore` -- plus Slice
+    # 3A1's trusted block64 compilation and Slice 3A2's pre-Olive Mobius reuse --
+    # into the generated-recipe-attempt lifecycle. It only ever activates for a
+    # generated attempt whose *actual compiled* Olive device/precision match the
+    # approved CPU INT4 selection policy's declared scope; every other generated
+    # attempt (a different device/precision) and every static-recipe build is
+    # completely untouched and keeps its pre-3B1 behavior exactly. See
+    # `docs/candidate-orchestration.md` for the full internal design and the
+    # exact Slice 3B2 handoff.
+
+    @staticmethod
+    def _generated_record_is_cpu_int4_eligible(record: Any) -> bool:
+        """Whether `record`'s actual compiled Olive device/precision fall
+        inside the approved CPU INT4 candidate-selection policy's declared
+        scope. Deliberately mirrors exactly the same device/precision check
+        `compile_trusted_candidate_recipe` itself enforces before it will
+        ever layer a trusted quantization override onto a default recipe, so
+        eligibility here can never silently drift from what a fallback
+        compile would actually accept."""
+        try:
+            payload = record.payload()
+        except RecipeAttemptStoreError:
+            return False
+        recipe_payload = payload.get("recipe")
+        if not isinstance(recipe_payload, dict):
+            return False
+        olive_payload = recipe_payload.get("olive")
+        if not isinstance(olive_payload, dict):
+            return False
+        policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+        return (
+            olive_payload.get("device") == policy.target_device.value
+            and olive_payload.get("precision") == policy.quantization.value
+        )
+
+    def _register_default_candidate_lineage_if_eligible(self, *, attempt_id: str, record: Any) -> None:
+        """Idempotently register candidate 0 (the default, parent attempt)
+        under the approved policy before the default candidate ever
+        executes. A no-op for an ineligible device/precision, or when a
+        lineage is already registered for `attempt_id` (a benign replay/race:
+        `register_candidate_attempt` itself would otherwise reject a second
+        registration of index 0)."""
+        if not self._generated_record_is_cpu_int4_eligible(record):
+            return
+        try:
+            existing = self._recipe_attempt_store.get_candidate_lineage(attempt_id)
+        except RecipeAttemptStoreError:
+            return
+        if existing is not None:
+            return
+        try:
+            self._recipe_attempt_store.register_candidate_attempt(
+                parent_attempt_id=attempt_id,
+                attempt_id=attempt_id,
+                candidate_index=0,
+                policy=self._recipe_selection_policy,
+                quality_profile_fingerprint=self._quality_profile.fingerprint,
+            )
+        except CandidatePlanValidationError:
+            return
+
+    def _capture_pre_olive_descriptor_if_eligible(self, job: BuildJob, mobius_dir: Path) -> None:
+        """`ProductionBuildStageRunner`'s `on_mobius_ready` result hook.
+
+        Captures an immutable `PreOliveArtifactDescriptor` for a *default*
+        candidate's just-succeeded Mobius output while `mobius_dir` is
+        guaranteed to still exist on disk, so a later retryable structural-
+        regression fallback candidate can reuse it instead of rebuilding
+        Mobius. A completely inert no-op for every job that is not a CPU
+        INT4-eligible generated attempt's default candidate (index 0) under
+        a still-PENDING lineage: static recipes, legacy generated attempts
+        without a registered policy, and the fallback candidate's own job
+        (which never runs Mobius at all, so this hook is never even invoked
+        for it) all leave `self._pre_olive_descriptors` untouched. Any
+        failure here (a malformed payload, a symlink/reparse point, tampered
+        content) is swallowed: it only ever means a later fallback trigger
+        finds no usable descriptor and correctly refuses to retry, never
+        that this build itself fails.
+        """
+        generated_attempt = job.request.generated_recipe_attempt
+        if generated_attempt is None:
+            return
+        attempt_id = generated_attempt.attempt_id.strip()
+        if not attempt_id:
+            return
+        try:
+            candidate = self._recipe_attempt_store.find_candidate_attempt_by_attempt_id(attempt_id)
+        except RecipeAttemptStoreError:
+            return
+        if candidate is None or candidate.candidate_index != 0 or candidate.parent_attempt_id != attempt_id:
+            return
+        try:
+            lineage = self._recipe_attempt_store.get_candidate_lineage(attempt_id)
+        except RecipeAttemptStoreError:
+            return
+        if lineage is None or lineage.selection_state != CandidateLineageSelectionState.PENDING:
+            return
+        generated_record = self._recipe_attempt_store.get_generated_recipe(generated_attempt.recipe_fingerprint)
+        if generated_record is None:
+            return
+        try:
+            default_candidate_recipe = self._recompile_generated_recipe_record(record=generated_record)
+        except ServiceError:
+            return
+        identity = pre_olive_generation_identity_from_generated_record(generated_record)
+        try:
+            descriptor = capture_pre_olive_artifact(
+                mobius_source_dir=mobius_dir,
+                authorized_root=job.request.workspace_root,
+                generation_identity=identity,
+                mobius_args=default_candidate_recipe.recipe.mobius,
+                source_attempt_id=attempt_id,
+                source_candidate_id=candidate.candidate_attempt_id,
+            )
+        except PreOliveReuseError:
+            return
+        with self._lock:
+            self._pre_olive_descriptors[attempt_id] = descriptor
+
+    def _on_candidate_attempt_terminal(self, *, job: BuildJob, attempt_id: str) -> CandidateAttemptRecord | None:
+        """Idempotently record terminal evidence/counters for `attempt_id`'s
+        candidate-plan row -- if `attempt_id` is part of any Slice 3B1
+        candidate lineage at all -- and return that row. Returns ``None``
+        when `attempt_id` is not a tracked candidate, which every caller
+        uses as the uniform signal to leave the pre-3B1 behavior completely
+        untouched (static recipes and legacy generated attempts without a
+        registered policy)."""
+        try:
+            candidate = self._recipe_attempt_store.find_candidate_attempt_by_attempt_id(attempt_id)
+        except RecipeAttemptStoreError:
+            return None
+        if candidate is None:
+            return None
+        self._finalize_candidate_terminal_evidence(job=job, candidate=candidate)
+        return candidate
+
+    def _finalize_candidate_terminal_evidence(self, *, job: BuildJob, candidate: CandidateAttemptRecord) -> None:
+        """Persist real, actual (never inferred/constant) invocation
+        counters plus compact artifact/package references for one terminal
+        candidate attempt. Write-once and idempotent: a repeated call with
+        identical values (e.g. duplicate worker delivery re-syncing an
+        already-terminal candidate) is always safe."""
+        counters: CandidateInvocationCounters | None = None
+        if job.production_invocation_evidence is not None:
+            counters = production_invocation_evidence_to_candidate_counters(job.production_invocation_evidence)
+        artifact_ref = f"job://{job.job_id}/artifact/{job.result_artifact_id}" if job.result_artifact_id else None
+        package_ref = f"job://{job.job_id}/package" if job.result_artifact_id else None
+        try:
+            self._recipe_attempt_store.finalize_candidate_attempt_evidence(
+                candidate.candidate_attempt_id,
+                artifact_ref=artifact_ref,
+                package_ref=package_ref,
+                invocation_counters=counters,
+            )
+        except RecipeAttemptStoreError:
+            return
+
+    def _finalize_lineage_exhausted_if_applicable(self, *, candidate: CandidateAttemptRecord, reason: str) -> None:
+        """Finalize `candidate`'s lineage exhausted -- no winner -- unless it
+        is already finalized (selected or exhausted), which makes every call
+        site safe to call unconditionally/idempotently without first
+        re-deriving whether exhaustion is legal; the store itself enforces
+        every remaining precondition (every candidate terminal, none
+        verified-but-unselected) and this simply no-ops on any conflict
+        rather than raising into the sync path."""
+        try:
+            lineage = self._recipe_attempt_store.get_candidate_lineage(candidate.parent_attempt_id)
+        except RecipeAttemptStoreError:
+            return
+        if lineage is None or lineage.selection_state != CandidateLineageSelectionState.PENDING:
+            return
+        try:
+            self._recipe_attempt_store.finalize_exhausted_candidate_lineage(
+                candidate.parent_attempt_id,
+                reason=reason,
+            )
+        except RecipeAttemptStoreError:
+            return
+
+    def _select_verified_candidate(
+        self,
+        *,
+        candidate: CandidateAttemptRecord,
+        generated_record: Any,
+    ) -> None:
+        """Atomically select `candidate` as its lineage's single verified
+        winner, with real target device/EP/toolchain/environment scope
+        derived from the candidate's own actually-compiled recipe and
+        persisted generation identity -- never left implicitly "verified for
+        every scope" by omission (see
+        `CandidateAttemptRecord.has_fully_validated_selection_scope`)."""
+        try:
+            lineage = self._recipe_attempt_store.get_candidate_lineage(candidate.parent_attempt_id)
+        except RecipeAttemptStoreError:
+            return
+        if lineage is None or lineage.selection_state != CandidateLineageSelectionState.PENDING:
+            return
+        payload = generated_record.payload()
+        recipe_payload = payload.get("recipe") if isinstance(payload, dict) else None
+        olive_payload = recipe_payload.get("olive") if isinstance(recipe_payload, dict) else None
+        mobius_payload = recipe_payload.get("mobius") if isinstance(recipe_payload, dict) else None
+        validated_target_device = (
+            str(olive_payload.get("device"))
+            if isinstance(olive_payload, dict) and olive_payload.get("device")
+            else None
+        )
+        validated_target_ep = (
+            str(mobius_payload.get("ep"))
+            if isinstance(mobius_payload, dict) and mobius_payload.get("ep")
+            else None
+        )
+        validated_toolchain_fingerprint = generated_record.toolchain_fingerprint
+        validated_environment_scope = (
+            f"foundry-local-onboarding:{olive_payload.get('provider')}"
+            if isinstance(olive_payload, dict) and olive_payload.get("provider")
+            else "foundry-local-onboarding"
+        )
+        try:
+            self._recipe_attempt_store.select_verified_candidate_attempt(
+                parent_attempt_id=candidate.parent_attempt_id,
+                candidate_attempt_id=candidate.candidate_attempt_id,
+                reason=(
+                    f"Candidate {candidate.candidate_index} ('{candidate.candidate_id}') verified: recipe "
+                    "integrity passed strict baseline/optimized quality validation."
+                ),
+                validated_target_device=validated_target_device,
+                validated_target_ep=validated_target_ep,
+                validated_toolchain_fingerprint=validated_toolchain_fingerprint,
+                validated_environment_scope=validated_environment_scope,
+            )
+        except RecipeAttemptStoreError:
+            return
+
+    def _maybe_launch_fallback_candidate(
+        self,
+        *,
+        job: BuildJob,
+        candidate: CandidateAttemptRecord,
+        quality_outcome: QualityValidationOutcome,
+    ) -> bool:
+        """Evaluate every Slice 3B1 fallback-trigger precondition and, only
+        if every single one holds, compile/register/launch exactly one
+        trusted block64 fallback candidate. Returns ``True`` once the
+        fallback candidate has been durably registered and enqueued (the
+        caller must leave the lineage PENDING); ``False`` whenever any
+        precondition fails, unknown/malformed/partial evidence included --
+        the caller then finalizes the lineage exhausted instead."""
+        if candidate.candidate_index != 0:
+            # Only the default candidate may ever trigger a fallback.
+            return False
+        try:
+            lineage = self._recipe_attempt_store.get_candidate_lineage(candidate.parent_attempt_id)
+        except RecipeAttemptStoreError:
+            return False
+        if lineage is None or lineage.selection_state != CandidateLineageSelectionState.PENDING:
+            return False
+        if lineage.policy_max_candidates <= 1:
+            return False
+        retry_evaluation = quality_outcome.quality_retry_evaluation
+        if retry_evaluation is None or not retry_evaluation.is_retryable:
+            # Unknown/malformed/partial evidence, or any disposition other than
+            # the sole allowlisted retryable one, is always non-retryable.
+            return False
+        if job.state != JobState.SUCCEEDED:
+            # Defense in depth: Mobius, Olive, ONNX/ORT/OGA/FL runtime must all
+            # have actually succeeded; only a quality structural regression may
+            # ever block promotion for a retryable default candidate.
+            return False
+        generated_record = self._recipe_attempt_store.get_generated_recipe(candidate.recipe_fingerprint)
+        if generated_record is None:
+            return False
+        descriptor = self._pre_olive_descriptors.get(candidate.parent_attempt_id)
+        if descriptor is None:
+            # No captured pre-Olive descriptor available (never captured, lost
+            # across a restart, or already consumed) -- never rebuild Mobius to
+            # recover one; fail closed to "not retryable".
+            return False
+        try:
+            revalidate_pre_olive_source(descriptor)
+        except PreOliveReuseError:
+            return False
+        try:
+            default_candidate_recipe = self._recompile_generated_recipe_record(record=generated_record)
+        except ServiceError:
+            return False
+        # Every precondition holds; consume the descriptor only now that we are
+        # committed to actually launching the fallback candidate.
+        with self._lock:
+            self._pre_olive_descriptors.pop(candidate.parent_attempt_id, None)
+        try:
+            self._launch_fallback_candidate_attempt(
+                parent_attempt_id=candidate.parent_attempt_id,
+                default_record=generated_record,
+                default_candidate_recipe=default_candidate_recipe,
+                descriptor=descriptor,
+                retry_evaluation=retry_evaluation,
+            )
+        except (
+            CandidatePlanValidationError,
+            TrustedCandidateCompilationError,
+            GeneratedRecipeCompileError,
+            RecipeAttemptStoreError,
+            ServiceError,
+        ):
+            return False
+        return True
+
+    def _launch_fallback_candidate_attempt(
+        self,
+        *,
+        parent_attempt_id: str,
+        default_record: Any,
+        default_candidate_recipe: GeneratedRecipe,
+        descriptor: PreOliveArtifactDescriptor,
+        retry_evaluation: QualityRetryEvaluation,
+    ) -> None:
+        """Compile, persist, register, and enqueue the single trusted
+        block64 fallback candidate (candidate index 1) the approved CPU
+        INT4 selection policy permits for `parent_attempt_id`'s default
+        candidate. Idempotent: if candidate 1 is already registered or
+        already has a live build job for `parent_attempt_id` (a duplicate
+        worker delivery or a defensive re-entrant call), this returns
+        without creating a second candidate/attempt/job or launching any
+        tool twice.
+        """
+        policy = self._recipe_selection_policy
+        if any(row.candidate_index == 1 for row in self._recipe_attempt_store.list_candidate_attempts(parent_attempt_id)):
+            return
+
+        fallback_recipe = compile_trusted_candidate_recipe(
+            default_candidate_recipe,
+            policy=policy,
+            candidate=policy.candidates[1],
+        )
+        fallback_record = self._recipe_attempt_store.upsert_generated_recipe(fallback_recipe)
+
+        attempt_request = build_attempt_request_from_generated(fallback_record)
+        request_fingerprint = build_attempt_request_fingerprint(attempt_request)
+        # Deterministic per-parent idempotency key: repeated worker delivery for
+        # the same parent attempt always resolves to the exact same fallback
+        # attempt row, never a second one.
+        idempotency_key = f"fallback-candidate-1::{parent_attempt_id}"
+        fallback_attempt, _replay = self._recipe_attempt_store.create_attempt(
+            idempotency_key=idempotency_key,
+            request=attempt_request,
+            request_fingerprint=request_fingerprint,
+        )
+
+        with self._lock:
+            existing_job_id = self._attempt_to_build_job.get(fallback_attempt.attempt_id)
+            already_launched = existing_job_id is not None and existing_job_id in self._jobs
+        if already_launched:
+            return
+
+        if fallback_attempt.state == AttemptState.GENERATED:
+            self._recipe_attempt_store.start_attempt(fallback_attempt.attempt_id)
+
+        if not any(
+            row.candidate_index == 1
+            for row in self._recipe_attempt_store.list_candidate_attempts(parent_attempt_id)
+        ):
+            self._recipe_attempt_store.register_candidate_attempt(
+                parent_attempt_id=parent_attempt_id,
+                attempt_id=fallback_attempt.attempt_id,
+                candidate_index=1,
+                policy=policy,
+                quality_profile_fingerprint=self._quality_profile.fingerprint,
+                trigger=RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION_TRIGGER,
+                retry_evaluation=retry_evaluation,
+            )
+
+        with self._lock:
+            existing_job_id = self._attempt_to_build_job.get(fallback_attempt.attempt_id)
+            if existing_job_id is not None and existing_job_id in self._jobs:
+                return
+            job_id = str(uuid.uuid4())
+            request = self._build_request_for_generated_attempt(
+                record=fallback_record,
+                attempt_id=fallback_attempt.attempt_id,
+                job_id=job_id,
+            )
+            job = BuildJob(job_id=job_id, request=request)
+            job.add_event(
+                "Trusted block64 fallback candidate queued after a retryable optimized-only structural "
+                "regression on the default candidate; reusing the default candidate's captured pre-Olive "
+                "Mobius artifact instead of rebuilding it."
+            )
+            self._jobs[job_id] = job
+            self._cancel_events[job_id] = Event()
+            self._build_job_to_attempt[job_id] = fallback_attempt.attempt_id
+            self._attempt_to_build_job[fallback_attempt.attempt_id] = job_id
+            self._fallback_launch_context[job_id] = (
+                descriptor,
+                pre_olive_generation_identity_from_generated_record(fallback_record),
+            )
+            self._store.save_job(job)
+            self._queue.put(job_id)
+
+    def _recover_orphaned_candidate_lineages(self) -> None:
+        """Restart-time fail-closed recovery.
+
+        Finalizes as exhausted any candidate lineage whose default candidate
+        already reached a terminal, non-verified state before this restart,
+        but for which a fallback candidate was never registered. The
+        in-memory pre-Olive descriptor required to resume it safely (see
+        `self._pre_olive_descriptors`) never survives a restart, so resuming
+        by silently rebuilding Mobius is never attempted; the lineage is
+        instead closed here with an actionable reason. A lineage that is
+        still genuinely in flight (any candidate not yet terminal) is left
+        completely untouched -- the ordinary lazy-sync path (a
+        `get_recipe_attempt` poll, or the interrupted-job recovery pass
+        immediately above this call) finalizes it exactly once doing so is
+        safe, and may still launch the fallback candidate normally if that
+        candidate's own gates were never reached.
+        """
+        seen_parents: set[str] = set()
+        for job in self._jobs.values():
+            generated_attempt = job.request.generated_recipe_attempt
+            if generated_attempt is None:
+                continue
+            parent_attempt_id = generated_attempt.attempt_id.strip()
+            if not parent_attempt_id or parent_attempt_id in seen_parents:
+                continue
+            seen_parents.add(parent_attempt_id)
+            try:
+                lineage = self._recipe_attempt_store.get_candidate_lineage(parent_attempt_id)
+            except RecipeAttemptStoreError:
+                continue
+            if lineage is None or lineage.selection_state != CandidateLineageSelectionState.PENDING:
+                continue
+            try:
+                candidates = self._recipe_attempt_store.list_candidate_attempts(parent_attempt_id)
+            except RecipeAttemptStoreError:
+                continue
+            if not candidates:
+                continue
+            if any(row.attempt_state not in TERMINAL_ATTEMPT_STATES for row in candidates):
+                continue
+            if any(row.is_verified for row in candidates):
+                continue
+            if len(candidates) >= lineage.policy_max_candidates:
+                continue
+            try:
+                self._recipe_attempt_store.finalize_exhausted_candidate_lineage(
+                    parent_attempt_id,
+                    reason=(
+                        "restart_fail_closed: a fallback candidate was never registered before a service "
+                        "restart, and the in-memory pre-Olive artifact descriptor required to resume it "
+                        "safely does not survive a restart; refusing to silently rebuild Mobius to resume."
+                    ),
+                )
+            except RecipeAttemptStoreError:
+                continue
 
     def _sync_generated_attempt_with_job(self, *, job: BuildJob) -> None:
         attempt_id = self._attempt_id_for_job(job.job_id)
@@ -2896,6 +3460,12 @@ class LocalOnboardingService:
                 job=job,
                 reason=(job.failure.message if job.failure is not None else "Build cancelled."),
             )
+            lineage_candidate = self._on_candidate_attempt_terminal(job=job, attempt_id=attempt_id)
+            if lineage_candidate is not None:
+                self._finalize_lineage_exhausted_if_applicable(
+                    candidate=lineage_candidate,
+                    reason="Candidate attempt cancelled; cancellation stops the entire candidate lineage.",
+                )
             return
 
         if job.state == JobState.FAILED:
@@ -2934,6 +3504,19 @@ class LocalOnboardingService:
                 source_owner=source_owner,
                 next_action=next_action,
             )
+            # A generic gate failure (Mobius/Olive/runtime/preflight/etc.) never
+            # triggers a fallback: the trigger requires Mobius, Olive, and every
+            # runtime gate to have already succeeded, with only the quality
+            # structural regression blocking promotion.
+            lineage_candidate = self._on_candidate_attempt_terminal(job=job, attempt_id=attempt_id)
+            if lineage_candidate is not None:
+                self._finalize_lineage_exhausted_if_applicable(
+                    candidate=lineage_candidate,
+                    reason=(
+                        "Candidate attempt failed before quality validation could run; no retry trigger "
+                        "applies."
+                    ),
+                )
             return
 
         if job.state != JobState.SUCCEEDED:
@@ -2971,6 +3554,21 @@ class LocalOnboardingService:
                     source_owner="fl-onboarding",
                     next_action=next_action,
                 )
+                lineage_candidate = self._on_candidate_attempt_terminal(job=job, attempt_id=attempt_id)
+                if lineage_candidate is not None:
+                    triggered = self._maybe_launch_fallback_candidate(
+                        job=job,
+                        candidate=lineage_candidate,
+                        quality_outcome=quality_outcome,
+                    )
+                    if not triggered:
+                        self._finalize_lineage_exhausted_if_applicable(
+                            candidate=lineage_candidate,
+                            reason=(
+                                "Quality validation failed and no retryable fallback trigger applied; the "
+                                "default candidate's own failure is preserved unchanged."
+                            ),
+                        )
                 return
 
             try:
@@ -3011,6 +3609,11 @@ class LocalOnboardingService:
                 next_action="Recompile and persist the generated recipe before retrying promotion.",
             )
             return
+
+        lineage_candidate = self._on_candidate_attempt_terminal(job=job, attempt_id=attempt_id)
+        if lineage_candidate is not None:
+            self._select_verified_candidate(candidate=lineage_candidate, generated_record=generated_record)
+
         candidate = self._recompile_generated_recipe_record(record=generated_record)
         evidence = self._promotion_evidence_from_attempt(attempt=refreshed)
         promoted = promote_generated_recipe(
@@ -3036,10 +3639,20 @@ class LocalOnboardingService:
             )
 
     def _safe_sync_generated_attempt(self, *, job: BuildJob) -> None:
-        try:
-            self._sync_generated_attempt_with_job(job=job)
-        except ServiceError as exc:
-            with self._lock:
+        # Slice 3B1 note: serialized under `self._lock` (reentrant, so the
+        # existing `cancel_build` call site -- which already holds the lock --
+        # keeps working unchanged). Without this, two threads (the background
+        # worker finishing a job, and a concurrent `get_recipe_attempt` poll's
+        # own race-recovery re-sync) could both enter
+        # `_sync_generated_attempt_with_job` for the same attempt at once and
+        # interleave writes to the same quality-validation evidence file,
+        # occasionally producing a torn/partial read. Candidate lineage
+        # orchestration adds real work to this path, which widens that
+        # pre-existing race window enough to make it worth closing here.
+        with self._lock:
+            try:
+                self._sync_generated_attempt_with_job(job=job)
+            except ServiceError as exc:
                 job.add_event(f"Recipe attempt synchronization error: {_sanitize_text(str(exc))}")
                 self._store.save_job(job)
 
@@ -3324,11 +3937,44 @@ class LocalOnboardingService:
                         self._artifact_to_job[artifact.artifact_id] = live.job_id
                     self._store.save_job(live)
 
-        self._build_stage_runner.run(
-            live,
-            persist=persist,
-            cancellation_event=cancellation_event,
-        )
+        # Slice 3B1: a fallback candidate job dispatches through
+        # `run_fallback_with_pre_olive_reuse` instead of the ordinary `run()`,
+        # reusing the default candidate's captured pre-Olive Mobius artifact
+        # instead of invoking Mobius again. Every other job (static recipe,
+        # legacy generated attempt, or a CPU INT4-eligible default candidate)
+        # is completely unaffected.
+        with self._lock:
+            fallback_context = self._fallback_launch_context.pop(job_id, None)
+        if fallback_context is not None:
+            descriptor, fallback_identity = fallback_context
+            runner = self._build_stage_runner
+            if isinstance(runner, ProductionBuildStageRunner):
+                runner.run_fallback_with_pre_olive_reuse(
+                    live,
+                    descriptor=descriptor,
+                    fallback_generation_identity=fallback_identity,
+                    persist=persist,
+                    cancellation_event=cancellation_event,
+                )
+            else:
+                fail_job(
+                    live,
+                    FailureInfo(
+                        stage=live.state,
+                        classification=FailureClassification.NOT_VERIFIED,
+                        message=(
+                            "Fallback candidate execution requires the production build stage runner."
+                        ),
+                    ),
+                )
+                live.finished_utc = datetime.now(timezone.utc)
+                persist()
+        else:
+            self._build_stage_runner.run(
+                live,
+                persist=persist,
+                cancellation_event=cancellation_event,
+            )
         self._safe_sync_generated_attempt(job=live)
         with self._lock:
             is_generated_attempt = self._attempt_id_for_job(live.job_id) is not None
