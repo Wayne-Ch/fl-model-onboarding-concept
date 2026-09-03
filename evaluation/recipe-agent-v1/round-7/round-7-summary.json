@@ -1,0 +1,3262 @@
+{
+  "attempt_success_rate": "4/5",
+  "baseline_valid": true,
+  "branch": "wayne-ch-linus-running-round-7",
+  "branch_source_identity": {
+    "distribution_direct_url": {
+      "dir_info": {
+        "editable": true
+      },
+      "url": "file:///<repo-root>"
+    },
+    "distribution_root": "<redacted-absolute-path>",
+    "distribution_under_repo_root": false,
+    "distribution_version": "0.1.0",
+    "expected_repo_commit": "ba056fce7fcd91fd4284ea0a5f630bdd70944a0f",
+    "module_file": "<repo-root>\\src\\fl_model_onboarding\\__init__.py",
+    "module_under_repo_root": true,
+    "python_executable": "<python-exe>"
+  },
+  "commit": "ba056fce7fcd91fd4284ea0a5f630bdd70944a0f",
+  "current_run_workspace_cleanup": {
+    "blocked_count": 0,
+    "cleaned_count": 1,
+    "details": [
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      },
+      {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3698966335,
+        "job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "workspace_path": "scratch://round-7/r7-20260903T203830Z\\workspace\\aaa29309-7558-4dd1-a40c-13984b6c4a68"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct"
+      },
+      {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct"
+      }
+    ],
+    "freed_bytes": 3698966335,
+    "missing_count": 0,
+    "retain_failed_workspaces": false,
+    "retained_failed_count": 0
+  },
+  "environment_blockers": [],
+  "environment_fail_fast_triggered": false,
+  "final_lingering_process_count": 0,
+  "final_lingering_processes": [],
+  "final_snapshot_after_reuse_cleanup": {
+    "cache_bytes": 17529993071,
+    "disk_free_gb": 1040.799,
+    "disk_used_gb": 865.642,
+    "runtime_bytes": 76864996344,
+    "state_bytes": 360448,
+    "timestamp_utc": "2026-09-03T20:57:55.504222+00:00",
+    "workspace_bytes": 59334642825
+  },
+  "finished_utc": "2026-09-03T20:57:51.143983+00:00",
+  "first_request_aggregate_dispatch_totals": {
+    "mobius_build_invocation_count": 5,
+    "olive_optimize_invocation_count": 6
+  },
+  "model_capability_all_pass_count": 0,
+  "model_capability_all_pass_rate": "0/5",
+  "model_success_rate_applicable": true,
+  "models_failed": 1,
+  "models_succeeded": 4,
+  "models_total": 5,
+  "obsolete_failed_workspace_cleanup": {
+    "runs": [],
+    "total_freed_bytes": 0
+  },
+  "parent_attempt_recipe_verified_count": 4,
+  "parent_attempt_recipe_verified_rate": "4/5",
+  "post_reuse_workspace_cleanup": {
+    "blocked_count": 0,
+    "cleaned_count": 0,
+    "details": [
+      {
+        "action": "retained-selected-winner-workspace",
+        "job_id": "035dec90-d296-42ff-894d-f8e2735092c2"
+      },
+      {
+        "action": "retained-selected-winner-workspace",
+        "job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957"
+      },
+      {
+        "action": "retained-selected-winner-workspace",
+        "job_id": "6982aa10-9926-4e64-83db-f11801d66a2c"
+      },
+      {
+        "action": "retained-selected-winner-workspace",
+        "job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01"
+      },
+      {
+        "action": "missing-before-delete",
+        "job_id": "_preflight"
+      },
+      {
+        "action": "retained-selected-winner-workspace",
+        "job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9"
+      }
+    ],
+    "freed_bytes": 0,
+    "missing_count": 1,
+    "retained_count": 5,
+    "retention_policy": "retain-selected-winner-workspaces-only",
+    "workspace_bytes_after": 59334642825,
+    "workspace_bytes_before": 59334642825
+  },
+  "recipe_blocked_count": 0,
+  "recipe_inconclusive_count": 0,
+  "recipe_status_unknown_count": 0,
+  "recipe_verification_status_counts": {
+    "BLOCKED": 0,
+    "INCONCLUSIVE": 0,
+    "UNKNOWN": 0,
+    "VERIFIED": 5
+  },
+  "recipe_verified_count": 5,
+  "recipe_verified_rate": "5/5",
+  "remaining_path_to_5of5_recipe_verification": [],
+  "results": [
+    {
+      "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+      "attempt_state": "succeeded",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "tinyllama-1-1b-chat-v1-0-onboarding-b5d22a62-90e-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 17.703,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 5.531,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.781,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.703,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 2.281,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "tinyllama-1-1b-chat-v1-0-onboarding-7608b03a87a2:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 9.328,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 1.734,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.422,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.703,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.766,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "candidate_selection": {
+        "aggregate_invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 2,
+          "wall_clock_seconds": 115.40347700000001
+        },
+        "candidates": [
+          {
+            "artifact_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/artifact/7608b03a87a219d004ac9c597faeae94b4b9b8d4d73e0b54930dd474cb40194e",
+            "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+            "attempt_state": "succeeded",
+            "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "disposition": null,
+            "disposition_reasons": [],
+            "eligibility_trigger": null,
+            "invocation_counters": {
+              "estimated_cost_usd": null,
+              "mobius_build_invocation_count": 1,
+              "olive_optimize_invocation_count": 1,
+              "total_invocation_count": 2,
+              "wall_clock_seconds": 115.40347700000001
+            },
+            "package_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/package",
+            "quantization_override": null,
+            "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+            "role": "default",
+            "selection_status": "selected",
+            "validated_scope": {
+              "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+              "target_device": "cpu",
+              "target_ep": "cpu",
+              "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+            }
+          }
+        ],
+        "lineage_selection_state": "selected",
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "reuse": null,
+        "selected_candidate": {
+          "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+          "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "selected_by": "validation",
+          "selected_utc": "2026-09-03T20:43:52.860469+00:00",
+          "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+        }
+      },
+      "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": null,
+      "event_count": 12,
+      "first_failed_classification": null,
+      "first_failed_stage": null,
+      "first_request_aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 115.40347700000001
+      },
+      "first_request_attempt_http_status": 200,
+      "first_request_behavior_observation": {
+        "actual": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 1,
+          "candidate_count": 1,
+          "selected_candidate_index": 0,
+          "selected_candidate_role": "default",
+          "workflow_outcome": "selected"
+        },
+        "expected": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 1,
+          "default_candidate_expected": "verified-and-selected",
+          "fallback_candidate_expected": "not-registered",
+          "selected_candidate_index": 0,
+          "selected_candidate_role": "default"
+        },
+        "matches_expected": true,
+        "mismatch_fields": []
+      },
+      "job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "model_capability": {
+        "checks_passed": 0,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [
+              "allowed_answers_failed",
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "factual-recall",
+            "comparison": "divergent_fail",
+            "optimized_failures": [
+              "allowed_answers_failed"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "factual-red-planet",
+            "warnings": [
+              "divergent_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "instruction-following",
+            "comparison": "divergent_fail",
+            "optimized_failures": [
+              "required_token_missing:blue",
+              "required_token_missing:river",
+              "relevance_keyword_missing",
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": [
+              "divergent_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "baseline_status": "failed",
+            "category": "output-format",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure",
+          "factual-red-planet:divergent_capability_failure",
+          "instruction-two-words-blue-river:divergent_capability_failure",
+          "format-json-answer-unit:shared_capability_failure"
+        ]
+      },
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "model_index": 1,
+      "next_action": null,
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "profile_fingerprint": "3ba0f69d071bb52253c9dcd2d62030ebd4871fa2e686b5e162fd18597a1d74d9",
+      "quality_validation_baseline_comparison": {
+        "passed": true,
+        "regressions": []
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "17 + 28 = 45\n\nTo answer this question using only digits, we can use the following formula:\n\n45 = 17 + 28\n\nThe answer is: 45.",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "Answer: 35\n\n17 + 28 = 45\n\nExplanation:\n\n1. 17 is added to 28, and the result is 45.\n\n2. 45 is added to 28, and the result is",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        },
+        {
+          "baseline_failures": [
+            "allowed_answers_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "The correct answer is Mars.",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "allowed_answers_failed"
+          ],
+          "optimized_output_text": "Answer: Mars.",
+          "optimized_passed": false,
+          "prompt_id": "factual-red-planet"
+        },
+        {
+          "baseline_failures": [
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "Output: \"Blue River\"",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "required_token_missing:blue",
+            "required_token_missing:river",
+            "relevance_keyword_missing",
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "To output exactly two words, we can use the `split()` function with a regular expression to split the input string into an array of words. Here's the modified program:\n\n```python\nimport re\n\ndef split_words(input_string):\n    \"\"\"\n    This function takes a string",
+          "optimized_passed": false,
+          "prompt_id": "instruction-two-words-blue-river"
+        },
+        {
+          "baseline_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "baseline_output_text": "```\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "optimized_output_text": "```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```\n\nThis is a valid JSON object with keys `answer` and `unit`. The `answer` key contains the value `12`, while the `unit` key contains the value `",
+          "optimized_passed": false,
+          "prompt_id": "format-json-answer-unit"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://b5d22a62-90e8-4336-befa-734ebb32bee9/quality-validation-evidence.json",
+      "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "resource_after": {
+        "cache_bytes": 12687799260,
+        "disk_free_gb": 1091.314,
+        "disk_used_gb": 815.128,
+        "runtime_bytes": 22670202417,
+        "state_bytes": 249936,
+        "timestamp_utc": "2026-09-03T20:43:53.862877+00:00",
+        "workspace_bytes": 9982153221
+      },
+      "resource_before": {
+        "cache_bytes": 12099957404,
+        "disk_free_gb": 1101.175,
+        "disk_used_gb": 805.266,
+        "runtime_bytes": 12099957404,
+        "state_bytes": 0,
+        "timestamp_utc": "2026-09-03T20:40:03.410512+00:00",
+        "workspace_bytes": 0
+      },
+      "second_request_reuse": {
+        "attempt_build_job_id": null,
+        "build_job_alias_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+        "build_job_alias_matches_winner_job": true,
+        "create_http_status": 200,
+        "idempotency_key": "r7-20260903T203830Z-reuse-01",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "model_index": 1,
+        "poll_http_status": 200,
+        "preview_http_status": 200,
+        "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+        "reuse_attempt_id": "4c14c212-fe9f-4689-a062-d9e448696a29",
+        "reuse_attempt_state": "succeeded",
+        "reuse_evidence": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:52.205430+00:00",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+          "source_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+          "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42"
+        },
+        "reuse_evidence_row": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:52.205430+00:00",
+          "reused_attempt_id": "4c14c212-fe9f-4689-a062-d9e448696a29",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+          "source_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+          "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42"
+        },
+        "reuse_evidence_row_matches_response": true,
+        "reuse_workflow_outcome": "reused",
+        "reuse_zero_build_verified": true,
+        "runner_dispatch_mapping_present_for_reuse_attempt": false,
+        "second_request_submitted": true,
+        "service_dispatch_observation": {
+          "attempt_mapping_count_after": 6,
+          "attempt_mapping_count_before": 6,
+          "jobs_after": 6,
+          "jobs_before": 6,
+          "new_job_created_for_reuse_attempt": false
+        },
+        "source_ids_match_expected_winner": true,
+        "winner_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+        "winner_resolution": {
+          "available": true,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+          "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+          "winner_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+          "winner_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+          "winner_candidate_id": "default-int4",
+          "winner_candidate_index": 0,
+          "winner_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+          "winner_recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577"
+        }
+      },
+      "source_owner": null,
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "winner_attempt_http_status": 200,
+      "winner_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+      "winner_attempt_state": "succeeded",
+      "winner_candidate": {
+        "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:43:52.860469+00:00",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+      },
+      "winner_candidate_timeline_entry": {
+        "artifact_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/artifact/7608b03a87a219d004ac9c597faeae94b4b9b8d4d73e0b54930dd474cb40194e",
+        "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "attempt_state": "succeeded",
+        "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "disposition": null,
+        "disposition_reasons": [],
+        "eligibility_trigger": null,
+        "invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 2,
+          "wall_clock_seconds": 115.40347700000001
+        },
+        "package_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/package",
+        "quantization_override": null,
+        "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+        "role": "default",
+        "selection_status": "selected",
+        "validated_scope": {
+          "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+          "target_device": "cpu",
+          "target_ep": "cpu",
+          "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+        }
+      },
+      "winner_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+      "winner_model_capability": {
+        "checks_passed": 0,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure",
+          "factual-red-planet:divergent_capability_failure",
+          "instruction-two-words-blue-river:divergent_capability_failure",
+          "format-json-answer-unit:shared_capability_failure"
+        ]
+      },
+      "winner_recipe_status": "verified",
+      "winner_recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "workflow_outcome": "selected",
+      "workspace_retention": {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      }
+    },
+    {
+      "attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+      "attempt_state": "failed",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "smollm2-360m-instruct-onboarding-aaa29309-755-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 6.719,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.594,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.125,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.109,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.735,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "smollm2-360m-instruct-onboarding-3d2ea0890d01:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 6.516,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.484,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.204,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.312,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.344,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "candidate_selection": {
+        "aggregate_invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 2,
+          "total_invocation_count": 3,
+          "wall_clock_seconds": 70.958755
+        },
+        "candidates": [
+          {
+            "artifact_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/artifact/3d2ea0890d01057910c5f7d6bd2cb41edfc2e302dc5bba3ec53a32e1c956a3d6",
+            "attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+            "attempt_state": "failed",
+            "candidate_attempt_id": "6f7f0ea7-1c67-43ea-a22d-b32cfb200146",
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "disposition": null,
+            "disposition_reasons": [],
+            "eligibility_trigger": null,
+            "invocation_counters": {
+              "estimated_cost_usd": null,
+              "mobius_build_invocation_count": 1,
+              "olive_optimize_invocation_count": 1,
+              "total_invocation_count": 2,
+              "wall_clock_seconds": 47.297681
+            },
+            "package_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/package",
+            "quantization_override": null,
+            "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+            "role": "default",
+            "selection_status": "not_selected",
+            "validated_scope": {
+              "environment_scope": null,
+              "target_device": null,
+              "target_ep": null,
+              "toolchain_fingerprint": null
+            }
+          },
+          {
+            "artifact_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/artifact/db50e60b740a9106b7f7140cdec9b58b7a48e4240a006b2a16433687810202c9",
+            "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+            "attempt_state": "succeeded",
+            "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+            "candidate_id": "int4-block-size-64",
+            "candidate_index": 1,
+            "disposition": "retryable_optimized_structural_regression",
+            "disposition_reasons": [
+              "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+              "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+            ],
+            "eligibility_trigger": "retryable_optimized_structural_regression",
+            "invocation_counters": {
+              "estimated_cost_usd": null,
+              "mobius_build_invocation_count": null,
+              "olive_optimize_invocation_count": 1,
+              "total_invocation_count": 1,
+              "wall_clock_seconds": 23.661074
+            },
+            "package_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/package",
+            "quantization_override": {
+              "block_size": 64
+            },
+            "recipe_fingerprint": "1445ca2127b04441d3ea0e6eaf6e2b42883480da2dbcf5bb535804204a01da93",
+            "role": "quality_retry",
+            "selection_status": "selected",
+            "validated_scope": {
+              "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+              "target_device": "cpu",
+              "target_ep": "cpu",
+              "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+            }
+          }
+        ],
+        "lineage_selection_state": "selected",
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "reuse": null,
+        "selected_candidate": {
+          "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+          "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+          "candidate_id": "int4-block-size-64",
+          "candidate_index": 1,
+          "selected_by": "validation",
+          "selected_utc": "2026-09-03T20:47:05.007552+00:00",
+          "selection_reason": "Candidate 1 ('int4-block-size-64') verified: recipe integrity passed strict baseline/optimized quality validation."
+        }
+      },
+      "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": "Recipe integrity blocked: baseline_passed_optimized_failed:format-json-answer-unit; optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```; optimized_structural_regression:format-json-answer-unit:json_format_invalid. Model capability advisory: 1/4 checks passed. Warnings: arithmetic-addition-17-plus-28:shared_capability_failure, instruction-two-words-blue-river:divergent_capability_failure, format-json-answer-unit:optimized_regressed_vs_baseline. Confidence: low (determinism support is partial).",
+      "event_count": 12,
+      "first_failed_classification": "validation_failed",
+      "first_failed_stage": "succeeded",
+      "first_request_aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 2,
+        "total_invocation_count": 3,
+        "wall_clock_seconds": 70.958755
+      },
+      "first_request_attempt_http_status": 200,
+      "first_request_behavior_observation": {
+        "actual": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 2,
+          "candidate_count": 2,
+          "selected_candidate_index": 1,
+          "selected_candidate_role": "quality_retry",
+          "workflow_outcome": "selected"
+        },
+        "expected": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 2,
+          "default_candidate_expected": "failed-and-preserved",
+          "fallback_candidate_expected": "verified-and-selected",
+          "selected_candidate_index": 1,
+          "selected_candidate_role": "quality_retry"
+        },
+        "matches_expected": true,
+        "mismatch_fields": []
+      },
+      "job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "model_capability": {
+        "checks_passed": 1,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "factual-recall",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "factual-red-planet",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [
+              "required_token_missing:blue"
+            ],
+            "baseline_status": "failed",
+            "category": "instruction-following",
+            "comparison": "divergent_fail",
+            "optimized_failures": [
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": [
+              "divergent_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "output-format",
+            "comparison": "regressed",
+            "optimized_failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": [
+              "optimized_regressed_vs_baseline"
+            ]
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure",
+          "instruction-two-words-blue-river:divergent_capability_failure",
+          "format-json-answer-unit:optimized_regressed_vs_baseline"
+        ]
+      },
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "model_index": 2,
+      "next_action": "Resolve quality prompt failures before attempting promotion.",
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference"
+      ],
+      "profile_fingerprint": "32ebdc1fd1a4f5a646626403301350b9b3934035cf66a4e2ea77ab554a2f6986",
+      "quality_validation_baseline_comparison": {
+        "passed": false,
+        "regressions": [
+          "optimized_failed_prompt:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ]
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "17 + 28 = 45",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "17 + 28 = 45",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        },
+        {
+          "baseline_failures": [
+            "required_token_missing:blue"
+          ],
+          "baseline_output_text": "River",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "The river is blue.",
+          "optimized_passed": false,
+          "prompt_id": "instruction-two-words-blue-river"
+        },
+        {
+          "baseline_failures": [],
+          "baseline_output_text": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "baseline_passed": true,
+          "optimized_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "optimized_output_text": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "optimized_passed": false,
+          "prompt_id": "format-json-answer-unit"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://aaa29309-7558-4dd1-a40c-13984b6c4a68/quality-validation-evidence.json",
+      "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": false,
+        "gate_status": "failed",
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "regression_free": false,
+        "runtime_functional": true,
+        "status": "blocked"
+      },
+      "resource_after": {
+        "cache_bytes": 13481355535,
+        "disk_free_gb": 1083.682,
+        "disk_used_gb": 822.76,
+        "runtime_bytes": 30867597583,
+        "state_bytes": 262144,
+        "timestamp_utc": "2026-09-03T20:47:15.112996+00:00",
+        "workspace_bytes": 17385786424
+      },
+      "resource_before": {
+        "cache_bytes": 12687799260,
+        "disk_free_gb": 1091.314,
+        "disk_used_gb": 815.128,
+        "runtime_bytes": 22670202417,
+        "state_bytes": 249936,
+        "timestamp_utc": "2026-09-03T20:43:53.896543+00:00",
+        "workspace_bytes": 9982153221
+      },
+      "second_request_reuse": {
+        "attempt_build_job_id": null,
+        "build_job_alias_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+        "build_job_alias_matches_winner_job": true,
+        "create_http_status": 200,
+        "idempotency_key": "r7-20260903T203830Z-reuse-02",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "model_index": 2,
+        "poll_http_status": 200,
+        "preview_http_status": 200,
+        "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+        "reuse_attempt_id": "2c2cf8ee-005f-4e68-9a5e-6fbe3b5175cc",
+        "reuse_attempt_state": "succeeded",
+        "reuse_evidence": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:52.806475+00:00",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+          "source_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+          "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1"
+        },
+        "reuse_evidence_row": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:52.806475+00:00",
+          "reused_attempt_id": "2c2cf8ee-005f-4e68-9a5e-6fbe3b5175cc",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+          "source_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+          "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1"
+        },
+        "reuse_evidence_row_matches_response": true,
+        "reuse_workflow_outcome": "reused",
+        "reuse_zero_build_verified": true,
+        "runner_dispatch_mapping_present_for_reuse_attempt": false,
+        "second_request_submitted": true,
+        "service_dispatch_observation": {
+          "attempt_mapping_count_after": 6,
+          "attempt_mapping_count_before": 6,
+          "jobs_after": 6,
+          "jobs_before": 6,
+          "new_job_created_for_reuse_attempt": false
+        },
+        "source_ids_match_expected_winner": true,
+        "winner_job_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+        "winner_resolution": {
+          "available": true,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "selection_reason": "Candidate 1 ('int4-block-size-64') verified: recipe integrity passed strict baseline/optimized quality validation.",
+          "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+          "winner_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+          "winner_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+          "winner_candidate_id": "int4-block-size-64",
+          "winner_candidate_index": 1,
+          "winner_job_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+          "winner_recipe_fingerprint": "1445ca2127b04441d3ea0e6eaf6e2b42883480da2dbcf5bb535804204a01da93"
+        }
+      },
+      "source_owner": "fl-onboarding",
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "winner_attempt_http_status": 200,
+      "winner_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+      "winner_attempt_state": "succeeded",
+      "winner_candidate": {
+        "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+        "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+        "candidate_id": "int4-block-size-64",
+        "candidate_index": 1,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:47:05.007552+00:00",
+        "selection_reason": "Candidate 1 ('int4-block-size-64') verified: recipe integrity passed strict baseline/optimized quality validation."
+      },
+      "winner_candidate_timeline_entry": {
+        "artifact_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/artifact/db50e60b740a9106b7f7140cdec9b58b7a48e4240a006b2a16433687810202c9",
+        "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+        "attempt_state": "succeeded",
+        "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+        "candidate_id": "int4-block-size-64",
+        "candidate_index": 1,
+        "disposition": "retryable_optimized_structural_regression",
+        "disposition_reasons": [
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "eligibility_trigger": "retryable_optimized_structural_regression",
+        "invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": null,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 1,
+          "wall_clock_seconds": 23.661074
+        },
+        "package_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/package",
+        "quantization_override": {
+          "block_size": 64
+        },
+        "recipe_fingerprint": "1445ca2127b04441d3ea0e6eaf6e2b42883480da2dbcf5bb535804204a01da93",
+        "role": "quality_retry",
+        "selection_status": "selected",
+        "validated_scope": {
+          "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+          "target_device": "cpu",
+          "target_ep": "cpu",
+          "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+        }
+      },
+      "winner_job_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+      "winner_model_capability": {
+        "checks_passed": 2,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure",
+          "instruction-two-words-blue-river:divergent_capability_failure"
+        ]
+      },
+      "winner_recipe_status": "verified",
+      "winner_recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "workflow_outcome": "selected",
+      "workspace_retention": {
+        "action": "failed-workspace-deleted",
+        "attempt_state": "failed",
+        "freed_bytes": 3698966335,
+        "job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "workspace_path": "scratch://round-7/r7-20260903T203830Z\\workspace\\aaa29309-7558-4dd1-a40c-13984b6c4a68"
+      }
+    },
+    {
+      "attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+      "attempt_state": "succeeded",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "qwen2-1-5b-instruct-onboarding-6fc27d3e-6a3-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 18.218,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 1.172,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.828,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.609,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 2.578,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "qwen2-1-5b-instruct-onboarding-45a126975849:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 8.063,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.437,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.36,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.312,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.938,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "candidate_selection": {
+        "aggregate_invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 2,
+          "wall_clock_seconds": 103.54763600000001
+        },
+        "candidates": [
+          {
+            "artifact_ref": "job://6fc27d3e-6a32-49e6-9737-1aa752837e01/artifact/45a1269758490c2504cabc903440f36694828f64715e1555e2a66ba67ef94aaf",
+            "attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+            "attempt_state": "succeeded",
+            "candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "disposition": null,
+            "disposition_reasons": [],
+            "eligibility_trigger": null,
+            "invocation_counters": {
+              "estimated_cost_usd": null,
+              "mobius_build_invocation_count": 1,
+              "olive_optimize_invocation_count": 1,
+              "total_invocation_count": 2,
+              "wall_clock_seconds": 103.54763600000001
+            },
+            "package_ref": "job://6fc27d3e-6a32-49e6-9737-1aa752837e01/package",
+            "quantization_override": null,
+            "recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+            "role": "default",
+            "selection_status": "selected",
+            "validated_scope": {
+              "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+              "target_device": "cpu",
+              "target_ep": "cpu",
+              "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+            }
+          }
+        ],
+        "lineage_selection_state": "selected",
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "reuse": null,
+        "selected_candidate": {
+          "attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+          "candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "selected_by": "validation",
+          "selected_utc": "2026-09-03T20:50:30.702642+00:00",
+          "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+        }
+      },
+      "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": null,
+      "event_count": 12,
+      "first_failed_classification": null,
+      "first_failed_stage": null,
+      "first_request_aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 103.54763600000001
+      },
+      "first_request_attempt_http_status": 200,
+      "first_request_behavior_observation": {
+        "actual": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 1,
+          "candidate_count": 1,
+          "selected_candidate_index": 0,
+          "selected_candidate_role": "default",
+          "workflow_outcome": "selected"
+        },
+        "expected": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 1,
+          "default_candidate_expected": "verified-and-selected",
+          "fallback_candidate_expected": "not-registered",
+          "selected_candidate_index": 0,
+          "selected_candidate_role": "default"
+        },
+        "matches_expected": true,
+        "mismatch_fields": []
+      },
+      "job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "model_capability": {
+        "checks_passed": 3,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "factual-recall",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "factual-red-planet",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "instruction-following",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "output-format",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": []
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure"
+        ]
+      },
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "model_index": 3,
+      "next_action": null,
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "profile_fingerprint": "4f80aa828f34f0dbf110443195a7322331b1f88eae67b04431d69dea6178374c",
+      "quality_validation_baseline_comparison": {
+        "passed": true,
+        "regressions": []
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "baseline_output_text": "1728",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "optimized_output_text": "1728",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://6fc27d3e-6a32-49e6-9737-1aa752837e01/quality-validation-evidence.json",
+      "recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "resource_after": {
+        "cache_bytes": 15264077245,
+        "disk_free_gb": 1067.155,
+        "disk_used_gb": 839.287,
+        "runtime_bytes": 48622546571,
+        "state_bytes": 282624,
+        "timestamp_utc": "2026-09-03T20:50:31.498850+00:00",
+        "workspace_bytes": 33358096222
+      },
+      "resource_before": {
+        "cache_bytes": 13481355535,
+        "disk_free_gb": 1083.682,
+        "disk_used_gb": 822.76,
+        "runtime_bytes": 30867404103,
+        "state_bytes": 262144,
+        "timestamp_utc": "2026-09-03T20:47:15.207682+00:00",
+        "workspace_bytes": 17385786424
+      },
+      "second_request_reuse": {
+        "attempt_build_job_id": null,
+        "build_job_alias_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+        "build_job_alias_matches_winner_job": true,
+        "create_http_status": 200,
+        "idempotency_key": "r7-20260903T203830Z-reuse-03",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct",
+        "model_index": 3,
+        "poll_http_status": 200,
+        "preview_http_status": 200,
+        "recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+        "reuse_attempt_id": "e68be796-3f8d-4cf0-802c-bc3290bddf32",
+        "reuse_attempt_state": "succeeded",
+        "reuse_evidence": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:53.474897+00:00",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+          "source_candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+          "source_parent_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05"
+        },
+        "reuse_evidence_row": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:53.474897+00:00",
+          "reused_attempt_id": "e68be796-3f8d-4cf0-802c-bc3290bddf32",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+          "source_candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+          "source_parent_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05"
+        },
+        "reuse_evidence_row_matches_response": true,
+        "reuse_workflow_outcome": "reused",
+        "reuse_zero_build_verified": true,
+        "runner_dispatch_mapping_present_for_reuse_attempt": false,
+        "second_request_submitted": true,
+        "service_dispatch_observation": {
+          "attempt_mapping_count_after": 6,
+          "attempt_mapping_count_before": 6,
+          "jobs_after": 6,
+          "jobs_before": 6,
+          "new_job_created_for_reuse_attempt": false
+        },
+        "source_ids_match_expected_winner": true,
+        "winner_job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+        "winner_resolution": {
+          "available": true,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+          "source_parent_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+          "winner_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+          "winner_candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+          "winner_candidate_id": "default-int4",
+          "winner_candidate_index": 0,
+          "winner_job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+          "winner_recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae"
+        }
+      },
+      "source_owner": null,
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "winner_attempt_http_status": 200,
+      "winner_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+      "winner_attempt_state": "succeeded",
+      "winner_candidate": {
+        "attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+        "candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:50:30.702642+00:00",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+      },
+      "winner_candidate_timeline_entry": {
+        "artifact_ref": "job://6fc27d3e-6a32-49e6-9737-1aa752837e01/artifact/45a1269758490c2504cabc903440f36694828f64715e1555e2a66ba67ef94aaf",
+        "attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+        "attempt_state": "succeeded",
+        "candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "disposition": null,
+        "disposition_reasons": [],
+        "eligibility_trigger": null,
+        "invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 2,
+          "wall_clock_seconds": 103.54763600000001
+        },
+        "package_ref": "job://6fc27d3e-6a32-49e6-9737-1aa752837e01/package",
+        "quantization_override": null,
+        "recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+        "role": "default",
+        "selection_status": "selected",
+        "validated_scope": {
+          "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+          "target_device": "cpu",
+          "target_ep": "cpu",
+          "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+        }
+      },
+      "winner_job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+      "winner_model_capability": {
+        "checks_passed": 3,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure"
+        ]
+      },
+      "winner_recipe_status": "verified",
+      "winner_recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "workflow_outcome": "selected",
+      "workspace_retention": {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct"
+      }
+    },
+    {
+      "attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+      "attempt_state": "succeeded",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "qwen2-0-5b-instruct-onboarding-3f8c07b5-9c1-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 8.906,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.219,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.453,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.891,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.031,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "qwen2-0-5b-instruct-onboarding-1c4b73e92cae:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 5.875,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.39,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.11,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.234,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.406,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "candidate_selection": {
+        "aggregate_invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 2,
+          "wall_clock_seconds": 49.409999
+        },
+        "candidates": [
+          {
+            "artifact_ref": "job://3f8c07b5-9c17-4726-83c4-b5ee942a4957/artifact/1c4b73e92cae16acdaae27bb2f250be1676d470a3ec131ffe9b5c6692c466b6b",
+            "attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+            "attempt_state": "succeeded",
+            "candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "disposition": null,
+            "disposition_reasons": [],
+            "eligibility_trigger": null,
+            "invocation_counters": {
+              "estimated_cost_usd": null,
+              "mobius_build_invocation_count": 1,
+              "olive_optimize_invocation_count": 1,
+              "total_invocation_count": 2,
+              "wall_clock_seconds": 49.409999
+            },
+            "package_ref": "job://3f8c07b5-9c17-4726-83c4-b5ee942a4957/package",
+            "quantization_override": null,
+            "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+            "role": "default",
+            "selection_status": "selected",
+            "validated_scope": {
+              "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+              "target_device": "cpu",
+              "target_ep": "cpu",
+              "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+            }
+          }
+        ],
+        "lineage_selection_state": "selected",
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "reuse": null,
+        "selected_candidate": {
+          "attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+          "candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "selected_by": "validation",
+          "selected_utc": "2026-09-03T20:52:34.064982+00:00",
+          "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+        }
+      },
+      "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": null,
+      "event_count": 12,
+      "first_failed_classification": null,
+      "first_failed_stage": null,
+      "first_request_aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 49.409999
+      },
+      "first_request_attempt_http_status": 200,
+      "first_request_behavior_observation": {
+        "actual": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 1,
+          "candidate_count": 1,
+          "selected_candidate_index": 0,
+          "selected_candidate_role": "default",
+          "workflow_outcome": "selected"
+        },
+        "expected": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 1,
+          "default_candidate_expected": "verified-and-selected",
+          "fallback_candidate_expected": "not-registered",
+          "selected_candidate_index": 0,
+          "selected_candidate_role": "default"
+        },
+        "matches_expected": true,
+        "mismatch_fields": []
+      },
+      "job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "model_capability": {
+        "checks_passed": 2,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "divergent_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "divergent_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "factual-recall",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "factual-red-planet",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [
+              "max_words_exceeded"
+            ],
+            "baseline_status": "failed",
+            "category": "instruction-following",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "max_words_exceeded"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "output-format",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": []
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:divergent_capability_failure",
+          "instruction-two-words-blue-river:shared_capability_failure"
+        ]
+      },
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "model_index": 4,
+      "next_action": null,
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "profile_fingerprint": "40148bef0c7133a7aa0441d52f8ce03ecc17c15d85cd292a5834c22432646fb1",
+      "quality_validation_baseline_comparison": {
+        "passed": true,
+        "regressions": []
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "baseline_output_text": "35",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "The sum of 17 and 28 is 45.",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        },
+        {
+          "baseline_failures": [
+            "max_words_exceeded"
+          ],
+          "baseline_output_text": "Blue River, River of the Blue Mountains",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "max_words_exceeded"
+          ],
+          "optimized_output_text": "Blue River, River of the Blue.",
+          "optimized_passed": false,
+          "prompt_id": "instruction-two-words-blue-river"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://3f8c07b5-9c17-4726-83c4-b5ee942a4957/quality-validation-evidence.json",
+      "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "resource_after": {
+        "cache_bytes": 16091393217,
+        "disk_free_gb": 1061.1,
+        "disk_used_gb": 845.341,
+        "runtime_bytes": 55097055202,
+        "state_bytes": 311296,
+        "timestamp_utc": "2026-09-03T20:52:34.999066+00:00",
+        "workspace_bytes": 39005309649
+      },
+      "resource_before": {
+        "cache_bytes": 15264077245,
+        "disk_free_gb": 1067.155,
+        "disk_used_gb": 839.286,
+        "runtime_bytes": 48622456091,
+        "state_bytes": 282624,
+        "timestamp_utc": "2026-09-03T20:50:31.554843+00:00",
+        "workspace_bytes": 33358096222
+      },
+      "second_request_reuse": {
+        "attempt_build_job_id": null,
+        "build_job_alias_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+        "build_job_alias_matches_winner_job": true,
+        "create_http_status": 200,
+        "idempotency_key": "r7-20260903T203830Z-reuse-04",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct",
+        "model_index": 4,
+        "poll_http_status": 200,
+        "preview_http_status": 200,
+        "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+        "reuse_attempt_id": "2713a532-a743-4f50-99f1-b59b83e2997a",
+        "reuse_attempt_state": "succeeded",
+        "reuse_evidence": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:54.157673+00:00",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+          "source_candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+          "source_parent_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c"
+        },
+        "reuse_evidence_row": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:54.157673+00:00",
+          "reused_attempt_id": "2713a532-a743-4f50-99f1-b59b83e2997a",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+          "source_candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+          "source_parent_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c"
+        },
+        "reuse_evidence_row_matches_response": true,
+        "reuse_workflow_outcome": "reused",
+        "reuse_zero_build_verified": true,
+        "runner_dispatch_mapping_present_for_reuse_attempt": false,
+        "second_request_submitted": true,
+        "service_dispatch_observation": {
+          "attempt_mapping_count_after": 6,
+          "attempt_mapping_count_before": 6,
+          "jobs_after": 6,
+          "jobs_before": 6,
+          "new_job_created_for_reuse_attempt": false
+        },
+        "source_ids_match_expected_winner": true,
+        "winner_job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+        "winner_resolution": {
+          "available": true,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+          "source_parent_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+          "winner_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+          "winner_candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+          "winner_candidate_id": "default-int4",
+          "winner_candidate_index": 0,
+          "winner_job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+          "winner_recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895"
+        }
+      },
+      "source_owner": null,
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "winner_attempt_http_status": 200,
+      "winner_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+      "winner_attempt_state": "succeeded",
+      "winner_candidate": {
+        "attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+        "candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:52:34.064982+00:00",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+      },
+      "winner_candidate_timeline_entry": {
+        "artifact_ref": "job://3f8c07b5-9c17-4726-83c4-b5ee942a4957/artifact/1c4b73e92cae16acdaae27bb2f250be1676d470a3ec131ffe9b5c6692c466b6b",
+        "attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+        "attempt_state": "succeeded",
+        "candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "disposition": null,
+        "disposition_reasons": [],
+        "eligibility_trigger": null,
+        "invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 2,
+          "wall_clock_seconds": 49.409999
+        },
+        "package_ref": "job://3f8c07b5-9c17-4726-83c4-b5ee942a4957/package",
+        "quantization_override": null,
+        "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+        "role": "default",
+        "selection_status": "selected",
+        "validated_scope": {
+          "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+          "target_device": "cpu",
+          "target_ep": "cpu",
+          "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+        }
+      },
+      "winner_job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+      "winner_model_capability": {
+        "checks_passed": 2,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:divergent_capability_failure",
+          "instruction-two-words-blue-river:shared_capability_failure"
+        ]
+      },
+      "winner_recipe_status": "verified",
+      "winner_recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "workflow_outcome": "selected",
+      "workspace_retention": {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct"
+      }
+    },
+    {
+      "attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+      "attempt_state": "succeeded",
+      "batch_worker": {
+        "baseline": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "granite-3-2-2b-instruct-onboarding-6982aa10-992-mobius-baseline:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 30.141,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 1.25,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.421,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.36,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 4.531,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "optimized": {
+          "request": {
+            "batch_timeout_seconds": 3600,
+            "expected_model_load_count": 1,
+            "max_tokens": 64,
+            "mode": "single-worker-batch",
+            "model_name": "granite-3-2-2b-instruct-onboarding-1decd80446f8:1",
+            "outer_command_timeout_seconds": 3615,
+            "outer_timeout_grace_seconds": 15,
+            "per_prompt_timeout_seconds": 900,
+            "prompt_count": 4,
+            "prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ]
+          },
+          "response": {
+            "completed_prompt_ids": [
+              "arithmetic-addition-17-plus-28",
+              "factual-red-planet",
+              "instruction-two-words-blue-river",
+              "format-json-answer-unit"
+            ],
+            "duration_seconds": 9.172,
+            "failed_prompt_id": null,
+            "failure_stage": null,
+            "ok": true,
+            "prompt_order_preserved": true,
+            "results": [
+              {
+                "duration_seconds": 0.907,
+                "prompt_id": "arithmetic-addition-17-plus-28",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.015,
+                "prompt_id": "factual-red-planet",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 0.953,
+                "prompt_id": "instruction-two-words-blue-river",
+                "timed_out": false
+              },
+              {
+                "duration_seconds": 1.829,
+                "prompt_id": "format-json-answer-unit",
+                "timed_out": false
+              }
+            ]
+          }
+        },
+        "prompt_order": [
+          "arithmetic-addition-17-plus-28",
+          "factual-red-planet",
+          "instruction-two-words-blue-river",
+          "format-json-answer-unit"
+        ]
+      },
+      "candidate_selection": {
+        "aggregate_invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 2,
+          "wall_clock_seconds": 200.301428
+        },
+        "candidates": [
+          {
+            "artifact_ref": "job://6982aa10-9926-4e64-83db-f11801d66a2c/artifact/1decd80446f8040e902cea8280652d77e930a9492f391d0ed08747da4f518a5f",
+            "attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+            "attempt_state": "succeeded",
+            "candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "disposition": null,
+            "disposition_reasons": [],
+            "eligibility_trigger": null,
+            "invocation_counters": {
+              "estimated_cost_usd": null,
+              "mobius_build_invocation_count": 1,
+              "olive_optimize_invocation_count": 1,
+              "total_invocation_count": 2,
+              "wall_clock_seconds": 200.301428
+            },
+            "package_ref": "job://6982aa10-9926-4e64-83db-f11801d66a2c/package",
+            "quantization_override": null,
+            "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+            "role": "default",
+            "selection_status": "selected",
+            "validated_scope": {
+              "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+              "target_device": "cpu",
+              "target_ep": "cpu",
+              "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+            }
+          }
+        ],
+        "lineage_selection_state": "selected",
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "reuse": null,
+        "selected_candidate": {
+          "attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+          "candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "selected_by": "validation",
+          "selected_utc": "2026-09-03T20:57:48.051848+00:00",
+          "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+        }
+      },
+      "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+      "catalog_matches_count": 0,
+      "catalog_status": "live",
+      "error_signature": null,
+      "event_count": 12,
+      "first_failed_classification": null,
+      "first_failed_stage": null,
+      "first_request_aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 200.301428
+      },
+      "first_request_attempt_http_status": 200,
+      "first_request_behavior_observation": {
+        "actual": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 1,
+          "candidate_count": 1,
+          "selected_candidate_index": 0,
+          "selected_candidate_role": "default",
+          "workflow_outcome": "selected"
+        },
+        "expected": {
+          "aggregate_mobius_build_invocation_count": 1,
+          "aggregate_olive_optimize_invocation_count": 1,
+          "default_candidate_expected": "verified-and-selected",
+          "fallback_candidate_expected": "not-registered",
+          "selected_candidate_index": 0,
+          "selected_candidate_role": "default"
+        },
+        "matches_expected": true,
+        "mismatch_fields": []
+      },
+      "job_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+      "job_state": "succeeded",
+      "lingering_process_count": 0,
+      "manifest_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "model_capability": {
+        "checks_passed": 3,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "per_prompt": [
+          {
+            "baseline_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "baseline_status": "failed",
+            "category": "arithmetic",
+            "comparison": "matched_fail",
+            "optimized_failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "optimized_status": "failed",
+            "prompt_id": "arithmetic-addition-17-plus-28",
+            "warnings": [
+              "shared_capability_failure"
+            ]
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "factual-recall",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "factual-red-planet",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "instruction-following",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "instruction-two-words-blue-river",
+            "warnings": []
+          },
+          {
+            "baseline_failures": [],
+            "baseline_status": "passed",
+            "category": "output-format",
+            "comparison": "matched_pass",
+            "optimized_failures": [],
+            "optimized_status": "passed",
+            "prompt_id": "format-json-answer-unit",
+            "warnings": []
+          }
+        ],
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure"
+        ]
+      },
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "model_index": 5,
+      "next_action": null,
+      "preflight_ok": false,
+      "preflight_recipe_interpretation": "expected_unregistered_generated_recipe",
+      "preflight_recipe_status": "unregistered",
+      "preflight_recipe_unregistered_expected": true,
+      "prior_successful_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+      "quality_validation_baseline_comparison": {
+        "passed": true,
+        "regressions": []
+      },
+      "quality_validation_evidence_status": "loaded",
+      "quality_validation_failure_excerpt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "baseline_output_text": "35",
+          "baseline_passed": false,
+          "optimized_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "optimized_output_text": "25",
+          "optimized_passed": false,
+          "prompt_id": "arithmetic-addition-17-plus-28"
+        }
+      ],
+      "quality_validation_metrics_ref": "quality-metrics://6982aa10-9926-4e64-83db-f11801d66a2c/quality-validation-evidence.json",
+      "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "recipe_registry_status": "unregistered",
+      "recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "resource_after": {
+        "cache_bytes": 17529993071,
+        "disk_free_gb": 1037.356,
+        "disk_used_gb": 869.085,
+        "runtime_bytes": 80563987335,
+        "state_bytes": 344064,
+        "timestamp_utc": "2026-09-03T20:57:49.361408+00:00",
+        "workspace_bytes": 63033609160
+      },
+      "resource_before": {
+        "cache_bytes": 16091393217,
+        "disk_free_gb": 1061.098,
+        "disk_used_gb": 845.343,
+        "runtime_bytes": 55097014162,
+        "state_bytes": 311296,
+        "timestamp_utc": "2026-09-03T20:52:35.083224+00:00",
+        "workspace_bytes": 39005309649
+      },
+      "second_request_reuse": {
+        "attempt_build_job_id": null,
+        "build_job_alias_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+        "build_job_alias_matches_winner_job": true,
+        "create_http_status": 200,
+        "idempotency_key": "r7-20260903T203830Z-reuse-05",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct",
+        "model_index": 5,
+        "poll_http_status": 200,
+        "preview_http_status": 200,
+        "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+        "reuse_attempt_id": "848b0a90-f2d9-45b9-9265-50e75578b5f5",
+        "reuse_attempt_state": "succeeded",
+        "reuse_evidence": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:54.791859+00:00",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+          "source_candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+          "source_parent_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf"
+        },
+        "reuse_evidence_row": {
+          "mobius_invocation_count": 0,
+          "olive_invocation_count": 0,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "recorded_utc": "2026-09-03T20:57:54.791859+00:00",
+          "reused_attempt_id": "848b0a90-f2d9-45b9-9265-50e75578b5f5",
+          "reused_without_build": true,
+          "runner_dispatch_count": 0,
+          "source_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+          "source_candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+          "source_parent_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf"
+        },
+        "reuse_evidence_row_matches_response": true,
+        "reuse_workflow_outcome": "reused",
+        "reuse_zero_build_verified": true,
+        "runner_dispatch_mapping_present_for_reuse_attempt": false,
+        "second_request_submitted": true,
+        "service_dispatch_observation": {
+          "attempt_mapping_count_after": 6,
+          "attempt_mapping_count_before": 6,
+          "jobs_after": 6,
+          "jobs_before": 6,
+          "new_job_created_for_reuse_attempt": false
+        },
+        "source_ids_match_expected_winner": true,
+        "winner_job_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+        "winner_resolution": {
+          "available": true,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+          "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+          "source_parent_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+          "winner_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+          "winner_candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+          "winner_candidate_id": "default-int4",
+          "winner_candidate_index": 0,
+          "winner_job_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+          "winner_recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d"
+        }
+      },
+      "source_owner": null,
+      "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+      "winner_attempt_http_status": 200,
+      "winner_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+      "winner_attempt_state": "succeeded",
+      "winner_candidate": {
+        "attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+        "candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:57:48.051848+00:00",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+      },
+      "winner_candidate_timeline_entry": {
+        "artifact_ref": "job://6982aa10-9926-4e64-83db-f11801d66a2c/artifact/1decd80446f8040e902cea8280652d77e930a9492f391d0ed08747da4f518a5f",
+        "attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+        "attempt_state": "succeeded",
+        "candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "disposition": null,
+        "disposition_reasons": [],
+        "eligibility_trigger": null,
+        "invocation_counters": {
+          "estimated_cost_usd": null,
+          "mobius_build_invocation_count": 1,
+          "olive_optimize_invocation_count": 1,
+          "total_invocation_count": 2,
+          "wall_clock_seconds": 200.301428
+        },
+        "package_ref": "job://6982aa10-9926-4e64-83db-f11801d66a2c/package",
+        "quantization_override": null,
+        "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+        "role": "default",
+        "selection_status": "selected",
+        "validated_scope": {
+          "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+          "target_device": "cpu",
+          "target_ep": "cpu",
+          "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+        }
+      },
+      "winner_job_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+      "winner_model_capability": {
+        "checks_passed": 3,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure"
+        ]
+      },
+      "winner_recipe_status": "verified",
+      "winner_recipe_verification": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      },
+      "workflow_outcome": "selected",
+      "workspace_retention": {
+        "action": "retained-success-workspace",
+        "attempt_state": "succeeded",
+        "job_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct"
+      }
+    }
+  ],
+  "retry_count_actual": 1,
+  "retry_count_expected": 1,
+  "retry_models_actual": [
+    "HuggingFaceTB/SmolLM2-360M-Instruct"
+  ],
+  "retry_models_expected": [
+    "HuggingFaceTB/SmolLM2-360M-Instruct"
+  ],
+  "reuse_checks": [
+    {
+      "attempt_build_job_id": null,
+      "build_job_alias_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+      "build_job_alias_matches_winner_job": true,
+      "create_http_status": 200,
+      "idempotency_key": "r7-20260903T203830Z-reuse-01",
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "model_index": 1,
+      "poll_http_status": 200,
+      "preview_http_status": 200,
+      "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "reuse_attempt_id": "4c14c212-fe9f-4689-a062-d9e448696a29",
+      "reuse_attempt_state": "succeeded",
+      "reuse_evidence": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:52.205430+00:00",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "source_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+        "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42"
+      },
+      "reuse_evidence_row": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:52.205430+00:00",
+        "reused_attempt_id": "4c14c212-fe9f-4689-a062-d9e448696a29",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "source_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+        "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42"
+      },
+      "reuse_evidence_row_matches_response": true,
+      "reuse_workflow_outcome": "reused",
+      "reuse_zero_build_verified": true,
+      "runner_dispatch_mapping_present_for_reuse_attempt": false,
+      "second_request_submitted": true,
+      "service_dispatch_observation": {
+        "attempt_mapping_count_after": 6,
+        "attempt_mapping_count_before": 6,
+        "jobs_after": 6,
+        "jobs_before": 6,
+        "new_job_created_for_reuse_attempt": false
+      },
+      "source_ids_match_expected_winner": true,
+      "winner_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+      "winner_resolution": {
+        "available": true,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+        "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "winner_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "winner_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+        "winner_candidate_id": "default-int4",
+        "winner_candidate_index": 0,
+        "winner_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+        "winner_recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577"
+      }
+    },
+    {
+      "attempt_build_job_id": null,
+      "build_job_alias_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+      "build_job_alias_matches_winner_job": true,
+      "create_http_status": 200,
+      "idempotency_key": "r7-20260903T203830Z-reuse-02",
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "model_index": 2,
+      "poll_http_status": 200,
+      "preview_http_status": 200,
+      "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+      "reuse_attempt_id": "2c2cf8ee-005f-4e68-9a5e-6fbe3b5175cc",
+      "reuse_attempt_state": "succeeded",
+      "reuse_evidence": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:52.806475+00:00",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+        "source_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+        "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1"
+      },
+      "reuse_evidence_row": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:52.806475+00:00",
+        "reused_attempt_id": "2c2cf8ee-005f-4e68-9a5e-6fbe3b5175cc",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+        "source_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+        "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1"
+      },
+      "reuse_evidence_row_matches_response": true,
+      "reuse_workflow_outcome": "reused",
+      "reuse_zero_build_verified": true,
+      "runner_dispatch_mapping_present_for_reuse_attempt": false,
+      "second_request_submitted": true,
+      "service_dispatch_observation": {
+        "attempt_mapping_count_after": 6,
+        "attempt_mapping_count_before": 6,
+        "jobs_after": 6,
+        "jobs_before": 6,
+        "new_job_created_for_reuse_attempt": false
+      },
+      "source_ids_match_expected_winner": true,
+      "winner_job_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+      "winner_resolution": {
+        "available": true,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "selection_reason": "Candidate 1 ('int4-block-size-64') verified: recipe integrity passed strict baseline/optimized quality validation.",
+        "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+        "winner_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+        "winner_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+        "winner_candidate_id": "int4-block-size-64",
+        "winner_candidate_index": 1,
+        "winner_job_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+        "winner_recipe_fingerprint": "1445ca2127b04441d3ea0e6eaf6e2b42883480da2dbcf5bb535804204a01da93"
+      }
+    },
+    {
+      "attempt_build_job_id": null,
+      "build_job_alias_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+      "build_job_alias_matches_winner_job": true,
+      "create_http_status": 200,
+      "idempotency_key": "r7-20260903T203830Z-reuse-03",
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "model_index": 3,
+      "poll_http_status": 200,
+      "preview_http_status": 200,
+      "recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae",
+      "reuse_attempt_id": "e68be796-3f8d-4cf0-802c-bc3290bddf32",
+      "reuse_attempt_state": "succeeded",
+      "reuse_evidence": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:53.474897+00:00",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+        "source_candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+        "source_parent_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05"
+      },
+      "reuse_evidence_row": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:53.474897+00:00",
+        "reused_attempt_id": "e68be796-3f8d-4cf0-802c-bc3290bddf32",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+        "source_candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+        "source_parent_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05"
+      },
+      "reuse_evidence_row_matches_response": true,
+      "reuse_workflow_outcome": "reused",
+      "reuse_zero_build_verified": true,
+      "runner_dispatch_mapping_present_for_reuse_attempt": false,
+      "second_request_submitted": true,
+      "service_dispatch_observation": {
+        "attempt_mapping_count_after": 6,
+        "attempt_mapping_count_before": 6,
+        "jobs_after": 6,
+        "jobs_before": 6,
+        "new_job_created_for_reuse_attempt": false
+      },
+      "source_ids_match_expected_winner": true,
+      "winner_job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+      "winner_resolution": {
+        "available": true,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+        "source_parent_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+        "winner_attempt_id": "e728dfd0-92c5-4f13-8fe8-7e5c7acf4e05",
+        "winner_candidate_attempt_id": "e60315a3-0de0-4e2d-b3a0-19806fd9de72",
+        "winner_candidate_id": "default-int4",
+        "winner_candidate_index": 0,
+        "winner_job_id": "6fc27d3e-6a32-49e6-9737-1aa752837e01",
+        "winner_recipe_fingerprint": "e1abc6ce982ec5617dd8d0c58d2e074406d324acba8de975c421162e9b2007ae"
+      }
+    },
+    {
+      "attempt_build_job_id": null,
+      "build_job_alias_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+      "build_job_alias_matches_winner_job": true,
+      "create_http_status": 200,
+      "idempotency_key": "r7-20260903T203830Z-reuse-04",
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "model_index": 4,
+      "poll_http_status": 200,
+      "preview_http_status": 200,
+      "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "reuse_attempt_id": "2713a532-a743-4f50-99f1-b59b83e2997a",
+      "reuse_attempt_state": "succeeded",
+      "reuse_evidence": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:54.157673+00:00",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+        "source_candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+        "source_parent_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c"
+      },
+      "reuse_evidence_row": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:54.157673+00:00",
+        "reused_attempt_id": "2713a532-a743-4f50-99f1-b59b83e2997a",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+        "source_candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+        "source_parent_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c"
+      },
+      "reuse_evidence_row_matches_response": true,
+      "reuse_workflow_outcome": "reused",
+      "reuse_zero_build_verified": true,
+      "runner_dispatch_mapping_present_for_reuse_attempt": false,
+      "second_request_submitted": true,
+      "service_dispatch_observation": {
+        "attempt_mapping_count_after": 6,
+        "attempt_mapping_count_before": 6,
+        "jobs_after": 6,
+        "jobs_before": 6,
+        "new_job_created_for_reuse_attempt": false
+      },
+      "source_ids_match_expected_winner": true,
+      "winner_job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+      "winner_resolution": {
+        "available": true,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+        "source_parent_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+        "winner_attempt_id": "e03c4829-18b2-403b-8c03-3f207136c26c",
+        "winner_candidate_attempt_id": "4820316c-c448-4e14-a9ce-84e443add4ba",
+        "winner_candidate_id": "default-int4",
+        "winner_candidate_index": 0,
+        "winner_job_id": "3f8c07b5-9c17-4726-83c4-b5ee942a4957",
+        "winner_recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895"
+      }
+    },
+    {
+      "attempt_build_job_id": null,
+      "build_job_alias_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+      "build_job_alias_matches_winner_job": true,
+      "create_http_status": 200,
+      "idempotency_key": "r7-20260903T203830Z-reuse-05",
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "model_index": 5,
+      "poll_http_status": 200,
+      "preview_http_status": 200,
+      "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "reuse_attempt_id": "848b0a90-f2d9-45b9-9265-50e75578b5f5",
+      "reuse_attempt_state": "succeeded",
+      "reuse_evidence": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:54.791859+00:00",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+        "source_candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+        "source_parent_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf"
+      },
+      "reuse_evidence_row": {
+        "mobius_invocation_count": 0,
+        "olive_invocation_count": 0,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "recorded_utc": "2026-09-03T20:57:54.791859+00:00",
+        "reused_attempt_id": "848b0a90-f2d9-45b9-9265-50e75578b5f5",
+        "reused_without_build": true,
+        "runner_dispatch_count": 0,
+        "source_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+        "source_candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+        "source_parent_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf"
+      },
+      "reuse_evidence_row_matches_response": true,
+      "reuse_workflow_outcome": "reused",
+      "reuse_zero_build_verified": true,
+      "runner_dispatch_mapping_present_for_reuse_attempt": false,
+      "second_request_submitted": true,
+      "service_dispatch_observation": {
+        "attempt_mapping_count_after": 6,
+        "attempt_mapping_count_before": 6,
+        "jobs_after": 6,
+        "jobs_before": 6,
+        "new_job_created_for_reuse_attempt": false
+      },
+      "source_ids_match_expected_winner": true,
+      "winner_job_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+      "winner_resolution": {
+        "available": true,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+        "source_parent_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+        "winner_attempt_id": "ef7a616c-4638-4d31-a326-1a3e73f897bf",
+        "winner_candidate_attempt_id": "6531786e-1560-4732-8af5-f5380eb36bf0",
+        "winner_candidate_id": "default-int4",
+        "winner_candidate_index": 0,
+        "winner_job_id": "6982aa10-9926-4e64-83db-f11801d66a2c",
+        "winner_recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d"
+      }
+    }
+  ],
+  "round6_delta": {
+    "explanation": "Round 7 counts recipe verification by selected winner candidate (including quality-retry fallback), while preserving parent-attempt-only rate in parent_attempt_recipe_verified_rate.",
+    "round6_recipe_verified_count": 4,
+    "round6_recipe_verified_rate": "4/5",
+    "round7_recipe_verified_count": 5,
+    "round7_recipe_verified_rate": "5/5"
+  },
+  "round_classification": "valid_baseline",
+  "run_id": "r7-20260903T203830Z",
+  "selected_candidate_reuse_zero_build_count": 5,
+  "selected_candidate_reuse_zero_build_rate": "5/5",
+  "snapshot_cache_seeding": [
+    {
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    },
+    {
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "source_runtime_root": "<redacted-absolute-path>",
+      "status": "junction"
+    }
+  ],
+  "started_utc": "2026-09-03T20:38:31.598548+00:00",
+  "success_rate": "4/5",
+  "valid_baseline": true
+}

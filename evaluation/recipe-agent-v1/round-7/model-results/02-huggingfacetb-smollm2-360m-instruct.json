@@ -1,0 +1,1811 @@
+{
+  "attempt": {
+    "attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+    "build_job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+    "candidate_selection": {
+      "aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 2,
+        "total_invocation_count": 3,
+        "wall_clock_seconds": 70.958755
+      },
+      "candidates": [
+        {
+          "artifact_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/artifact/3d2ea0890d01057910c5f7d6bd2cb41edfc2e302dc5bba3ec53a32e1c956a3d6",
+          "attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+          "attempt_state": "failed",
+          "candidate_attempt_id": "6f7f0ea7-1c67-43ea-a22d-b32cfb200146",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "disposition": null,
+          "disposition_reasons": [],
+          "eligibility_trigger": null,
+          "invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": 1,
+            "olive_optimize_invocation_count": 1,
+            "total_invocation_count": 2,
+            "wall_clock_seconds": 47.297681
+          },
+          "package_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/package",
+          "quantization_override": null,
+          "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+          "role": "default",
+          "selection_status": "not_selected",
+          "validated_scope": {
+            "environment_scope": null,
+            "target_device": null,
+            "target_ep": null,
+            "toolchain_fingerprint": null
+          }
+        },
+        {
+          "artifact_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/artifact/db50e60b740a9106b7f7140cdec9b58b7a48e4240a006b2a16433687810202c9",
+          "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+          "attempt_state": "succeeded",
+          "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+          "candidate_id": "int4-block-size-64",
+          "candidate_index": 1,
+          "disposition": "retryable_optimized_structural_regression",
+          "disposition_reasons": [
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+          ],
+          "eligibility_trigger": "retryable_optimized_structural_regression",
+          "invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": null,
+            "olive_optimize_invocation_count": 1,
+            "total_invocation_count": 1,
+            "wall_clock_seconds": 23.661074
+          },
+          "package_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/package",
+          "quantization_override": {
+            "block_size": 64
+          },
+          "recipe_fingerprint": "1445ca2127b04441d3ea0e6eaf6e2b42883480da2dbcf5bb535804204a01da93",
+          "role": "quality_retry",
+          "selection_status": "selected",
+          "validated_scope": {
+            "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+            "target_device": "cpu",
+            "target_ep": "cpu",
+            "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+          }
+        }
+      ],
+      "lineage_selection_state": "selected",
+      "max_candidates": 2,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "reuse": null,
+      "selected_candidate": {
+        "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+        "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+        "candidate_id": "int4-block-size-64",
+        "candidate_index": 1,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:47:05.007552+00:00",
+        "selection_reason": "Candidate 1 ('int4-block-size-64') verified: recipe integrity passed strict baseline/optimized quality validation."
+      }
+    },
+    "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-03T20:43:55.279960+00:00",
+    "failure": {
+      "classification": "validation_failed",
+      "evidence_refs": [
+        "job://aaa29309-7558-4dd1-a40c-13984b6c4a68"
+      ],
+      "message": "Recipe integrity blocked: baseline_passed_optimized_failed:format-json-answer-unit; optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```; optimized_structural_regression:format-json-answer-unit:json_format_invalid. Model capability advisory: 1/4 checks passed. Warnings: arithmetic-addition-17-plus-28:shared_capability_failure, instruction-two-words-blue-river:divergent_capability_failure, format-json-answer-unit:optimized_regressed_vs_baseline. Confidence: low (determinism support is partial).",
+      "next_action": "Resolve quality prompt failures before attempting promotion.",
+      "source_owner": "fl-onboarding",
+      "stage": "succeeded"
+    },
+    "finished_utc": "2026-09-03T20:45:42.806134+00:00",
+    "gates": [
+      {
+        "evidence_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/mobius_build/passed",
+        "finished_utc": "2026-09-03T20:45:28.441402+00:00",
+        "gate": "mobius_build",
+        "metrics_ref": null,
+        "sequence": 1,
+        "started_utc": "2026-09-03T20:45:28.441402+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/olive_optimize/passed",
+        "finished_utc": "2026-09-03T20:45:28.452679+00:00",
+        "gate": "olive_optimize",
+        "metrics_ref": null,
+        "sequence": 2,
+        "started_utc": "2026-09-03T20:45:28.452679+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/onnx_validation/passed",
+        "finished_utc": "2026-09-03T20:45:28.465023+00:00",
+        "gate": "onnx_validation",
+        "metrics_ref": null,
+        "sequence": 3,
+        "started_utc": "2026-09-03T20:45:28.465023+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/ort_validation/passed",
+        "finished_utc": "2026-09-03T20:45:28.478412+00:00",
+        "gate": "ort_validation",
+        "metrics_ref": null,
+        "sequence": 4,
+        "started_utc": "2026-09-03T20:45:28.478412+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/oga_validation/passed",
+        "finished_utc": "2026-09-03T20:45:28.490471+00:00",
+        "gate": "oga_validation",
+        "metrics_ref": null,
+        "sequence": 5,
+        "started_utc": "2026-09-03T20:45:28.490471+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/fl_sdk_inference/passed",
+        "finished_utc": "2026-09-03T20:45:28.501523+00:00",
+        "gate": "fl_sdk_inference",
+        "metrics_ref": null,
+        "sequence": 6,
+        "started_utc": "2026-09-03T20:45:28.501523+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "quality://aaa29309-7558-4dd1-a40c-13984b6c4a68/quality_validation/baseline-regression",
+        "finished_utc": "2026-09-03T20:45:42.790472+00:00",
+        "gate": "quality_validation",
+        "metrics_ref": "quality-metrics://aaa29309-7558-4dd1-a40c-13984b6c4a68/quality-validation-evidence.json",
+        "sequence": 7,
+        "started_utc": "2026-09-03T20:45:42.790472+00:00",
+        "status": "failed"
+      }
+    ],
+    "idempotency_key": "r7-20260903T203830Z-02",
+    "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "profile_fingerprint": "32ebdc1fd1a4f5a646626403301350b9b3934035cf66a4e2ea77ab554a2f6986",
+    "quality_validation": {
+      "model_capability": {
+        "checks_passed": 1,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure",
+          "instruction-two-words-blue-river:divergent_capability_failure",
+          "format-json-answer-unit:optimized_regressed_vs_baseline"
+        ]
+      },
+      "recipe_integrity": {
+        "baseline_available": true,
+        "can_promote": false,
+        "gate_status": "failed",
+        "integrity_failures": [
+          "baseline_passed_optimized_failed:format-json-answer-unit",
+          "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+          "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+        ],
+        "regression_free": false,
+        "runtime_functional": true,
+        "status": "blocked"
+      }
+    },
+    "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+    "request_fingerprint": "d3ad07869b460e508199c68eb18d8e8fd9899c212cc88032d1e5e53d0c03ac43",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+    "state": "failed",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+    "workflow_outcome": "selected"
+  },
+  "attempt_create": {
+    "payload": {
+      "attempt": {
+        "attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+        "build_job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+        "candidate_selection": {
+          "aggregate_invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": null,
+            "olive_optimize_invocation_count": null,
+            "total_invocation_count": null,
+            "wall_clock_seconds": null
+          },
+          "candidates": [
+            {
+              "artifact_ref": null,
+              "attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+              "attempt_state": "running",
+              "candidate_attempt_id": "6f7f0ea7-1c67-43ea-a22d-b32cfb200146",
+              "candidate_id": "default-int4",
+              "candidate_index": 0,
+              "disposition": null,
+              "disposition_reasons": [],
+              "eligibility_trigger": null,
+              "invocation_counters": {
+                "estimated_cost_usd": null,
+                "mobius_build_invocation_count": null,
+                "olive_optimize_invocation_count": null,
+                "total_invocation_count": null,
+                "wall_clock_seconds": null
+              },
+              "package_ref": null,
+              "quantization_override": null,
+              "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+              "role": "default",
+              "selection_status": "not_selected",
+              "validated_scope": {
+                "environment_scope": null,
+                "target_device": null,
+                "target_ep": null,
+                "toolchain_fingerprint": null
+              }
+            }
+          ],
+          "lineage_selection_state": "pending",
+          "max_candidates": 2,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "reuse": null,
+          "selected_candidate": null
+        },
+        "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+        "compiler_version": "1.0.0",
+        "created_utc": "2026-09-03T20:43:55.279960+00:00",
+        "failure": null,
+        "finished_utc": null,
+        "gates": [],
+        "idempotency_key": "r7-20260903T203830Z-02",
+        "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "profile_fingerprint": "32ebdc1fd1a4f5a646626403301350b9b3934035cf66a4e2ea77ab554a2f6986",
+        "quality_validation": null,
+        "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+        "request_fingerprint": "d3ad07869b460e508199c68eb18d8e8fd9899c212cc88032d1e5e53d0c03ac43",
+        "requested_device": "cpu",
+        "requested_precision": "auto",
+        "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+        "state": "running",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+        "workflow_outcome": "pending"
+      },
+      "idempotent_replay": false,
+      "job": {
+        "artifacts": [],
+        "events": [
+          {
+            "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+            "sequence": 1,
+            "state": "queued",
+            "timestamp_utc": "2026-09-03T20:43:55.317078+00:00"
+          }
+        ],
+        "failure": null,
+        "finished_utc": null,
+        "job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+        "production_invocation_evidence": null,
+        "request": {
+          "allow_experimental": true,
+          "candidate": {
+            "huggingface_model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+            "key": "llm-huggingfacetb-smollm2-360m-instruct",
+            "modality": "llm",
+            "notes": "Compiled from verified architecture capability 'llama-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+            "recommended_mobius_dtype": "f32",
+            "recommended_olive_precision": "int4"
+          },
+          "dry_run": false,
+          "enforce_cpu_target": true,
+          "external_data_format": "safetensors",
+          "generated_recipe_attempt": {
+            "attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+            "confirmation_provenance": "api.confirm_automatic_recipe_attempt",
+            "confirmed": true,
+            "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46"
+          },
+          "hf_revision": "a10cc1512eabd3dde888204e902eca88bddb4951",
+          "max_shard_size": "5GB",
+          "model_cache_dir": "scratch://round-7/r7-20260903T203830Z\\cache",
+          "optimization_precision": "int4",
+          "optimization_strategy": "mobius-olive",
+          "output_dir": "scratch://round-7/r7-20260903T203830Z\\workspace\\aaa29309-7558-4dd1-a40c-13984b6c4a68\\output",
+          "recipe_artifact_cache_prefix": "smollm2-360m-instruct",
+          "recipe_id": "huggingfacetb-smollm2-360m-instruct-llm-cpu-int4",
+          "recipe_model_name_prefix": "smollm2-360m-instruct-onboarding",
+          "recipe_reason": "Generated recipe attempt execution confirmed via explicit confirm_automatic_recipe_attempt signal.",
+          "recipe_status": "experimental",
+          "recipe_version": "0.1.0",
+          "runtime": "ort-genai",
+          "skip_olive": false,
+          "task_profile": "llm-cpu-int4",
+          "workspace_root": "scratch://round-7/r7-20260903T203830Z\\workspace\\aaa29309-7558-4dd1-a40c-13984b6c4a68"
+        },
+        "result_artifact_id": null,
+        "started_utc": "2026-09-03T20:43:55.317078+00:00",
+        "state": "queued",
+        "validations": []
+      }
+    },
+    "status_code": 200
+  },
+  "attempt_http_status": 200,
+  "attempt_workflow_poll_timed_out": false,
+  "event_count": 12,
+  "events_http_status": 200,
+  "failure_summary": {
+    "attempt_state": "failed",
+    "error_signature": "Recipe integrity blocked: baseline_passed_optimized_failed:format-json-answer-unit; optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```; optimized_structural_regression:format-json-answer-unit:json_format_invalid. Model capability advisory: 1/4 checks passed. Warnings: arithmetic-addition-17-plus-28:shared_capability_failure, instruction-two-words-blue-river:divergent_capability_failure, format-json-answer-unit:optimized_regressed_vs_baseline. Confidence: low (determinism support is partial).",
+    "evidence_refs": [
+      "job://aaa29309-7558-4dd1-a40c-13984b6c4a68"
+    ],
+    "first_failed_classification": "validation_failed",
+    "first_failed_gate": {
+      "evidence_ref": "quality://aaa29309-7558-4dd1-a40c-13984b6c4a68/quality_validation/baseline-regression",
+      "finished_utc": "2026-09-03T20:45:42.790472+00:00",
+      "gate": "quality_validation",
+      "metrics_ref": "quality-metrics://aaa29309-7558-4dd1-a40c-13984b6c4a68/quality-validation-evidence.json",
+      "sequence": 7,
+      "started_utc": "2026-09-03T20:45:42.790472+00:00",
+      "status": "failed"
+    },
+    "first_failed_stage": "succeeded",
+    "next_action": "Resolve quality prompt failures before attempting promotion.",
+    "preflight_recipe_status": "unregistered",
+    "preflight_recipe_unregistered_expected": true,
+    "prior_successful_gates": [
+      "mobius_build",
+      "olive_optimize",
+      "onnx_validation",
+      "ort_validation",
+      "oga_validation",
+      "fl_sdk_inference"
+    ],
+    "source_owner": "fl-onboarding"
+  },
+  "finished_utc": "2026-09-03T20:47:15.207682+00:00",
+  "generated_preview": {
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "argument_confidence": {
+        "contains_unverified_arguments": false,
+        "mobius_dtype_confidence": "evidence-pinned",
+        "olive_precision_confidence": "evidence-pinned"
+      },
+      "candidate_plan": {
+        "candidates": [
+          {
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "eligibility_trigger": null,
+            "quantization_override": null,
+            "role": "default"
+          },
+          {
+            "candidate_id": "int4-block-size-64",
+            "candidate_index": 1,
+            "eligibility_trigger": "retryable_optimized_structural_regression",
+            "quantization_override": {
+              "block_size": 64
+            },
+            "role": "quality_retry"
+          }
+        ],
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0"
+      },
+      "candidate_selection_reuse": null,
+      "capability": {
+        "capability": {
+          "capability_id": "llama-text-generation-cpu-int4-v1",
+          "family": "llama",
+          "known_blockers": [],
+          "modality": "llm",
+          "status": "verified",
+          "supported_devices": [
+            "cpu"
+          ],
+          "supported_request_precisions": [
+            "auto",
+            "int4"
+          ],
+          "supported_tasks": [
+            "llm"
+          ],
+          "version": "1.0.0"
+        },
+        "evidence": [
+          {
+            "evidence_id": "smollm2-llama-model-type",
+            "location": "docs/contract-probe-results.md#verified",
+            "source_type": "repo-doc",
+            "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+          },
+          {
+            "evidence_id": "smollm2-llama-runtime-happy-path",
+            "location": "docs/contract-probe-results.md#verified",
+            "source_type": "repo-doc",
+            "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+          }
+        ],
+        "matched_aliases": [
+          "llama",
+          "llamaforcausallm"
+        ],
+        "outcome": "exact",
+        "reason": "Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.",
+        "reason_code": "resolved"
+      },
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "experimental_until_verified": true,
+      "fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+      "recipe": {
+        "fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+        "pinned_revision": "a10cc1512eabd3dde888204e902eca88bddb4951",
+        "provenance": {
+          "argument_provenance": {
+            "contains_unverified_arguments": false,
+            "mobius_dtype_confidence": "evidence-pinned",
+            "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+            "olive_precision_confidence": "evidence-pinned",
+            "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+          },
+          "capability_id": "llama-text-generation-cpu-int4-v1",
+          "capability_status": "verified",
+          "capability_version": "1.0.0",
+          "compiler_version": "1.0.0",
+          "evidence": [
+            {
+              "evidence_id": "smollm2-llama-model-type",
+              "location": "docs/contract-probe-results.md#verified",
+              "source_type": "repo-doc",
+              "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+            },
+            {
+              "evidence_id": "smollm2-llama-runtime-happy-path",
+              "location": "docs/contract-probe-results.md#verified",
+              "source_type": "repo-doc",
+              "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+            }
+          ],
+          "generation_kind": "deterministic-recipe-agent-v1",
+          "input_metadata": {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "available_files": [
+              ".gitattributes",
+              "all_results.json",
+              "config.json",
+              "eval_results.json",
+              "generation_config.json",
+              "merges.txt",
+              "model.safetensors",
+              "onnx/model.onnx",
+              "onnx/model_bnb4.onnx",
+              "onnx/model_fp16.onnx",
+              "onnx/model_int8.onnx",
+              "onnx/model_q4.onnx",
+              "onnx/model_q4f16.onnx",
+              "onnx/model_quantized.onnx",
+              "onnx/model_uint8.onnx",
+              "README.md",
+              "runs/Oct31_09-01-58_ip-26-0-172-142/events.out.tfevents.1730365788.ip-26-0-172-142.451351.0",
+              "runs/Oct31_09-01-58_ip-26-0-172-142/events.out.tfevents.1730371773.ip-26-0-172-142.451351.1",
+              "runs/Oct31_09-19-57_ip-26-0-174-36/events.out.tfevents.1730366818.ip-26-0-174-36.3233632.0",
+              "runs/Oct31_09-20-43_ip-26-0-161-142/events.out.tfevents.1730366856.ip-26-0-161-142.1301887.0",
+              "special_tokens_map.json",
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "train_results.json",
+              "trainer_state.json",
+              "training_args.bin",
+              "vocab.json"
+            ],
+            "config_files": [
+              "config.json"
+            ],
+            "is_gated": false,
+            "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+            "model_type": "llama",
+            "requested_device": "cpu",
+            "requested_precision": "auto",
+            "requires_remote_code": false,
+            "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+            "task": "llm",
+            "tokenizer_files": [
+              "tokenizer.json",
+              "tokenizer_config.json"
+            ]
+          },
+          "matched_aliases": [
+            "llama",
+            "llamaforcausallm"
+          ],
+          "promotion": null,
+          "resolution_outcome": "exact",
+          "resolution_reason_code": "resolved",
+          "toolchain": {
+            "foundry_cli_version": "0.11.0",
+            "foundry_sdk_version": "1.2.4",
+            "mobius_version": "0.1.0",
+            "oga_version": "0.15.2",
+            "olive_version": "0.13.0",
+            "onnx_version": "1.22.0",
+            "ort_version": "1.29.0"
+          }
+        },
+        "recipe": {
+          "ancillary_files": [
+            {
+              "relative_path": "genai_config.json",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx.data",
+              "required": false,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "tokenizer.json",
+              "required": true,
+              "source": "olive-output-dir"
+            }
+          ],
+          "artifact_cache_prefix": "smollm2-360m-instruct",
+          "huggingface_model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+          "id": "huggingfacetb-smollm2-360m-instruct-llm-cpu-int4",
+          "inference_modality": "llm",
+          "mobius": {
+            "dtype": "f32",
+            "ep": "cpu",
+            "runtime": "ort-genai",
+            "task": "text-generation"
+          },
+          "modality": "llm",
+          "model_name_prefix": "smollm2-360m-instruct-onboarding",
+          "olive": {
+            "device": "cpu",
+            "input_source": "mobius-output-dir",
+            "log_level": "1",
+            "precision": "int4",
+            "provider": "CPUExecutionProvider",
+            "task": "text-generation-with-past"
+          },
+          "optimization_choices": [
+            {
+              "default": true,
+              "precision": "int4",
+              "skip_olive": false,
+              "strategy": "mobius-olive",
+              "task_profile": "llm-cpu-int4"
+            }
+          ],
+          "preferred_revision": "a10cc1512eabd3dde888204e902eca88bddb4951",
+          "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+          "status": "experimental",
+          "status_reason": "Compiled from verified architecture capability 'llama-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+          "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+          "task_profile": "llm-cpu-int4",
+          "verified_revision": null,
+          "version": "0.1.0"
+        },
+        "schema_version": "1.0.0"
+      },
+      "requires_explicit_attempt_confirmation": true,
+      "toolchain": {
+        "foundry_cli_version": "0.11.0",
+        "foundry_sdk_version": "1.2.4",
+        "mobius_version": "0.1.0",
+        "oga_version": "0.15.2",
+        "olive_version": "0.13.0",
+        "onnx_version": "1.22.0",
+        "ort_version": "1.29.0"
+      },
+      "validation_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "verified_reuse": null
+    },
+    "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "sha": "a10cc1512eabd3dde888204e902eca88bddb4951"
+  },
+  "generated_recipe_record": {
+    "canonical_payload": {
+      "fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+      "pinned_revision": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "provenance": {
+        "argument_provenance": {
+          "contains_unverified_arguments": false,
+          "mobius_dtype_confidence": "evidence-pinned",
+          "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+          "olive_precision_confidence": "evidence-pinned",
+          "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+        },
+        "capability_id": "llama-text-generation-cpu-int4-v1",
+        "capability_status": "verified",
+        "capability_version": "1.0.0",
+        "compiler_version": "1.0.0",
+        "evidence": [
+          {
+            "evidence_id": "smollm2-llama-model-type",
+            "location": "docs/contract-probe-results.md#verified",
+            "source_type": "repo-doc",
+            "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+          },
+          {
+            "evidence_id": "smollm2-llama-runtime-happy-path",
+            "location": "docs/contract-probe-results.md#verified",
+            "source_type": "repo-doc",
+            "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+          }
+        ],
+        "generation_kind": "deterministic-recipe-agent-v1",
+        "input_metadata": {
+          "architectures": [
+            "LlamaForCausalLM"
+          ],
+          "available_files": [
+            ".gitattributes",
+            "all_results.json",
+            "config.json",
+            "eval_results.json",
+            "generation_config.json",
+            "merges.txt",
+            "model.safetensors",
+            "onnx/model.onnx",
+            "onnx/model_bnb4.onnx",
+            "onnx/model_fp16.onnx",
+            "onnx/model_int8.onnx",
+            "onnx/model_q4.onnx",
+            "onnx/model_q4f16.onnx",
+            "onnx/model_quantized.onnx",
+            "onnx/model_uint8.onnx",
+            "README.md",
+            "runs/Oct31_09-01-58_ip-26-0-172-142/events.out.tfevents.1730365788.ip-26-0-172-142.451351.0",
+            "runs/Oct31_09-01-58_ip-26-0-172-142/events.out.tfevents.1730371773.ip-26-0-172-142.451351.1",
+            "runs/Oct31_09-19-57_ip-26-0-174-36/events.out.tfevents.1730366818.ip-26-0-174-36.3233632.0",
+            "runs/Oct31_09-20-43_ip-26-0-161-142/events.out.tfevents.1730366856.ip-26-0-161-142.1301887.0",
+            "special_tokens_map.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "train_results.json",
+            "trainer_state.json",
+            "training_args.bin",
+            "vocab.json"
+          ],
+          "config_files": [
+            "config.json"
+          ],
+          "is_gated": false,
+          "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+          "model_type": "llama",
+          "requested_device": "cpu",
+          "requested_precision": "auto",
+          "requires_remote_code": false,
+          "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+          "task": "llm",
+          "tokenizer_files": [
+            "tokenizer.json",
+            "tokenizer_config.json"
+          ]
+        },
+        "matched_aliases": [
+          "llama",
+          "llamaforcausallm"
+        ],
+        "promotion": null,
+        "resolution_outcome": "exact",
+        "resolution_reason_code": "resolved",
+        "toolchain": {
+          "foundry_cli_version": "0.11.0",
+          "foundry_sdk_version": "1.2.4",
+          "mobius_version": "0.1.0",
+          "oga_version": "0.15.2",
+          "olive_version": "0.13.0",
+          "onnx_version": "1.22.0",
+          "ort_version": "1.29.0"
+        }
+      },
+      "recipe": {
+        "ancillary_files": [
+          {
+            "relative_path": "genai_config.json",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx.data",
+            "required": false,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "tokenizer.json",
+            "required": true,
+            "source": "olive-output-dir"
+          }
+        ],
+        "artifact_cache_prefix": "smollm2-360m-instruct",
+        "huggingface_model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+        "id": "huggingfacetb-smollm2-360m-instruct-llm-cpu-int4",
+        "inference_modality": "llm",
+        "mobius": {
+          "dtype": "f32",
+          "ep": "cpu",
+          "runtime": "ort-genai",
+          "task": "text-generation"
+        },
+        "modality": "llm",
+        "model_name_prefix": "smollm2-360m-instruct-onboarding",
+        "olive": {
+          "device": "cpu",
+          "input_source": "mobius-output-dir",
+          "log_level": "1",
+          "precision": "int4",
+          "provider": "CPUExecutionProvider",
+          "task": "text-generation-with-past"
+        },
+        "optimization_choices": [
+          {
+            "default": true,
+            "precision": "int4",
+            "skip_olive": false,
+            "strategy": "mobius-olive",
+            "task_profile": "llm-cpu-int4"
+          }
+        ],
+        "preferred_revision": "a10cc1512eabd3dde888204e902eca88bddb4951",
+        "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+        "status": "experimental",
+        "status_reason": "Compiled from verified architecture capability 'llama-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+        "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "task_profile": "llm-cpu-int4",
+        "verified_revision": null,
+        "version": "0.1.0"
+      },
+      "schema_version": "1.0.0"
+    },
+    "canonical_payload_sha256": "ef057fd97aed0ef59388054a3189cc79a69ac538c8eac752dc79302e351d6617",
+    "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-03T20:43:54.470324+00:00",
+    "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "profile_fingerprint": "32ebdc1fd1a4f5a646626403301350b9b3934035cf66a4e2ea77ab554a2f6986",
+    "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+    "recipe_status": "experimental",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+    "schema_version": "1.0.0",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "job": {
+    "artifacts": [
+      {
+        "artifact_id": "3d2ea0890d01057910c5f7d6bd2cb41edfc2e302dc5bba3ec53a32e1c956a3d6",
+        "description": "Immutable Foundry Local BYOM model package",
+        "kind": "model"
+      }
+    ],
+    "events": [
+      {
+        "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+        "sequence": 1,
+        "state": "queued",
+        "timestamp_utc": "2026-09-03T20:43:55.317078+00:00"
+      },
+      {
+        "message": "Starting preflight checks.",
+        "sequence": 2,
+        "state": "preflight",
+        "timestamp_utc": "2026-09-03T20:43:55.329683+00:00"
+      },
+      {
+        "message": "Pinned Hugging Face revision a10cc1512eabd3dde888204e902eca88bddb4951.",
+        "sequence": 3,
+        "state": "downloading",
+        "timestamp_utc": "2026-09-03T20:44:28.644212+00:00"
+      },
+      {
+        "message": "Running recipe Mobius cpu ort-genai f32 build.",
+        "sequence": 4,
+        "state": "mobius_building",
+        "timestamp_utc": "2026-09-03T20:44:28.658164+00:00"
+      },
+      {
+        "message": "Mobius output created; ONNX validation follows Olive.",
+        "sequence": 5,
+        "state": "mobius_validating",
+        "timestamp_utc": "2026-09-03T20:44:52.404203+00:00"
+      },
+      {
+        "message": "Running recipe Olive mobius-output-dir int4 optimization.",
+        "sequence": 6,
+        "state": "olive_optimizing",
+        "timestamp_utc": "2026-09-03T20:44:52.420121+00:00"
+      },
+      {
+        "message": "Creating immutable Foundry Local BYOM package.",
+        "sequence": 7,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-03T20:45:17.113081+00:00"
+      },
+      {
+        "message": "Staging decoder output reconciliation verified existing decoder mappings.",
+        "sequence": 8,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-03T20:45:17.656663+00:00"
+      },
+      {
+        "message": "Validating ONNX, ORT CPU, and OGA generation.",
+        "sequence": 9,
+        "state": "runtime_validating",
+        "timestamp_utc": "2026-09-03T20:45:17.661996+00:00"
+      },
+      {
+        "message": "Foundry Local SDK discovered and loaded the BYOM package.",
+        "sequence": 10,
+        "state": "fl_loading",
+        "timestamp_utc": "2026-09-03T20:45:23.965810+00:00"
+      },
+      {
+        "message": "Running bounded Foundry Local SDK chat inference.",
+        "sequence": 11,
+        "state": "inferencing",
+        "timestamp_utc": "2026-09-03T20:45:23.973401+00:00"
+      },
+      {
+        "message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "sequence": 12,
+        "state": "succeeded",
+        "timestamp_utc": "2026-09-03T20:45:28.428397+00:00"
+      }
+    ],
+    "failure": null,
+    "finished_utc": "2026-09-03T20:45:28.428397+00:00",
+    "job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+    "result_artifact_id": "3d2ea0890d01057910c5f7d6bd2cb41edfc2e302dc5bba3ec53a32e1c956a3d6",
+    "started_utc": "2026-09-03T20:43:55.317078+00:00",
+    "state": "succeeded",
+    "validations": [
+      {
+        "checks": [
+          "Candidate 'HuggingFaceTB/SmolLM2-360M-Instruct' was not found in Foundry catalog."
+        ],
+        "failure": null,
+        "stage": "preflight",
+        "status": "passed"
+      },
+      {
+        "checks": [
+          "onnx_checker=1",
+          "ort_cpu_load=passed",
+          "oga_generation=passed"
+        ],
+        "failure": null,
+        "stage": "runtime_validating",
+        "status": "passed"
+      },
+      {
+        "checks": [
+          "foundry_local_sdk_chat=passed"
+        ],
+        "failure": null,
+        "stage": "inferencing",
+        "status": "passed"
+      }
+    ]
+  },
+  "job_poll_timed_out": false,
+  "lingering_processes_after_close": [],
+  "manifest_catalog_match": {
+    "confidence": "none",
+    "matched": false,
+    "matched_entry": null,
+    "reason": "No catalog entry matches normalized HF name 'smollm2-360m-instruct'"
+  },
+  "manifest_recipe_exists": false,
+  "manifest_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+  "model_detail": {
+    "build_blockers": [],
+    "buildable": true,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "recipe_reason": "No recipe is registered for model 'HuggingFaceTB/SmolLM2-360M-Instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+    "task": "llm",
+    "warnings": []
+  },
+  "model_detail_http_status": 200,
+  "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+  "model_index": 2,
+  "preflight": {
+    "blockers": [
+      {
+        "classification": "invalid_request",
+        "message": "No recipe is registered for model 'HuggingFaceTB/SmolLM2-360M-Instruct' (llm). Build remains blocked until a recipe is added.",
+        "stage": "preflight"
+      }
+    ],
+    "cache_key": "5d42e153acf91c9d9935628377fd18b66c4881c580d6900748fe39a845534050",
+    "cached": false,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+      "verified_reuse": null
+    },
+    "ok": false,
+    "recipe_reason": "No recipe is registered for model 'HuggingFaceTB/SmolLM2-360M-Instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "tools": [],
+    "warnings": []
+  },
+  "preflight_http_status": 200,
+  "preflight_recipe_unregistered_expected": true,
+  "preview_http_status": 200,
+  "quality_validation_evidence": {
+    "baseline_comparison": {
+      "passed": false,
+      "regressions": [
+        "optimized_failed_prompt:format-json-answer-unit",
+        "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+      ]
+    },
+    "batch_worker": {
+      "baseline": {
+        "request": {
+          "batch_timeout_seconds": 3600,
+          "expected_model_load_count": 1,
+          "max_tokens": 64,
+          "mode": "single-worker-batch",
+          "model_name": "smollm2-360m-instruct-onboarding-aaa29309-755-mobius-baseline:1",
+          "outer_command_timeout_seconds": 3615,
+          "outer_timeout_grace_seconds": 15,
+          "per_prompt_timeout_seconds": 900,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ]
+        },
+        "response": {
+          "completed_prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ],
+          "duration_seconds": 6.719,
+          "failed_prompt_id": null,
+          "failure_stage": null,
+          "ok": true,
+          "prompt_order_preserved": true,
+          "results": [
+            {
+              "duration_seconds": 0.594,
+              "prompt_id": "arithmetic-addition-17-plus-28",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.125,
+              "prompt_id": "factual-red-planet",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.109,
+              "prompt_id": "instruction-two-words-blue-river",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.735,
+              "prompt_id": "format-json-answer-unit",
+              "timed_out": false
+            }
+          ]
+        }
+      },
+      "optimized": {
+        "request": {
+          "batch_timeout_seconds": 3600,
+          "expected_model_load_count": 1,
+          "max_tokens": 64,
+          "mode": "single-worker-batch",
+          "model_name": "smollm2-360m-instruct-onboarding-3d2ea0890d01:1",
+          "outer_command_timeout_seconds": 3615,
+          "outer_timeout_grace_seconds": 15,
+          "per_prompt_timeout_seconds": 900,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ]
+        },
+        "response": {
+          "completed_prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ],
+          "duration_seconds": 6.516,
+          "failed_prompt_id": null,
+          "failure_stage": null,
+          "ok": true,
+          "prompt_order_preserved": true,
+          "results": [
+            {
+              "duration_seconds": 0.484,
+              "prompt_id": "arithmetic-addition-17-plus-28",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.204,
+              "prompt_id": "factual-red-planet",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.312,
+              "prompt_id": "instruction-two-words-blue-river",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 1.344,
+              "prompt_id": "format-json-answer-unit",
+              "timed_out": false
+            }
+          ]
+        }
+      },
+      "prompt_order": [
+        "arithmetic-addition-17-plus-28",
+        "factual-red-planet",
+        "instruction-two-words-blue-river",
+        "format-json-answer-unit"
+      ]
+    },
+    "deterministic_inference": {
+      "max_tokens": 64,
+      "seed": 17,
+      "temperature": 0.0
+    },
+    "failure_excerpt": [
+      {
+        "baseline_failures": [
+          "exact_match_failed",
+          "max_words_exceeded"
+        ],
+        "baseline_output_text": "17 + 28 = 45",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "exact_match_failed",
+          "max_words_exceeded"
+        ],
+        "optimized_output_text": "17 + 28 = 45",
+        "optimized_passed": false,
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      },
+      {
+        "baseline_failures": [
+          "required_token_missing:blue"
+        ],
+        "baseline_output_text": "River",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "max_words_exceeded"
+        ],
+        "optimized_output_text": "The river is blue.",
+        "optimized_passed": false,
+        "prompt_id": "instruction-two-words-blue-river"
+      },
+      {
+        "baseline_failures": [],
+        "baseline_output_text": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+        "baseline_passed": true,
+        "optimized_failures": [
+          "forbidden_token_present:```",
+          "json_format_invalid"
+        ],
+        "optimized_output_text": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+        "optimized_passed": false,
+        "prompt_id": "format-json-answer-unit"
+      }
+    ],
+    "metrics_ref": "quality-metrics://aaa29309-7558-4dd1-a40c-13984b6c4a68/quality-validation-evidence.json",
+    "model_capability": {
+      "checks_passed": 1,
+      "confidence": {
+        "determinism_supported": false,
+        "level": "low",
+        "reasons": [
+          "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+          "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+          "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+          "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+        ]
+      },
+      "per_prompt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_status": "failed",
+          "category": "arithmetic",
+          "comparison": "matched_fail",
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "warnings": [
+            "shared_capability_failure"
+          ]
+        },
+        {
+          "baseline_failures": [],
+          "baseline_status": "passed",
+          "category": "factual-recall",
+          "comparison": "matched_pass",
+          "optimized_failures": [],
+          "optimized_status": "passed",
+          "prompt_id": "factual-red-planet",
+          "warnings": []
+        },
+        {
+          "baseline_failures": [
+            "required_token_missing:blue"
+          ],
+          "baseline_status": "failed",
+          "category": "instruction-following",
+          "comparison": "divergent_fail",
+          "optimized_failures": [
+            "max_words_exceeded"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "instruction-two-words-blue-river",
+          "warnings": [
+            "divergent_capability_failure"
+          ]
+        },
+        {
+          "baseline_failures": [],
+          "baseline_status": "passed",
+          "category": "output-format",
+          "comparison": "regressed",
+          "optimized_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "format-json-answer-unit",
+          "warnings": [
+            "optimized_regressed_vs_baseline"
+          ]
+        }
+      ],
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure",
+        "instruction-two-words-blue-river:divergent_capability_failure",
+        "format-json-answer-unit:optimized_regressed_vs_baseline"
+      ]
+    },
+    "per_prompt": [
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "17 + 28 = 45",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "arithmetic",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "17 + 28 = 45",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "What is 17 + 28? Reply using only digits.",
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "Mars",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "factual-recall",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "Mars",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Which planet is known as the Red Planet? Reply with one word.",
+        "prompt_id": "factual-red-planet"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "required_token_missing:blue"
+            ],
+            "passed": false
+          },
+          "output_text": "River",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "instruction-following",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "The river is blue.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Output exactly two words: blue river",
+        "prompt_id": "instruction-two-words-blue-river"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "output-format",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "passed": false
+          },
+          "output_text": "Yes, I can assist with that. Here is the valid JSON object with the specified keys and unit:\n\n```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.",
+        "prompt_id": "format-json-answer-unit"
+      }
+    ],
+    "profile_id": "textgen-basic-quality-v1",
+    "profile_version": "1.0.0",
+    "promotion_evidence": {
+      "baseline_comparison_gate": "failed",
+      "can_promote": false,
+      "functional_gate": "passed",
+      "metrics_capture_gate": "unavailable",
+      "notes": [
+        "Optional latency/memory/package metrics were not supplied.",
+        "Model capability confidence is low because deterministic inference settings were only partially enforced."
+      ]
+    },
+    "recipe_verification": {
+      "baseline_available": true,
+      "can_promote": false,
+      "gate_status": "failed",
+      "integrity_failures": [
+        "baseline_passed_optimized_failed:format-json-answer-unit",
+        "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+      ],
+      "regression_free": false,
+      "runtime_functional": true,
+      "status": "blocked"
+    },
+    "ref_job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+    "schema_version": "1.0.0",
+    "status": "loaded",
+    "unsupported_determinism_fields_reported_by_runtime": [
+      "temperature",
+      "seed"
+    ]
+  },
+  "resource_after": {
+    "cache_bytes": 13481355535,
+    "disk_free_gb": 1083.682,
+    "disk_used_gb": 822.76,
+    "runtime_bytes": 30867597583,
+    "state_bytes": 262144,
+    "timestamp_utc": "2026-09-03T20:47:15.112996+00:00",
+    "workspace_bytes": 17385786424
+  },
+  "resource_before": {
+    "cache_bytes": 12687799260,
+    "disk_free_gb": 1091.314,
+    "disk_used_gb": 815.128,
+    "runtime_bytes": 22670202417,
+    "state_bytes": 249936,
+    "timestamp_utc": "2026-09-03T20:43:53.896543+00:00",
+    "workspace_bytes": 9982153221
+  },
+  "round7_first_request": {
+    "candidate_selection": {
+      "aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 2,
+        "total_invocation_count": 3,
+        "wall_clock_seconds": 70.958755
+      },
+      "candidates": [
+        {
+          "artifact_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/artifact/3d2ea0890d01057910c5f7d6bd2cb41edfc2e302dc5bba3ec53a32e1c956a3d6",
+          "attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+          "attempt_state": "failed",
+          "candidate_attempt_id": "6f7f0ea7-1c67-43ea-a22d-b32cfb200146",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "disposition": null,
+          "disposition_reasons": [],
+          "eligibility_trigger": null,
+          "invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": 1,
+            "olive_optimize_invocation_count": 1,
+            "total_invocation_count": 2,
+            "wall_clock_seconds": 47.297681
+          },
+          "package_ref": "job://aaa29309-7558-4dd1-a40c-13984b6c4a68/package",
+          "quantization_override": null,
+          "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+          "role": "default",
+          "selection_status": "not_selected",
+          "validated_scope": {
+            "environment_scope": null,
+            "target_device": null,
+            "target_ep": null,
+            "toolchain_fingerprint": null
+          }
+        },
+        {
+          "artifact_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/artifact/db50e60b740a9106b7f7140cdec9b58b7a48e4240a006b2a16433687810202c9",
+          "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+          "attempt_state": "succeeded",
+          "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+          "candidate_id": "int4-block-size-64",
+          "candidate_index": 1,
+          "disposition": "retryable_optimized_structural_regression",
+          "disposition_reasons": [
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+          ],
+          "eligibility_trigger": "retryable_optimized_structural_regression",
+          "invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": null,
+            "olive_optimize_invocation_count": 1,
+            "total_invocation_count": 1,
+            "wall_clock_seconds": 23.661074
+          },
+          "package_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/package",
+          "quantization_override": {
+            "block_size": 64
+          },
+          "recipe_fingerprint": "1445ca2127b04441d3ea0e6eaf6e2b42883480da2dbcf5bb535804204a01da93",
+          "role": "quality_retry",
+          "selection_status": "selected",
+          "validated_scope": {
+            "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+            "target_device": "cpu",
+            "target_ep": "cpu",
+            "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+          }
+        }
+      ],
+      "lineage_selection_state": "selected",
+      "max_candidates": 2,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "reuse": null,
+      "selected_candidate": {
+        "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+        "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+        "candidate_id": "int4-block-size-64",
+        "candidate_index": 1,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:47:05.007552+00:00",
+        "selection_reason": "Candidate 1 ('int4-block-size-64') verified: recipe integrity passed strict baseline/optimized quality validation."
+      }
+    },
+    "first_request_aggregate_invocation_counters": {
+      "estimated_cost_usd": null,
+      "mobius_build_invocation_count": 1,
+      "olive_optimize_invocation_count": 2,
+      "total_invocation_count": 3,
+      "wall_clock_seconds": 70.958755
+    },
+    "first_request_behavior_observation": {
+      "actual": {
+        "aggregate_mobius_build_invocation_count": 1,
+        "aggregate_olive_optimize_invocation_count": 2,
+        "candidate_count": 2,
+        "selected_candidate_index": 1,
+        "selected_candidate_role": "quality_retry",
+        "workflow_outcome": "selected"
+      },
+      "expected": {
+        "aggregate_mobius_build_invocation_count": 1,
+        "aggregate_olive_optimize_invocation_count": 2,
+        "default_candidate_expected": "failed-and-preserved",
+        "fallback_candidate_expected": "verified-and-selected",
+        "selected_candidate_index": 1,
+        "selected_candidate_role": "quality_retry"
+      },
+      "matches_expected": true,
+      "mismatch_fields": []
+    },
+    "winner_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+    "winner_attempt_state": "succeeded",
+    "winner_candidate": {
+      "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+      "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+      "candidate_id": "int4-block-size-64",
+      "candidate_index": 1,
+      "selected_by": "validation",
+      "selected_utc": "2026-09-03T20:47:05.007552+00:00",
+      "selection_reason": "Candidate 1 ('int4-block-size-64') verified: recipe integrity passed strict baseline/optimized quality validation."
+    },
+    "winner_candidate_timeline_entry": {
+      "artifact_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/artifact/db50e60b740a9106b7f7140cdec9b58b7a48e4240a006b2a16433687810202c9",
+      "attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+      "attempt_state": "succeeded",
+      "candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+      "candidate_id": "int4-block-size-64",
+      "candidate_index": 1,
+      "disposition": "retryable_optimized_structural_regression",
+      "disposition_reasons": [
+        "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        "optimized_structural_regression:format-json-answer-unit:json_format_invalid"
+      ],
+      "eligibility_trigger": "retryable_optimized_structural_regression",
+      "invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": null,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 1,
+        "wall_clock_seconds": 23.661074
+      },
+      "package_ref": "job://035dec90-d296-42ff-894d-f8e2735092c2/package",
+      "quantization_override": {
+        "block_size": 64
+      },
+      "recipe_fingerprint": "1445ca2127b04441d3ea0e6eaf6e2b42883480da2dbcf5bb535804204a01da93",
+      "role": "quality_retry",
+      "selection_status": "selected",
+      "validated_scope": {
+        "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+        "target_device": "cpu",
+        "target_ep": "cpu",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+      }
+    },
+    "winner_job_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+    "winner_model_capability": {
+      "checks_passed": 2,
+      "confidence": {
+        "determinism_supported": false,
+        "level": "low",
+        "reasons": [
+          "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+          "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+          "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+          "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+        ]
+      },
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure",
+        "instruction-two-words-blue-river:divergent_capability_failure"
+      ]
+    },
+    "winner_recipe_verification": {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    "workflow_outcome": "selected"
+  },
+  "round7_second_request_reuse": {
+    "attempt_build_job_id": null,
+    "build_job_alias_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+    "build_job_alias_matches_winner_job": true,
+    "create_http_status": 200,
+    "idempotency_key": "r7-20260903T203830Z-reuse-02",
+    "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "model_index": 2,
+    "poll_http_status": 200,
+    "preview_http_status": 200,
+    "recipe_fingerprint": "2c7616bcb5c377210ee24ce9a0a199dfaab3a587b5fb529be63ee5579f464e46",
+    "reuse_attempt_id": "2c2cf8ee-005f-4e68-9a5e-6fbe3b5175cc",
+    "reuse_attempt_state": "succeeded",
+    "reuse_evidence": {
+      "mobius_invocation_count": 0,
+      "olive_invocation_count": 0,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "recorded_utc": "2026-09-03T20:57:52.806475+00:00",
+      "reused_without_build": true,
+      "runner_dispatch_count": 0,
+      "source_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+      "source_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+      "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1"
+    },
+    "reuse_evidence_row": {
+      "mobius_invocation_count": 0,
+      "olive_invocation_count": 0,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "recorded_utc": "2026-09-03T20:57:52.806475+00:00",
+      "reused_attempt_id": "2c2cf8ee-005f-4e68-9a5e-6fbe3b5175cc",
+      "reused_without_build": true,
+      "runner_dispatch_count": 0,
+      "source_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+      "source_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+      "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1"
+    },
+    "reuse_evidence_row_matches_response": true,
+    "reuse_workflow_outcome": "reused",
+    "reuse_zero_build_verified": true,
+    "runner_dispatch_mapping_present_for_reuse_attempt": false,
+    "second_request_submitted": true,
+    "service_dispatch_observation": {
+      "attempt_mapping_count_after": 6,
+      "attempt_mapping_count_before": 6,
+      "jobs_after": 6,
+      "jobs_before": 6,
+      "new_job_created_for_reuse_attempt": false
+    },
+    "source_ids_match_expected_winner": true,
+    "winner_job_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+    "winner_resolution": {
+      "available": true,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "selection_reason": "Candidate 1 ('int4-block-size-64') verified: recipe integrity passed strict baseline/optimized quality validation.",
+      "source_parent_attempt_id": "2851b84d-74e2-4d77-be89-d6cabbdd4ec1",
+      "winner_attempt_id": "dd543498-fbd8-49ce-9915-d78d5c25c2f7",
+      "winner_candidate_attempt_id": "86b8d6d3-1dcc-4bd9-993e-e60233d0f264",
+      "winner_candidate_id": "int4-block-size-64",
+      "winner_candidate_index": 1,
+      "winner_job_id": "035dec90-d296-42ff-894d-f8e2735092c2",
+      "winner_recipe_fingerprint": "1445ca2127b04441d3ea0e6eaf6e2b42883480da2dbcf5bb535804204a01da93"
+    }
+  },
+  "started_utc": "2026-09-03T20:43:53.896543+00:00",
+  "workspace_retention": {
+    "action": "failed-workspace-deleted",
+    "attempt_state": "failed",
+    "freed_bytes": 3698966335,
+    "job_id": "aaa29309-7558-4dd1-a40c-13984b6c4a68",
+    "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+    "workspace_path": "scratch://round-7/r7-20260903T203830Z\\workspace\\aaa29309-7558-4dd1-a40c-13984b6c4a68"
+  }
+}
