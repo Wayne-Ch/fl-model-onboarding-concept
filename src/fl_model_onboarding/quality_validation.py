@@ -862,107 +862,107 @@ def _allowlisted_structural_only_failures(
 
 
 def _derive_quality_retry_disposition(result: QualityValidationResult) -> QualityRetryEvaluation:
+    def _not_retryable(*reasons: str) -> QualityRetryEvaluation:
+        return QualityRetryEvaluation(
+            disposition=QualityRetryDisposition.NOT_RETRYABLE,
+            reasons=tuple(reasons),
+        )
+
     verification = result.recipe_verification
 
     if not verification.baseline_available:
-        return QualityRetryEvaluation(
-            disposition=QualityRetryDisposition.NOT_RETRYABLE,
-            reasons=("baseline_unavailable",),
-        )
+        return _not_retryable("baseline_unavailable")
     if not verification.runtime_functional:
-        return QualityRetryEvaluation(
-            disposition=QualityRetryDisposition.NOT_RETRYABLE,
-            reasons=("optimized_runtime_failure",),
-        )
+        return _not_retryable("optimized_runtime_failure")
     if verification.can_promote:
-        return QualityRetryEvaluation(
-            disposition=QualityRetryDisposition.NOT_RETRYABLE,
-            reasons=("no_blocking_regression",),
-        )
+        return _not_retryable("no_blocking_regression")
     category_by_prompt = {
         row.prompt_id: row.category for row in result.optimized_functional.prompt_results
+    }
+    optimized_failures_by_prompt = {
+        row.prompt_id: row.failures for row in result.optimized_functional.prompt_results
     }
     baseline_passed_optimized_failed_prompts: list[str] = []
     baseline_passed_optimized_failed_set: set[str] = set()
     structural_regressions: list[tuple[str, str]] = []
+    structural_regression_set: set[tuple[str, str]] = set()
 
     for entry in verification.integrity_failures:
         if entry.startswith("baseline_passed_optimized_failed:"):
             prompt_id = entry.split(":", 1)[1].strip()
             if not prompt_id:
-                return QualityRetryEvaluation(
-                    disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                    reasons=("unattributed_block",),
-                )
-            if prompt_id not in baseline_passed_optimized_failed_set:
-                baseline_passed_optimized_failed_prompts.append(prompt_id)
-                baseline_passed_optimized_failed_set.add(prompt_id)
+                return _not_retryable("unattributed_block")
+            if prompt_id in baseline_passed_optimized_failed_set:
+                return _not_retryable("unattributed_block")
+            baseline_passed_optimized_failed_prompts.append(prompt_id)
+            baseline_passed_optimized_failed_set.add(prompt_id)
             continue
         if entry.startswith("optimized_structural_regression:"):
             try:
                 _, prompt_id, failure_code = entry.split(":", 2)
             except ValueError:
-                return QualityRetryEvaluation(
-                    disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                    reasons=("unattributed_block",),
-                )
+                return _not_retryable("unattributed_block")
             prompt_id = prompt_id.strip()
             failure_code = failure_code.strip()
             if not prompt_id or not failure_code:
-                return QualityRetryEvaluation(
-                    disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                    reasons=("unattributed_block",),
-                )
-            structural_regressions.append((prompt_id, failure_code))
+                return _not_retryable("unattributed_block")
+            structural_entry = (prompt_id, failure_code)
+            if structural_entry in structural_regression_set:
+                return _not_retryable("unattributed_block")
+            structural_regression_set.add(structural_entry)
+            structural_regressions.append(structural_entry)
             continue
-        return QualityRetryEvaluation(
-            disposition=QualityRetryDisposition.NOT_RETRYABLE,
-            reasons=("unattributed_block",),
-        )
+        return _not_retryable("unattributed_block")
 
     if not structural_regressions:
         if baseline_passed_optimized_failed_prompts:
-            return QualityRetryEvaluation(
-                disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                reasons=(f"non_structural_regression:{baseline_passed_optimized_failed_prompts[0]}",),
+            prompt_id = baseline_passed_optimized_failed_prompts[0]
+            full_failures = optimized_failures_by_prompt.get(prompt_id)
+            category = category_by_prompt.get(prompt_id)
+            if not full_failures or category is None:
+                return _not_retryable("unattributed_block")
+            allowlisted_codes = _allowlisted_structural_only_failures(
+                category=category,
+                failures=full_failures,
             )
-        return QualityRetryEvaluation(
-            disposition=QualityRetryDisposition.NOT_RETRYABLE,
-            reasons=("unattributed_block",),
-        )
+            if allowlisted_codes is None:
+                return _not_retryable(f"non_structural_regression:{prompt_id}")
+        return _not_retryable("unattributed_block")
 
     structural_by_prompt: dict[str, list[str]] = {}
     for prompt_id, failure_code in structural_regressions:
         structural_by_prompt.setdefault(prompt_id, []).append(failure_code)
 
+    if not baseline_passed_optimized_failed_prompts:
+        return _not_retryable(f"baseline_and_optimized_failed:{structural_regressions[0][0]}")
+
     for prompt_id in baseline_passed_optimized_failed_prompts:
-        if prompt_id not in structural_by_prompt:
-            return QualityRetryEvaluation(
-                disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                reasons=(f"non_structural_regression:{prompt_id}",),
-            )
+        full_failures = optimized_failures_by_prompt.get(prompt_id)
+        category = category_by_prompt.get(prompt_id)
+        structural_failures = structural_by_prompt.get(prompt_id)
+        if not full_failures or category is None:
+            return _not_retryable("unattributed_block")
+        allowlisted_codes = _allowlisted_structural_only_failures(
+            category=category,
+            failures=full_failures,
+        )
+        if allowlisted_codes is None:
+            return _not_retryable(f"non_structural_regression:{prompt_id}")
+        if structural_failures is None:
+            return _not_retryable("unattributed_block")
+        if len(structural_failures) != len(allowlisted_codes):
+            return _not_retryable("unattributed_block")
+        if set(structural_failures) != set(allowlisted_codes):
+            return _not_retryable("unattributed_block")
 
     for prompt_id, failures in structural_by_prompt.items():
         if prompt_id not in baseline_passed_optimized_failed_set:
-            return QualityRetryEvaluation(
-                disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                reasons=(f"baseline_and_optimized_failed:{prompt_id}",),
-            )
-        category = category_by_prompt.get(prompt_id)
-        if category is None:
-            return QualityRetryEvaluation(
-                disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                reasons=("unattributed_block",),
-            )
-        allowlisted_codes = _allowlisted_structural_only_failures(
-            category=category,
-            failures=tuple(failures),
-        )
-        if allowlisted_codes is None:
-            return QualityRetryEvaluation(
-                disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                reasons=(f"non_structural_regression:{prompt_id}",),
-            )
+            return _not_retryable("unattributed_block")
+        full_failures = optimized_failures_by_prompt.get(prompt_id)
+        if not full_failures:
+            return _not_retryable("unattributed_block")
+        if len(failures) > len(full_failures):
+            return _not_retryable("unattributed_block")
 
     blocking_reasons = tuple(
         f"optimized_structural_regression:{prompt_id}:{failure_code}"

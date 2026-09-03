@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import fl_model_onboarding.quality_validation as quality_validation_module
+
 from fl_model_onboarding.quality_validation import (
     CapabilityComparisonStatus,
     CapabilityConfidenceLevel,
@@ -90,6 +92,31 @@ def _replace_output(
             )
         )
     return tuple(updated)
+
+
+def _retryable_smollm_structural_result():
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='```json\n{"answer":12,"unit":"cm"}\n```',
+    )
+    return evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+
+
+def _derive_retry_with_integrity_failures(*, result, integrity_failures: tuple[str, ...]):
+    tampered = replace(
+        result,
+        recipe_verification=replace(result.recipe_verification, integrity_failures=integrity_failures),
+    )
+    return quality_validation_module._derive_quality_retry_disposition(tampered)
 
 
 def test_quality_validation_passes_and_emits_promotable_evidence() -> None:
@@ -731,6 +758,107 @@ def test_retry_disposition_is_not_retryable_for_missing_json_key_regression() ->
     assert evaluation is not None
     assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
     assert evaluation.reasons == ("non_structural_regression:format-json-answer-unit",)
+
+
+@pytest.mark.parametrize(
+    ("output_text", "expected_failures"),
+    [
+        (
+            "12",
+            ("required_token_missing:cm", "relevance_keyword_missing", "json_format_invalid"),
+        ),
+        (
+            "cm",
+            ("required_token_missing:12", "relevance_keyword_missing", "json_format_invalid"),
+        ),
+    ],
+)
+def test_retry_disposition_is_not_retryable_for_mixed_same_prompt_failures(
+    output_text: str,
+    expected_failures: tuple[str, ...],
+) -> None:
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text=output_text,
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    prompt_row = next(
+        row
+        for row in result.optimized_functional.prompt_results
+        if row.prompt_id == "format-json-answer-unit"
+    )
+    for failure_code in expected_failures:
+        assert failure_code in prompt_row.failures
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("non_structural_regression:format-json-answer-unit",)
+
+
+@pytest.mark.parametrize(
+    "integrity_failures",
+    [
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+            "optimized_structural_regression:format-json-answer-unit:json_key_missing:unit",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:factual-red-planet:json_format_invalid",
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        ),
+        (
+            "baseline_passed_optimized_failed:",
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:missing-prompt",
+            "optimized_structural_regression:missing-prompt:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit",
+        ),
+    ],
+)
+def test_retry_disposition_fails_closed_for_inconsistent_integrity_evidence(
+    integrity_failures: tuple[str, ...],
+) -> None:
+    result = _retryable_smollm_structural_result()
+    evaluation = _derive_retry_with_integrity_failures(
+        result=result,
+        integrity_failures=integrity_failures,
+    )
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("unattributed_block",)
 
 
 def test_retry_disposition_is_not_retryable_for_optimized_improvement() -> None:

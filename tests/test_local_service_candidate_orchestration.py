@@ -147,7 +147,7 @@ class DeterministicQualityTextBackend:
             and generated_attempt.recipe_fingerprint in self.regress_recipe_fingerprints
         )
         if is_regressed_recipe and not is_baseline and prompt == _JSON_PROMPT:
-            return "answer is 12 cm"
+            return '```json\n{"answer":12,"unit":"cm"}\n```'
         return _QUALITY_PASS_RESPONSES.get(prompt, f"{artifact.artifact_id}:{prompt}:{max_tokens}")
 
 
@@ -159,7 +159,7 @@ class AlwaysRegressedTextBackend(DeterministicQualityTextBackend):
         is_baseline = str(artifact.artifact_id).startswith("baseline-")
         self.calls.append((artifact.artifact_id, prompt))
         if not is_baseline and prompt == _JSON_PROMPT:
-            return "answer is 12 cm"
+            return '```json\n{"answer":12,"unit":"cm"}\n```'
         return _QUALITY_PASS_RESPONSES.get(prompt, f"{artifact.artifact_id}:{prompt}:{max_tokens}")
 
 
@@ -214,6 +214,24 @@ class SmolShapedCapabilityAdvisoryRegressionBackend(DeterministicQualityTextBack
             return "blue" if is_baseline else "river stream"
         if is_regressed_recipe and not is_baseline and prompt == _JSON_PROMPT:
             return '```json\n{"answer":12,"unit":"cm"}\n```'
+        return _QUALITY_PASS_RESPONSES.get(prompt, f"{artifact.artifact_id}:{prompt}:{max_tokens}")
+
+
+class ReviewerMixedFailureTextBackend(DeterministicQualityTextBackend):
+    """Reviewer repro shape: baseline passes JSON prompt while optimized emits just
+    "12", producing mixed same-prompt failures (required token + relevance +
+    invalid JSON) that must never be retry-eligible."""
+
+    def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        is_baseline = str(artifact.artifact_id).startswith("baseline-")
+        self.calls.append((artifact.artifact_id, prompt))
+        generated_attempt = job.request.generated_recipe_attempt
+        is_regressed_recipe = (
+            generated_attempt is not None
+            and generated_attempt.recipe_fingerprint in self.regress_recipe_fingerprints
+        )
+        if is_regressed_recipe and not is_baseline and prompt == _JSON_PROMPT:
+            return "12"
         return _QUALITY_PASS_RESPONSES.get(prompt, f"{artifact.artifact_id}:{prompt}:{max_tokens}")
 
 
@@ -665,6 +683,29 @@ def test_non_retryable_arithmetic_regression_yields_one_candidate_no_fallback(tm
         assert lineage.selection_state == CandidateLineageSelectionState.EXHAUSTED
         candidates = service._recipe_attempt_store.list_candidate_attempts(attempt_id)
         assert len(candidates) == 1
+        assert candidates[0].candidate_index == 0
+        assert candidates[0].disposition is None or candidates[0].disposition == "not_retryable"
+    finally:
+        service.close()
+
+
+def test_non_retryable_reviewer_mixed_json_failures_create_no_candidate1(tmp_path: Path) -> None:
+    backend = ReviewerMixedFailureTextBackend()
+    service = _service(tmp_path, text_backend=backend)
+    try:
+        preview = service.generated_recipe_preview(model_id=_model(), task=CandidateModality.LLM)
+        backend.regress_recipe_fingerprints.add(str(preview["generated_recipe"]["fingerprint"]))
+
+        job, attempt, _fp = _create_default_attempt(service, idempotency_key="reviewer-mixed-failures-1")
+        attempt_id = attempt["attempt_id"]
+        completed = _wait_for_job_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        lineage = _wait_for_lineage_finalized(service, attempt_id)
+        assert lineage.selection_state == CandidateLineageSelectionState.EXHAUSTED
+        candidates = service._recipe_attempt_store.list_candidate_attempts(attempt_id)
+        assert len(candidates) == 1
+        assert not any(row.candidate_index == 1 for row in candidates)
         assert candidates[0].candidate_index == 0
         assert candidates[0].disposition is None or candidates[0].disposition == "not_retryable"
     finally:
