@@ -6,6 +6,7 @@ import sys
 
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 
 from .adapters.interfaces import (
     CommandSpec,
@@ -56,7 +57,12 @@ class PreflightInspector:
         self._policy = policy or PreflightPolicy()
         self._cache = cache or PreflightResultCache.create()
 
-    def inspect(self, request: BuildRequest) -> PreflightResult:
+    def inspect(
+        self,
+        request: BuildRequest,
+        *,
+        cancellation_event: Event | None = None,
+    ) -> PreflightResult:
         environment_blockers: list[FailureInfo] = []
         compatibility_blockers: list[FailureInfo] = []
         environment_warnings: list[str] = []
@@ -115,18 +121,40 @@ class PreflightInspector:
             )
 
         tools = (
-            self._probe_command("foundry", ("--version",)),
-            self._probe_command("mobius", ("--help",), version_args=("--version",)),
+            self._probe_command("foundry", ("--version",), cancellation_event=cancellation_event),
+            self._probe_command(
+                "mobius",
+                ("--help",),
+                version_args=("--version",),
+                cancellation_event=cancellation_event,
+            ),
             self._probe_command(
                 "olive",
                 ("--help",),
                 version_args=("--version",),
                 timeout_seconds=_OLIVE_COMMAND_PROBE_TIMEOUT_SECONDS,
+                cancellation_event=cancellation_event,
             ),
-            self._probe_python_module("onnxruntime", "onnxruntime"),
-            self._probe_python_module("onnxruntime-genai", "onnxruntime_genai"),
-            self._probe_python_module("foundry-local-sdk", "foundry_local_sdk"),
-            self._probe_python_module("huggingface_hub", "huggingface_hub"),
+            self._probe_python_module(
+                "onnxruntime",
+                "onnxruntime",
+                cancellation_event=cancellation_event,
+            ),
+            self._probe_python_module(
+                "onnxruntime-genai",
+                "onnxruntime_genai",
+                cancellation_event=cancellation_event,
+            ),
+            self._probe_python_module(
+                "foundry-local-sdk",
+                "foundry_local_sdk",
+                cancellation_event=cancellation_event,
+            ),
+            self._probe_python_module(
+                "huggingface_hub",
+                "huggingface_hub",
+                cancellation_event=cancellation_event,
+            ),
         )
         by_name = {tool.name: tool for tool in tools}
         foundry_version = by_name["foundry"].version
@@ -348,10 +376,11 @@ class PreflightInspector:
         *,
         version_args: tuple[str, ...] | None = None,
         timeout_seconds: int = _DEFAULT_COMMAND_PROBE_TIMEOUT_SECONDS,
+        cancellation_event: Event | None = None,
     ) -> ToolAvailability:
         spec = CommandSpec(argv=(name, *availability_args), timeout_seconds=timeout_seconds)
         try:
-            result = self._runner.run(spec)
+            result = self._runner.run(spec, cancel_event=cancellation_event)
             output = (result.stdout or result.stderr or "").strip()
             first_line = output.splitlines()[0] if output else ""
             if not result.ok:
@@ -370,6 +399,7 @@ class PreflightInspector:
                     name,
                     version_args,
                     timeout_seconds=timeout_seconds,
+                    cancellation_event=cancellation_event,
                 )
                 if version:
                     parsed_version = version
@@ -405,10 +435,11 @@ class PreflightInspector:
         version_args: tuple[str, ...],
         *,
         timeout_seconds: int = _DEFAULT_COMMAND_PROBE_TIMEOUT_SECONDS,
+        cancellation_event: Event | None = None,
     ) -> tuple[str | None, str | None]:
         spec = CommandSpec(argv=(name, *version_args), timeout_seconds=timeout_seconds)
         try:
-            result = self._runner.run(spec)
+            result = self._runner.run(spec, cancel_event=cancellation_event)
         except Exception as exc:
             return None, str(exc)
         output = (result.stdout or result.stderr or "").strip()
@@ -417,7 +448,13 @@ class PreflightInspector:
             return None, first_line or f"exit_code={result.exit_code}"
         return _extract_version(first_line), None
 
-    def _probe_python_module(self, distribution_name: str, import_name: str) -> ToolAvailability:
+    def _probe_python_module(
+        self,
+        distribution_name: str,
+        import_name: str,
+        *,
+        cancellation_event: Event | None = None,
+    ) -> ToolAvailability:
         python_code = (
             "import importlib,importlib.metadata,sys;"
             f"importlib.import_module('{import_name}');"
@@ -425,7 +462,7 @@ class PreflightInspector:
         )
         spec = CommandSpec(argv=(sys.executable, "-c", python_code), timeout_seconds=30)
         try:
-            result = self._runner.run(spec)
+            result = self._runner.run(spec, cancel_event=cancellation_event)
             if result.ok:
                 version = (result.stdout or "").strip().splitlines()[-1]
                 return ToolAvailability(

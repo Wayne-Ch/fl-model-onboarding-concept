@@ -7,6 +7,7 @@ import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -138,6 +139,47 @@ class BlockingPreflightInspector(PassingPreflightInspector):
                     stage=JobState.MOBIUS_BUILDING,
                     classification=FailureClassification.TOOL_UNAVAILABLE,
                     message="mobius adapter unavailable in this environment",
+                ),
+            ),
+            warnings=base.warnings,
+        )
+
+
+class BlockingUntilCancelledPreflightInspector(PassingPreflightInspector):
+    def __init__(self) -> None:
+        self.started = Event()
+        self.seen_cancellation_event: Event | None = None
+
+    def inspect(  # type: ignore[override]
+        self,
+        request: BuildRequest,
+        *,
+        cancellation_event: Event | None = None,
+    ) -> PreflightResult:
+        self.started.set()
+        self.seen_cancellation_event = cancellation_event
+        if cancellation_event is not None:
+            cancellation_event.wait(timeout=5.0)
+        base = super().inspect(request)
+        return PreflightResult(
+            candidate=base.candidate,
+            workspace_root=base.workspace_root,
+            model_cache_dir=base.model_cache_dir,
+            output_dir=base.output_dir,
+            disk_free_gb_workspace=base.disk_free_gb_workspace,
+            disk_free_gb_cache=base.disk_free_gb_cache,
+            tools=base.tools,
+            foundry_catalog_matches=base.foundry_catalog_matches,
+            huggingface_revision=base.huggingface_revision,
+            huggingface_sha=base.huggingface_sha,
+            huggingface_private=base.huggingface_private,
+            huggingface_gated=base.huggingface_gated,
+            cache_key=base.cache_key,
+            blockers=(
+                FailureInfo(
+                    stage=JobState.PREFLIGHT,
+                    classification=FailureClassification.TOOL_UNAVAILABLE,
+                    message="cancelled preflight probe",
                 ),
             ),
             warnings=base.warnings,
@@ -978,6 +1020,25 @@ def test_cancellation_quarantines_partial_output(tmp_path: Path) -> None:
         assert (quarantine / "partial.bin").exists()
     finally:
         service.close()
+
+
+def test_service_close_cancels_inflight_preflight_probe(tmp_path: Path) -> None:
+    inspector = BlockingUntilCancelledPreflightInspector()
+    service = _service(tmp_path, preflight_inspector=inspector)
+    closed = False
+    try:
+        service.create_build(_submission(), idempotency_key="k-close-during-preflight")
+        assert inspector.started.wait(timeout=5.0)
+        service.close()
+        closed = True
+        assert inspector.seen_cancellation_event is not None
+        assert inspector.seen_cancellation_event.is_set()
+    finally:
+        if not closed:
+            try:
+                service.close()
+            except Exception:
+                pass
 
 
 def test_artifact_task_gating_and_failed_artifact_block(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import inspect as py_inspect
 import json
 import os
 import re
@@ -5092,7 +5093,10 @@ class LocalOnboardingService:
             self._store.save_job(job)
 
         try:
-            preflight = self._inspect_preflight(job.request)
+            preflight = self._inspect_preflight(
+                job.request,
+                cancellation_event=cancellation_event,
+            )
         except Exception as exc:
             classified = FailureInfo(
                 stage=JobState.PREFLIGHT,
@@ -5212,7 +5216,12 @@ class LocalOnboardingService:
                 live.finished_utc = datetime.now(timezone.utc)
             persist()
 
-    def _inspect_preflight(self, request: BuildRequest) -> PreflightResult:
+    def _inspect_preflight(
+        self,
+        request: BuildRequest,
+        *,
+        cancellation_event: Event | None = None,
+    ) -> PreflightResult:
         result, _, _ = self._inspect_preflight_with_cache_state(
             request,
             fallback_cache_payload={
@@ -5225,16 +5234,39 @@ class LocalOnboardingService:
                 "recipe_version": request.recipe_version,
                 "recipe_status": request.recipe_status,
             },
+            cancellation_event=cancellation_event,
         )
         return result
+
+    def _call_preflight_inspector(
+        self,
+        request: BuildRequest,
+        *,
+        cancellation_event: Event | None = None,
+    ) -> PreflightResult:
+        inspect_callable = self._preflight_inspector.inspect
+        supports_cancellation = False
+        try:
+            supports_cancellation = "cancellation_event" in py_inspect.signature(
+                inspect_callable
+            ).parameters
+        except (TypeError, ValueError):
+            supports_cancellation = False
+        if supports_cancellation:
+            return inspect_callable(request, cancellation_event=cancellation_event)
+        return inspect_callable(request)
 
     def _inspect_preflight_with_cache_state(
         self,
         request: BuildRequest,
         *,
         fallback_cache_payload: dict[str, object],
+        cancellation_event: Event | None = None,
     ) -> tuple[PreflightResult, bool, str]:
-        result = self._preflight_inspector.inspect(request)
+        result = self._call_preflight_inspector(
+            request,
+            cancellation_event=cancellation_event,
+        )
         cache_key = result.cache_key or _sha256_json(
             {
                 **fallback_cache_payload,

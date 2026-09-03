@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 
 from pathlib import Path
+from threading import Event
 
 from fl_model_onboarding.adapters.interfaces import CommandResult, CommandSpec, HuggingFaceMetadata
 from fl_model_onboarding.candidates import PHASE0_CANDIDATES
@@ -354,6 +355,42 @@ def test_preflight_package_probe_uses_current_sys_executable(tmp_path: Path) -> 
     assert runner.python_commands
     expected = Path(sys.executable).resolve()
     assert all(Path(command).resolve() == expected for command in runner.python_commands)
+
+
+def test_preflight_probe_forwards_cancellation_event(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def __init__(self) -> None:
+            self.cancel_events: list[object | None] = []
+
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            self.cancel_events.append(cancel_event)
+            argv = spec.argv
+            if argv[:2] == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="0.11.0\n", stderr="")
+            if argv[:2] == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0 help\n", stderr="")
+            if argv[:2] == ("mobius", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0\n", stderr="")
+            if argv[:2] == ("olive", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0 help\n", stderr="")
+            if argv[:2] == ("olive", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0\n", stderr="")
+            if _is_python_probe(spec):
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    runner = Runner()
+    request = _request(tmp_path, tmp_path / "out")
+    cancellation = Event()
+    result = PreflightInspector(runner, FakeFoundry(), FakeHF()).inspect(
+        request,
+        cancellation_event=cancellation,
+    )
+    assert result.ok
+    assert runner.cancel_events
+    assert all(event is cancellation for event in runner.cancel_events)
 
 
 def test_preflight_probe_failure_is_not_reported_as_missing_dependency(tmp_path: Path) -> None:
