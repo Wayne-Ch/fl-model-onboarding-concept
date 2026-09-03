@@ -1,7 +1,7 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import { OnboardingShell } from "./App";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isAttemptWorkflowTerminal, OnboardingShell, POLL_INTERVAL_MS } from "./App";
 import type {
   ApiClient,
   AsrInferenceResult,
@@ -911,5 +911,411 @@ describe("OnboardingShell", () => {
 
     await screen.findByText("Hello from ASR.");
     expect(inferAsr).toHaveBeenCalledWith("artifact-2", expect.any(File));
+  });
+});
+
+describe("isAttemptWorkflowTerminal", () => {
+  function attempt(overrides: Partial<RecipeAttemptStatus> = {}): RecipeAttemptStatus {
+    return {
+      attemptId: "attempt-1",
+      recipeFingerprint: "f".repeat(64),
+      state: "running",
+      gates: [],
+      workflowOutcome: "not_applicable",
+      ...overrides
+    };
+  }
+
+  it("treats legacy (not_applicable) attempts as terminal exactly when their own state is terminal", () => {
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "not_applicable", state: "failed" }))).toBe(true);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "not_applicable", state: "succeeded" }))).toBe(true);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "not_applicable", state: "cancelled" }))).toBe(true);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "not_applicable", state: "running" }))).toBe(false);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "not_applicable", state: "generated" }))).toBe(false);
+  });
+
+  it("treats a pending candidate workflow as nonterminal even when the parent attempt/job already failed", () => {
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "pending", state: "failed" }))).toBe(false);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "pending", state: "succeeded" }))).toBe(false);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "pending", state: "running" }))).toBe(false);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "pending", state: "cancelled" }))).toBe(false);
+  });
+
+  it("treats selected/exhausted/reused candidate workflows as terminal regardless of the parent attempt's own state", () => {
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "selected", state: "failed" }))).toBe(true);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "selected", state: "running" }))).toBe(true);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "exhausted", state: "failed" }))).toBe(true);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "reused", state: "succeeded" }))).toBe(true);
+    expect(isAttemptWorkflowTerminal(attempt({ workflowOutcome: "reused", state: "running" }))).toBe(true);
+  });
+});
+
+describe("OnboardingShell candidate-workflow polling lifecycle", () => {
+  const eligibleFingerprint = "2222222222222222222222222222222222222222222222222222222222222222";
+
+  beforeEach(() => {
+    // `shouldAdvanceTime` lets the fake clock auto-tick alongside real time
+    // for React's scheduler/microtask-driven work (otherwise React 18's
+    // scheduler, which falls back to timers in jsdom, never flushes and
+    // every render/effect hangs). Explicit `vi.advanceTimersByTimeAsync`
+    // calls below still fast-forward past POLL_INTERVAL_MS deterministically.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function candidatePendingAttempt(overrides: Partial<RecipeAttemptStatus> = {}): RecipeAttemptStatus {
+    return {
+      attemptId: "attempt-1",
+      recipeFingerprint: eligibleFingerprint,
+      state: "running",
+      buildJobId: "job-1",
+      gates: [],
+      workflowOutcome: "pending",
+      ...overrides
+    };
+  }
+
+  function fallbackSelectedAttempt(): RecipeAttemptStatus {
+    return {
+      attemptId: "attempt-1",
+      recipeFingerprint: eligibleFingerprint,
+      state: "failed",
+      buildJobId: "job-1",
+      gates: [],
+      workflowOutcome: "selected",
+      candidateSelection: {
+        lineageSelectionState: "selected",
+        maxCandidates: 2,
+        selectedCandidate: {
+          candidateAttemptId: "cand-1",
+          attemptId: "attempt-fallback",
+          candidateIndex: 1,
+          candidateId: "int4-block-size-64"
+        },
+        candidates: [
+          {
+            candidateAttemptId: "cand-0",
+            attemptId: "attempt-1",
+            candidateIndex: 0,
+            candidateId: "default-int4",
+            role: "default",
+            attemptState: "failed",
+            recipeFingerprint: eligibleFingerprint,
+            dispositionReasons: [],
+            selectionStatus: "not_selected",
+            invocationCounters: {},
+            validatedScope: {}
+          },
+          {
+            candidateAttemptId: "cand-1",
+            attemptId: "attempt-fallback",
+            candidateIndex: 1,
+            candidateId: "int4-block-size-64",
+            role: "quality_retry",
+            attemptState: "succeeded",
+            recipeFingerprint: "3333333333333333333333333333333333333333333333333333333333333333",
+            dispositionReasons: [],
+            selectionStatus: "selected",
+            invocationCounters: {},
+            validatedScope: {}
+          }
+        ],
+        aggregateInvocationCounters: {}
+      }
+    };
+  }
+
+  async function startGeneratedEligibleAttempt(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await screen.findByText(/Connected/);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.selectOptions(screen.getByLabelText("Model"), generatedEligibleModel.id);
+    await user.click(
+      screen.getByLabelText(`Confirm automatic recipe attempt for fingerprint ${eligibleFingerprint}`)
+    );
+    await user.click(await screen.findByRole("button", { name: "Run automatic recipe attempt" }));
+  }
+
+  it("Round 7 regression: continues polling the parent attempt after the default job/attempt fails until a fallback candidate is selected, while job/event polling stops immediately", async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: candidatePendingAttempt()
+      })
+    );
+    const getBuildStatus = vi.fn(async () =>
+      statusFor(generatedEligibleModel, "failed", {
+        cancellable: false,
+        failure: {
+          stage: "quality_validation",
+          classification: "validation_failed",
+          message: "Default candidate failed quality validation.",
+          retryable: false,
+          logTail: []
+        }
+      })
+    );
+    const getBuildEvents = vi.fn(async () => eventsAt({ sequence: 1, stage: "failed", message: "failed" }));
+    const getGeneratedRecipeAttempt = vi
+      .fn()
+      .mockResolvedValueOnce(candidatePendingAttempt({ state: "failed" }))
+      .mockResolvedValueOnce(fallbackSelectedAttempt());
+
+    const client = createClient({
+      startGeneratedRecipeAttempt,
+      getBuildStatus,
+      getBuildEvents,
+      getGeneratedRecipeAttempt
+    });
+
+    render(<OnboardingShell client={client} />);
+    await startGeneratedEligibleAttempt(user);
+
+    // First combined refresh: the parent build job failed and the parent
+    // attempt itself failed too, but the candidate-selection workflow is
+    // still `pending` (a fallback candidate is verifying in a sibling job).
+    // The UI must reflect that -- not freeze on the stale failed state.
+    await waitFor(() => expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Build and validation in progress.")).toBeInTheDocument();
+    expect(getBuildStatus).toHaveBeenCalledTimes(1);
+    expect(getBuildEvents).toHaveBeenCalledTimes(1);
+
+    // Advance exactly one poll interval: the parent build job is terminal so
+    // job/event polling must not have started (still 1 call each), while
+    // attempt polling continues on the same attemptId and picks up the
+    // fallback's selected outcome.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+    expect(getBuildStatus).toHaveBeenCalledTimes(1);
+    expect(getBuildEvents).toHaveBeenCalledTimes(1);
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(2);
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledWith("attempt-1");
+    await screen.findByText("Automatic quality retry verified and selected.");
+
+    // Now that the workflow resolved, attempt polling must stop too: further
+    // elapsed time issues no further requests of any kind.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+    });
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(2);
+    expect(getBuildStatus).toHaveBeenCalledTimes(1);
+    expect(getBuildEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates the UI and stops attempt polling once the candidate fallback workflow is exhausted", async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: candidatePendingAttempt()
+      })
+    );
+    const getBuildStatus = vi.fn(async () => statusFor(generatedEligibleModel, "failed", { cancellable: false }));
+    const getBuildEvents = vi.fn(async () => eventsAt({ sequence: 1, stage: "failed", message: "failed" }));
+    const exhaustedAttempt: RecipeAttemptStatus = {
+      attemptId: "attempt-1",
+      recipeFingerprint: eligibleFingerprint,
+      state: "failed",
+      buildJobId: "job-1",
+      gates: [],
+      workflowOutcome: "exhausted",
+      failure: {
+        classification: "validation_failed",
+        stage: "quality_validation",
+        message: "No candidate passed quality validation.",
+        evidenceRefs: [],
+        sourceOwner: "fl-onboarding",
+        nextAction: "Review the recipe generation policy."
+      },
+      candidateSelection: {
+        lineageSelectionState: "exhausted",
+        maxCandidates: 2,
+        candidates: [],
+        aggregateInvocationCounters: {}
+      }
+    };
+    const getGeneratedRecipeAttempt = vi
+      .fn()
+      .mockResolvedValueOnce(candidatePendingAttempt({ state: "failed" }))
+      .mockResolvedValueOnce(exhaustedAttempt);
+
+    const client = createClient({
+      startGeneratedRecipeAttempt,
+      getBuildStatus,
+      getBuildEvents,
+      getGeneratedRecipeAttempt
+    });
+
+    render(<OnboardingShell client={client} />);
+    await startGeneratedEligibleAttempt(user);
+
+    await waitFor(() => expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Build and validation in progress.")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+
+    await screen.findByText("No recipe passed validation.");
+    expect(screen.getAllByText(/No candidate passed quality validation\./).length).toBeGreaterThan(0);
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(2);
+
+    // Workflow resolved (exhausted): attempt polling stops.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+    });
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(2);
+  });
+
+  it("legacy not_applicable attempts keep polling on their own state after the job is terminal, and stop once that state is terminal (no regression)", async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+
+    const runningLegacyAttempt: RecipeAttemptStatus = {
+      attemptId: "attempt-legacy",
+      recipeFingerprint: eligibleFingerprint,
+      state: "running",
+      buildJobId: "job-1",
+      gates: [],
+      workflowOutcome: "not_applicable"
+    };
+    const succeededLegacyAttempt: RecipeAttemptStatus = { ...runningLegacyAttempt, state: "succeeded" };
+
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: runningLegacyAttempt
+      })
+    );
+    // The parent build job succeeds immediately (already terminal on the
+    // very first combined refresh).
+    const getBuildStatus = vi.fn(async () => statusFor(generatedEligibleModel, "succeeded", { artifactId: "artifact-1" }));
+    const getBuildEvents = vi.fn(async () => eventsAt({ sequence: 1, stage: "succeeded", message: "done" }));
+    const getGeneratedRecipeAttempt = vi
+      .fn()
+      .mockResolvedValueOnce(runningLegacyAttempt)
+      .mockResolvedValueOnce(succeededLegacyAttempt);
+
+    const client = createClient({
+      startGeneratedRecipeAttempt,
+      getBuildStatus,
+      getBuildEvents,
+      getGeneratedRecipeAttempt
+    });
+
+    render(<OnboardingShell client={client} />);
+    await startGeneratedEligibleAttempt(user);
+
+    // Job/event polling never starts a timer because the job is already
+    // terminal on the first fetch.
+    await waitFor(() => expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(1));
+    expect(getBuildStatus).toHaveBeenCalledTimes(1);
+    expect(getBuildEvents).toHaveBeenCalledTimes(1);
+
+    // Attempt polling must still continue (its own `state` is `running`,
+    // decoupled from the already-terminal job stage) until it converges.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
+
+    // Attempt state is now terminal: further polling stops, and job/event
+    // polling remains stopped (no regression).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+    });
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(2);
+    expect(getBuildStatus).toHaveBeenCalledTimes(1);
+    expect(getBuildEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears poll timers on unmount so no further requests are made", async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: candidatePendingAttempt()
+      })
+    );
+    const getBuildStatus = vi.fn(async () => statusFor(generatedEligibleModel, "downloading"));
+    const getBuildEvents = vi.fn(async () => eventsAt({ sequence: 1, stage: "downloading", message: "downloading" }));
+    const getGeneratedRecipeAttempt = vi.fn(async () => candidatePendingAttempt());
+
+    const client = createClient({
+      startGeneratedRecipeAttempt,
+      getBuildStatus,
+      getBuildEvents,
+      getGeneratedRecipeAttempt
+    });
+
+    const { unmount } = render(<OnboardingShell client={client} />);
+    await startGeneratedEligibleAttempt(user);
+
+    await waitFor(() => expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(1));
+    const buildCallsBeforeUnmount = getBuildStatus.mock.calls.length;
+    const attemptCallsBeforeUnmount = getGeneratedRecipeAttempt.mock.calls.length;
+
+    unmount();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 5);
+    });
+
+    expect(getBuildStatus).toHaveBeenCalledTimes(buildCallsBeforeUnmount);
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(attemptCallsBeforeUnmount);
+  });
+
+  it("does not duplicate poll timers across ticks as currentJob/currentAttempt objects update", async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+
+    const startGeneratedRecipeAttempt = vi.fn(
+      async (): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> => ({
+        idempotentReplay: false,
+        build: statusFor(generatedEligibleModel, "queued"),
+        attempt: candidatePendingAttempt()
+      })
+    );
+    const getBuildStatus = vi.fn(async () => statusFor(generatedEligibleModel, "downloading"));
+    const getBuildEvents = vi.fn(async () => eventsAt({ sequence: 1, stage: "downloading", message: "downloading" }));
+    const getGeneratedRecipeAttempt = vi.fn(async () => candidatePendingAttempt());
+
+    const client = createClient({
+      startGeneratedRecipeAttempt,
+      getBuildStatus,
+      getBuildEvents,
+      getGeneratedRecipeAttempt
+    });
+
+    render(<OnboardingShell client={client} />);
+    await startGeneratedEligibleAttempt(user);
+
+    await waitFor(() => expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(1));
+    const buildCallsAfterStart = getBuildStatus.mock.calls.length;
+    const attemptCallsAfterStart = getGeneratedRecipeAttempt.mock.calls.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+    // Exactly one additional call per timer for this tick -- more than one
+    // would indicate a duplicate/leaked interval from a stale render.
+    expect(getBuildStatus).toHaveBeenCalledTimes(buildCallsAfterStart + 1);
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(attemptCallsAfterStart + 1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+    expect(getBuildStatus).toHaveBeenCalledTimes(buildCallsAfterStart + 2);
+    expect(getGeneratedRecipeAttempt).toHaveBeenCalledTimes(attemptCallsAfterStart + 2);
   });
 });
