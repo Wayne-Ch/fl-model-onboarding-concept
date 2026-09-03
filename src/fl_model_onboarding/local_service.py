@@ -1401,32 +1401,126 @@ class LocalOnboardingService:
         attempt_id: str,
         winner_attempt: Any,
     ) -> Any:
-        attempt = self._recipe_attempt_store.get_attempt(attempt_id)
-        if attempt.state == AttemptState.SUCCEEDED:
-            return attempt
-        if attempt.state != AttemptState.GENERATED:
-            raise ServiceError(
-                code="RECIPE_ATTEMPT_ALREADY_STARTED",
-                message=(
-                    f"Recipe attempt '{attempt.attempt_id}' is already in state '{attempt.state.value}' "
-                    "without a recoverable build job mapping."
-                ),
-                status_code=409,
-            )
-        if winner_attempt.state != AttemptState.SUCCEEDED:
-            self._raise_candidate_selection_reuse_integrity_error(
-                f"Cannot materialize reuse from non-succeeded winner attempt '{winner_attempt.attempt_id}'."
-            )
-        self._recipe_attempt_store.start_attempt(attempt.attempt_id)
-        for gate in winner_attempt.gate_results:
-            self._recipe_attempt_store.record_attempt_gate(
-                attempt_id=attempt.attempt_id,
-                gate=gate.gate,
-                status=gate.status,
-                evidence_ref=gate.evidence_ref,
-                metrics_ref=gate.metrics_ref,
-            )
-        return self._recipe_attempt_store.finish_attempt_succeeded(attempt.attempt_id)
+        """Serialize and idempotently drive the multi-step (get -> start ->
+        copy gates -> finish) materialization of a candidate-selection-reuse
+        attempt.
+
+        Concurrent `create_generated_recipe_attempt` calls that resolve the
+        SAME idempotency key -- and therefore the same `attempt_id` -- must
+        never race each other through this sequence: `start_attempt`,
+        `record_attempt_gate`, and `finish_attempt_succeeded` each open and
+        commit their own store-level transaction, so without additional
+        serialization here a second concurrent caller could read a stale
+        `GENERATED` snapshot and call `start_attempt` again after a first
+        caller already transitioned the row to `RUNNING`, surfacing an
+        `AttemptStateTransitionError` (mapped to a 500) or the generic
+        `RECIPE_ATTEMPT_ALREADY_STARTED` 409 instead of quietly joining the
+        in-flight (or already finished) materialization.
+
+        This uses the exact same per-attempt guard primitive as
+        `_safe_sync_generated_attempt` (`_acquire_attempt_sync_guard`/
+        `_release_attempt_sync_guard`): a `threading.Lock` scoped to this
+        single `attempt_id`, acquired and released without ever holding the
+        service-wide `self._lock` across the guarded work, matching the
+        approved 3B1 lock-ordering design (no call site here blocks on the
+        per-attempt guard while already holding `self._lock`). Every
+        concurrent caller for the same `attempt_id` serializes on that
+        per-attempt lock, re-reads the attempt's *current* persisted state
+        once it acquires the lock, and only then decides whether
+        materialization is still necessary -- so at most one caller ever
+        performs a state transition and every other caller observes and
+        returns the already-materialized result instead of racing it.
+
+        Fresh-process crash/interrupt recovery (e.g. a restart between
+        `start_attempt` and `finish_attempt_succeeded`) is handled by the
+        durable `reuse_source_attempt_id` marker written atomically with the
+        `RUNNING` transition in `start_attempt`: a `RUNNING` attempt whose
+        marker names this exact winner is a recoverable, in-progress reuse
+        materialization -- this path never dispatches a build job or touches
+        `ProductionBuildStageRunner`, so there is never a runner to race or
+        re-invoke -- and is resumed deterministically by copying only the
+        winner gates not yet recorded, then finishing. A `RUNNING` attempt
+        with no marker, or a marker naming a different winner, is never
+        assumed to be a safe reuse resume: it fails closed with a typed 409,
+        exactly like any other in-flight or terminal-but-mismatched state.
+        """
+        guard = self._acquire_attempt_sync_guard(attempt_id)
+        try:
+            with guard.lock:
+                attempt = self._recipe_attempt_store.get_attempt(attempt_id)
+
+                if attempt.state == AttemptState.SUCCEEDED:
+                    reuse_source = self._recipe_attempt_store.get_attempt_reuse_source(attempt_id)
+                    if reuse_source == winner_attempt.attempt_id:
+                        return attempt
+                    self._raise_candidate_selection_reuse_integrity_error(
+                        f"Recipe attempt '{attempt_id}' already succeeded without a matching reuse "
+                        f"marker for winner attempt '{winner_attempt.attempt_id}'."
+                    )
+
+                if attempt.state == AttemptState.RUNNING:
+                    reuse_source = self._recipe_attempt_store.get_attempt_reuse_source(attempt_id)
+                    if reuse_source != winner_attempt.attempt_id:
+                        raise ServiceError(
+                            code="RECIPE_ATTEMPT_ALREADY_STARTED",
+                            message=(
+                                f"Recipe attempt '{attempt_id}' is already running without a recoverable "
+                                "reuse-materialization marker for this winner."
+                            ),
+                            status_code=409,
+                        )
+                    if winner_attempt.state != AttemptState.SUCCEEDED:
+                        self._raise_candidate_selection_reuse_integrity_error(
+                            "Cannot resume reuse materialization from non-succeeded winner attempt "
+                            f"'{winner_attempt.attempt_id}'."
+                        )
+                    for index, recorded_gate in enumerate(attempt.gate_results):
+                        if (
+                            index >= len(winner_attempt.gate_results)
+                            or recorded_gate.gate != winner_attempt.gate_results[index].gate
+                        ):
+                            self._raise_candidate_selection_reuse_integrity_error(
+                                f"Recipe attempt '{attempt_id}' has a partial gate history that does not "
+                                f"match winner attempt '{winner_attempt.attempt_id}'."
+                            )
+                    for gate in winner_attempt.gate_results[len(attempt.gate_results) :]:
+                        self._recipe_attempt_store.record_attempt_gate(
+                            attempt_id=attempt_id,
+                            gate=gate.gate,
+                            status=gate.status,
+                            evidence_ref=gate.evidence_ref,
+                            metrics_ref=gate.metrics_ref,
+                        )
+                    return self._recipe_attempt_store.finish_attempt_succeeded(attempt_id)
+
+                if attempt.state != AttemptState.GENERATED:
+                    raise ServiceError(
+                        code="RECIPE_ATTEMPT_ALREADY_STARTED",
+                        message=(
+                            f"Recipe attempt '{attempt.attempt_id}' is already in state '{attempt.state.value}' "
+                            "without a recoverable build job mapping."
+                        ),
+                        status_code=409,
+                    )
+                if winner_attempt.state != AttemptState.SUCCEEDED:
+                    self._raise_candidate_selection_reuse_integrity_error(
+                        f"Cannot materialize reuse from non-succeeded winner attempt '{winner_attempt.attempt_id}'."
+                    )
+                self._recipe_attempt_store.start_attempt(
+                    attempt.attempt_id,
+                    reuse_source_attempt_id=winner_attempt.attempt_id,
+                )
+                for gate in winner_attempt.gate_results:
+                    self._recipe_attempt_store.record_attempt_gate(
+                        attempt_id=attempt.attempt_id,
+                        gate=gate.gate,
+                        status=gate.status,
+                        evidence_ref=gate.evidence_ref,
+                        metrics_ref=gate.metrics_ref,
+                    )
+                return self._recipe_attempt_store.finish_attempt_succeeded(attempt.attempt_id)
+        finally:
+            self._release_attempt_sync_guard(attempt_id, guard)
 
     def _resolve_generated_recipe_preview(
         self,
@@ -2306,6 +2400,20 @@ class LocalOnboardingService:
                 return self._jobs[mapped_job_id], True, self._serialize_recipe_attempt(attempt)
 
         if reusable_candidate_selection is not None:
+            # `_materialize_reused_generated_attempt` serializes this call against
+            # any other concurrent caller resolving the SAME `attempt.attempt_id`
+            # (i.e. the same Idempotency-Key) via a per-attempt guard, and is
+            # itself idempotent: every caller -- whether it performs the
+            # materialization or joins an already-materialized/in-flight one --
+            # observes and returns the same succeeded attempt. This never creates
+            # a new BuildJob for `attempt.attempt_id`: `_attempt_to_build_job`/
+            # `_build_job_to_attempt` are deliberately left without an entry for
+            # this attempt_id (reuse never dispatches to the build stage runner),
+            # so the `job_id` returned below is an alias of the selected winner's
+            # existing build, not a distinct job for this attempt. Current
+            # contracts key a returned build purely by `job_id` for polling, so
+            # this aliasing is safe as long as callers do not assume
+            # `job.request.generated_recipe_attempt` identifies *this* attempt.
             try:
                 materialized_attempt = self._materialize_reused_generated_attempt(
                     attempt_id=attempt.attempt_id,

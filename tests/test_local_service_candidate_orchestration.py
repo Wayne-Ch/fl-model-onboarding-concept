@@ -17,7 +17,7 @@ import sys
 import time
 
 from pathlib import Path
-from threading import Event
+from threading import Barrier, Event, Thread
 
 import pytest
 
@@ -26,13 +26,15 @@ import test_local_service as tls  # noqa: E402
 
 from fl_model_onboarding.adapters.interfaces import CommandResult, CommandSpec  # noqa: E402
 from fl_model_onboarding.contracts import CandidateModality, JobState  # noqa: E402
-from fl_model_onboarding.local_service import BuildSubmission, LocalOnboardingService  # noqa: E402
+from fl_model_onboarding.local_service import BuildSubmission, LocalOnboardingService, ServiceError  # noqa: E402
 from fl_model_onboarding.production_runner import ProductionBuildStageRunner, SMOLLM2_REVISION  # noqa: E402
 from fl_model_onboarding.recipe_attempt_store import (  # noqa: E402
     AttemptState,
     CandidateLineageSelectionState,
     CandidateWinnerStatus,
     RecipeAttemptStoreError,
+    build_attempt_request_fingerprint,
+    build_attempt_request_from_generated,
 )
 
 _JSON_PROMPT = "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm."
@@ -1252,3 +1254,447 @@ def test_recovery_transaction_failure_leaves_lineage_pending_and_is_retried_late
         assert lineage_final.selection_state == CandidateLineageSelectionState.EXHAUSTED
     finally:
         healthy_restart.close()
+
+
+# --------------------------------------------------------------------------
+# Reviewer-REJECTED 3B2a fix: concurrent same-Idempotency-Key reuse
+# materialization race (Linus revision).
+#
+# `_materialize_reused_generated_attempt` drives a multi-transaction sequence
+# (get GENERATED -> start -> copy winner gates -> finish SUCCEEDED). Before
+# this revision, two concurrent `create_generated_recipe_attempt` calls
+# resolving the SAME Idempotency-Key -- and therefore the same attempt_id --
+# could both observe a stale GENERATED read and both call `start_attempt`,
+# so the loser surfaced a 409/500 instead of transparently joining the
+# winner's materialization. The tests below exercise the real
+# `create_generated_recipe_attempt` request path (not the store in
+# isolation) against the fix: a per-attempt guard
+# (`_acquire_attempt_sync_guard`/`_release_attempt_sync_guard`, the same
+# primitive `_safe_sync_generated_attempt` already uses) that serializes
+# concurrent callers for the same attempt_id without ever holding the
+# service-wide `self._lock` across the guarded work, plus a durable
+# `reuse_source_attempt_id` marker (written atomically with the `RUNNING`
+# transition) that lets a fresh process safely resume an interrupted
+# materialization instead of guessing.
+# --------------------------------------------------------------------------
+
+
+def _run_concurrently(fns) -> tuple[list[object], list[BaseException | None]]:
+    """Run each zero-arg callable in `fns` on its own thread, releasing every
+    thread simultaneously via a shared `Barrier` once all of them have
+    reached the starting line, and return `(results, errors)` in the same
+    order as `fns`: `results[i]` is `fns[i]`'s return value (or `None` if it
+    raised) and `errors[i]` is the exception it raised (or `None` on
+    success). This maximizes the chance of exercising the exact race window
+    the reviewer's repro describes, rather than a merely-sequential retry."""
+    barrier = Barrier(len(fns))
+    results: list[object] = [None] * len(fns)
+    errors: list[BaseException | None] = [None] * len(fns)
+
+    def _runner(index: int, fn) -> None:  # noqa: ANN001
+        barrier.wait()
+        try:
+            results[index] = fn()
+        except BaseException as exc:  # noqa: BLE001 - captured for the caller to inspect/raise
+            errors[index] = exc
+
+    threads = [Thread(target=_runner, args=(index, fn)) for index, fn in enumerate(fns)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30.0)
+        assert not thread.is_alive(), "Concurrent reuse-materialization thread did not complete: possible deadlock."
+    return results, errors
+
+
+def _assert_no_thread_errors(errors: list[BaseException | None], *, context: str) -> None:
+    for index, error in enumerate(errors):
+        if error is not None:
+            raise AssertionError(f"{context}: thread {index} raised {error!r}") from error
+
+
+def test_concurrent_same_idempotency_key_reuse_materialization_is_race_free(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact reviewer repro: multiple threads calling
+    `create_generated_recipe_attempt` with the SAME Idempotency-Key for a
+    candidate-selection-reuse fingerprint must all succeed with the same
+    materialized attempt/reuse result -- never a 409/500 from a losing
+    thread -- and the reuse path must never dispatch to the build stage
+    runner. Repeated across many cycles (fresh Idempotency-Key per cycle) to
+    catch an intermittent race rather than a merely-lucky single trial."""
+    service = _service(tmp_path)
+    try:
+        source_job, source_attempt, default_fingerprint = _create_default_attempt(
+            service, idempotency_key="race-same-key-source-1"
+        )
+        assert _wait_for_job_terminal(service, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service, source_attempt_id)
+        source_candidate = service._recipe_attempt_store.list_candidate_attempts(source_attempt_id)[0]
+        source_mobius = source_candidate.invocation_counters.mobius_build_invocation_count
+        source_olive = source_candidate.invocation_counters.olive_optimize_invocation_count
+
+        dispatch_counts = _install_runner_dispatch_spy(service, monkeypatch)
+        thread_count = 6
+        cycles = 12
+        for cycle in range(cycles):
+            key = f"race-same-key-consumer-{cycle}"
+
+            def _call(key: str = key):
+                return service.create_generated_recipe_attempt(
+                    recipe_fingerprint=default_fingerprint,
+                    idempotency_key=key,
+                    model_id=_model(),
+                )
+
+            results, errors = _run_concurrently([_call for _ in range(thread_count)])
+            _assert_no_thread_errors(errors, context=f"cycle {cycle}")
+
+            attempt_ids = {result[2]["attempt_id"] for result in results}  # type: ignore[index]
+            states = {result[2]["state"] for result in results}  # type: ignore[index]
+            job_ids = {result[0].job_id for result in results}  # type: ignore[index]
+            assert len(attempt_ids) == 1, f"cycle {cycle}: expected exactly one materialized attempt, got {attempt_ids}"
+            assert states == {"succeeded"}, f"cycle {cycle}: every caller must observe the succeeded reuse result"
+            assert job_ids == {source_job.job_id}, f"cycle {cycle}: job_id must alias the winner's existing build"
+            for result in results:
+                assert result[2]["candidate_selection_reuse"]["winner_candidate_attempt_id"] == (  # type: ignore[index]
+                    source_candidate.candidate_attempt_id
+                )
+            assert not service._attempt_sync_guards, f"cycle {cycle}: attempt sync guard leaked"
+
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+
+        # The winner's own recorded history/counters are never mutated by any
+        # of the concurrent reuse materializations.
+        source_candidate_after = service._recipe_attempt_store.get_candidate_attempt(
+            source_candidate.candidate_attempt_id
+        )
+        assert source_candidate_after.invocation_counters.mobius_build_invocation_count == source_mobius
+        assert source_candidate_after.invocation_counters.olive_optimize_invocation_count == source_olive
+    finally:
+        service.close()
+
+
+def test_concurrent_different_idempotency_keys_reuse_same_winner_create_distinct_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concurrent callers using DIFFERENT Idempotency-Keys against the same
+    reusable winner must each safely materialize their OWN distinct attempt
+    (the per-attempt guard is keyed by attempt_id, so unrelated attempt_ids
+    never contend on the same lock) -- all succeed, none dispatch to the
+    runner, and the shared winner's own counters/history stay untouched."""
+    service = _service(tmp_path)
+    try:
+        source_job, source_attempt, default_fingerprint = _create_default_attempt(
+            service, idempotency_key="race-distinct-keys-source-1"
+        )
+        assert _wait_for_job_terminal(service, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service, source_attempt_id)
+        source_candidate = service._recipe_attempt_store.list_candidate_attempts(source_attempt_id)[0]
+        source_mobius = source_candidate.invocation_counters.mobius_build_invocation_count
+        source_olive = source_candidate.invocation_counters.olive_optimize_invocation_count
+
+        dispatch_counts = _install_runner_dispatch_spy(service, monkeypatch)
+        thread_count = 6
+        keys = [f"race-distinct-keys-consumer-{index}" for index in range(thread_count)]
+
+        def _make_call(key: str):
+            def _call():
+                return service.create_generated_recipe_attempt(
+                    recipe_fingerprint=default_fingerprint,
+                    idempotency_key=key,
+                    model_id=_model(),
+                )
+
+            return _call
+
+        results, errors = _run_concurrently([_make_call(key) for key in keys])
+        _assert_no_thread_errors(errors, context="distinct-key reuse")
+
+        attempt_ids = [result[2]["attempt_id"] for result in results]  # type: ignore[index]
+        assert len(set(attempt_ids)) == thread_count, "every distinct Idempotency-Key must materialize its own attempt"
+        for result in results:
+            assert result[2]["state"] == "succeeded"  # type: ignore[index]
+            assert result[0].job_id == source_job.job_id  # type: ignore[index]
+            assert result[2]["candidate_selection_reuse"]["winner_candidate_attempt_id"] == (  # type: ignore[index]
+                source_candidate.candidate_attempt_id
+            )
+
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+        assert not service._attempt_sync_guards, "attempt sync guards leaked"
+
+        source_candidate_after = service._recipe_attempt_store.get_candidate_attempt(
+            source_candidate.candidate_attempt_id
+        )
+        assert source_candidate_after.invocation_counters.mobius_build_invocation_count == source_mobius
+        assert source_candidate_after.invocation_counters.olive_optimize_invocation_count == source_olive
+    finally:
+        service.close()
+
+
+def test_reuse_materialization_resumes_after_interrupted_gates_on_fresh_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Crash/partial safety: interrupt the store-level gate-copy loop partway
+    through (simulating a process crash after `start_attempt` committed and
+    3 of 7 winner gates were durably recorded, but before
+    `finish_attempt_succeeded`), then retry the SAME Idempotency-Key against
+    a brand-new `LocalOnboardingService` instance sharing only the
+    persisted, on-disk state stores (an in-memory-only per-attempt guard
+    from the crashed instance can never help here). The durable
+    `reuse_source_attempt_id` marker written atomically with the `RUNNING`
+    transition lets the fresh instance recognize this as a safe reuse resume
+    and complete it deterministically -- copying only the remaining gates,
+    never re-dispatching to the build stage runner -- exactly once."""
+    idempotency_key = "crash-recovery-consumer-1"
+    service_a = _service(tmp_path)
+    try:
+        source_job, source_attempt, default_fingerprint = _create_default_attempt(
+            service_a, idempotency_key="crash-recovery-source-1"
+        )
+        assert _wait_for_job_terminal(service_a, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service_a, source_attempt_id)
+        winner_candidate = service_a._recipe_attempt_store.list_candidate_attempts(source_attempt_id)[0]
+
+        store = service_a._recipe_attempt_store
+        original_record_gate = store.record_attempt_gate
+        call_count = {"n": 0}
+        raise_after = 3  # 3 of 7 gates are durably recorded before the simulated crash.
+
+        def _interrupting_record_gate(**kwargs):  # noqa: ANN003
+            call_count["n"] += 1
+            if call_count["n"] > raise_after:
+                raise RuntimeError("simulated crash mid gate materialization")
+            return original_record_gate(**kwargs)
+
+        store.record_attempt_gate = _interrupting_record_gate  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            service_a.create_generated_recipe_attempt(
+                recipe_fingerprint=default_fingerprint,
+                idempotency_key=idempotency_key,
+                model_id=_model(),
+            )
+        assert not service_a._attempt_sync_guards, "guard leaked after simulated crash"
+
+        interrupted = next(
+            candidate_attempt
+            for candidate_attempt in store.list_attempts()
+            if candidate_attempt.idempotency_key == idempotency_key
+        )
+        assert interrupted.state == AttemptState.RUNNING
+        assert len(interrupted.gate_results) == raise_after
+        assert store.get_attempt_reuse_source(interrupted.attempt_id) == winner_candidate.attempt_id
+    finally:
+        service_a.close()
+
+    # Fresh service instance -- a stand-in for a fresh process after a crash --
+    # sharing only the persisted, on-disk service/job and recipe-attempt
+    # stores (no in-memory state, including per-attempt guards, survives).
+    service_b = _service(tmp_path)
+    try:
+        dispatch_counts = _install_runner_dispatch_spy(service_b, monkeypatch)
+        jobs_before = len(service_b._jobs)
+
+        resumed_job, _replay, resumed_attempt = service_b.create_generated_recipe_attempt(
+            recipe_fingerprint=default_fingerprint,
+            idempotency_key=idempotency_key,
+            model_id=_model(),
+        )
+        assert resumed_attempt["state"] == "succeeded"
+        assert resumed_attempt["attempt_id"] == interrupted.attempt_id
+        assert resumed_job.job_id == source_job.job_id
+        assert len(service_b._jobs) == jobs_before, "resume must never create a new BuildJob"
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+        assert not service_b._attempt_sync_guards
+
+        final_attempt = service_b._recipe_attempt_store.get_attempt(interrupted.attempt_id)
+        assert final_attempt.state == AttemptState.SUCCEEDED
+        assert len(final_attempt.gate_results) == 7
+        winner_full = service_b._recipe_attempt_store.get_attempt(winner_candidate.attempt_id)
+        assert [g.gate for g in final_attempt.gate_results] == [g.gate for g in winner_full.gate_results]
+        assert [g.status for g in final_attempt.gate_results] == [g.status for g in winner_full.gate_results]
+        assert [g.evidence_ref for g in final_attempt.gate_results] == [
+            g.evidence_ref for g in winner_full.gate_results
+        ]
+
+        # Retrying yet again (already SUCCEEDED, matching marker) stays a safe,
+        # idempotent no-op: same result, no re-finish, no runner dispatch.
+        _resumed_job_again, _replay_again, resumed_attempt_again = service_b.create_generated_recipe_attempt(
+            recipe_fingerprint=default_fingerprint,
+            idempotency_key=idempotency_key,
+            model_id=_model(),
+        )
+        assert resumed_attempt_again["state"] == "succeeded"
+        assert resumed_attempt_again["attempt_id"] == interrupted.attempt_id
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+        assert not service_b._attempt_sync_guards
+    finally:
+        service_b.close()
+
+
+def test_reuse_materialization_resumes_after_interrupted_start_with_no_gates_on_fresh_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same crash/partial-safety scenario as
+    `test_reuse_materialization_resumes_after_interrupted_gates_on_fresh_service`,
+    but interrupting immediately after `start_attempt` -- before even the
+    first gate is recorded -- to cover the narrower recoverable window."""
+    idempotency_key = "crash-recovery-no-gates-consumer-1"
+    service_a = _service(tmp_path)
+    try:
+        source_job, source_attempt, default_fingerprint = _create_default_attempt(
+            service_a, idempotency_key="crash-recovery-no-gates-source-1"
+        )
+        assert _wait_for_job_terminal(service_a, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service_a, source_attempt_id)
+        winner_candidate = service_a._recipe_attempt_store.list_candidate_attempts(source_attempt_id)[0]
+
+        store = service_a._recipe_attempt_store
+
+        def _always_interrupt(**kwargs):  # noqa: ANN003, ARG001
+            raise RuntimeError("simulated crash immediately after start_attempt")
+
+        store.record_attempt_gate = _always_interrupt  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            service_a.create_generated_recipe_attempt(
+                recipe_fingerprint=default_fingerprint,
+                idempotency_key=idempotency_key,
+                model_id=_model(),
+            )
+        assert not service_a._attempt_sync_guards
+
+        interrupted = next(
+            candidate_attempt
+            for candidate_attempt in store.list_attempts()
+            if candidate_attempt.idempotency_key == idempotency_key
+        )
+        assert interrupted.state == AttemptState.RUNNING
+        assert len(interrupted.gate_results) == 0
+        assert store.get_attempt_reuse_source(interrupted.attempt_id) == winner_candidate.attempt_id
+    finally:
+        service_a.close()
+
+    service_b = _service(tmp_path)
+    try:
+        dispatch_counts = _install_runner_dispatch_spy(service_b, monkeypatch)
+
+        resumed_job, _replay, resumed_attempt = service_b.create_generated_recipe_attempt(
+            recipe_fingerprint=default_fingerprint,
+            idempotency_key=idempotency_key,
+            model_id=_model(),
+        )
+        assert resumed_attempt["state"] == "succeeded"
+        assert resumed_attempt["attempt_id"] == interrupted.attempt_id
+        assert resumed_job.job_id == source_job.job_id
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+        assert not service_b._attempt_sync_guards
+
+        final_attempt = service_b._recipe_attempt_store.get_attempt(interrupted.attempt_id)
+        assert final_attempt.state == AttemptState.SUCCEEDED
+        assert len(final_attempt.gate_results) == 7
+    finally:
+        service_b.close()
+
+
+def test_running_attempt_without_reuse_marker_fails_closed_instead_of_resuming(
+    tmp_path: Path,
+) -> None:
+    """A `RUNNING` attempt with no durable reuse marker (or a marker naming a
+    different winner) must never be treated as a safe resume: it is always
+    either a real, in-flight non-reuse build or an untrusted/corrupt state,
+    and `_materialize_reused_generated_attempt` must fail closed with the
+    typed 409 exactly like any other unrecoverable state, never silently
+    finishing it via copied winner gates."""
+    service = _service(tmp_path)
+    try:
+        source_job, source_attempt, default_fingerprint = _create_default_attempt(
+            service, idempotency_key="fail-closed-source-1"
+        )
+        assert _wait_for_job_terminal(service, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service, source_attempt_id)
+        winner_candidate = service._recipe_attempt_store.list_candidate_attempts(source_attempt_id)[0]
+        winner_attempt = service._recipe_attempt_store.get_attempt(winner_candidate.attempt_id)
+
+        store = service._recipe_attempt_store
+        reusable = service._resolve_reusable_candidate_selection(
+            record=store.get_generated_recipe(default_fingerprint)
+        )
+        assert reusable is not None
+
+        # Fabricate a RUNNING attempt for a fresh Idempotency-Key with no reuse
+        # marker at all -- as if a real (non-reuse) build were genuinely
+        # in-flight for it.
+        attempt_request = build_attempt_request_from_generated(reusable.winner_generated_record)
+        request_fingerprint = build_attempt_request_fingerprint(attempt_request)
+        untrusted_attempt, _replay = store.create_attempt(
+            idempotency_key="fail-closed-untrusted-1",
+            request=attempt_request,
+            request_fingerprint=request_fingerprint,
+        )
+        store.start_attempt(untrusted_attempt.attempt_id)  # no reuse_source_attempt_id
+        assert store.get_attempt_reuse_source(untrusted_attempt.attempt_id) is None
+
+        with pytest.raises(ServiceError) as excinfo:
+            service._materialize_reused_generated_attempt(
+                attempt_id=untrusted_attempt.attempt_id,
+                winner_attempt=winner_attempt,
+            )
+        assert excinfo.value.code == "RECIPE_ATTEMPT_ALREADY_STARTED"
+        assert excinfo.value.status_code == 409
+        assert not service._attempt_sync_guards
+
+        # Still RUNNING, untouched -- never silently finished.
+        assert store.get_attempt(untrusted_attempt.attempt_id).state == AttemptState.RUNNING
+    finally:
+        service.close()
+
+
+def test_non_reuse_generated_attempt_idempotent_replay_is_unaffected(tmp_path: Path) -> None:
+    """Sanity check that the per-attempt guard added for the reuse path does
+    not change ordinary (non-reuse) `create_generated_recipe_attempt`
+    idempotent replay: a second call with the same Idempotency-Key -- before
+    any candidate-selection winner exists -- must still short-circuit to the
+    exact same job/attempt via the pre-existing `_attempt_to_build_job`
+    mapping, with no new job created."""
+    service = _service(tmp_path)
+    try:
+        preview = service.generated_recipe_preview(model_id=_model(), task=CandidateModality.LLM)
+        generated = preview["generated_recipe"]
+        assert generated["candidate_selection_reuse"] is None
+        fingerprint = str(generated["fingerprint"])
+
+        first_job, first_replay, first_attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="non-reuse-replay-1",
+            model_id=_model(),
+        )
+        assert first_replay is False
+        jobs_before = len(service._jobs)
+
+        second_job, second_replay, second_attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="non-reuse-replay-1",
+            model_id=_model(),
+        )
+        assert second_replay is True
+        assert second_job.job_id == first_job.job_id
+        assert second_attempt["attempt_id"] == first_attempt["attempt_id"]
+        assert len(service._jobs) == jobs_before
+    finally:
+        service.close()

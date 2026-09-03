@@ -28,6 +28,7 @@ from fl_model_onboarding.quality_validation import (
 )
 from fl_model_onboarding.recipe_attempt_store import (
     ATTEMPT_GATE_ORDER,
+    RECIPE_ATTEMPT_STORE_SCHEMA_VERSION,
     AttemptFailure,
     AttemptFailureClassification,
     AttemptGate,
@@ -474,7 +475,7 @@ def test_migration_v2_to_v3_is_additive_and_idempotent_on_reopen(tmp_path: Path)
 
     migrated = RecipeAttemptStore(db_path)
     with sqlite3.connect(db_path) as check:
-        assert int(check.execute("PRAGMA user_version").fetchone()[0]) == 3
+        assert int(check.execute("PRAGMA user_version").fetchone()[0]) == RECIPE_ATTEMPT_STORE_SCHEMA_VERSION
         tables = {
             row[0] for row in check.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
         }
@@ -493,7 +494,7 @@ def test_migration_v2_to_v3_is_additive_and_idempotent_on_reopen(tmp_path: Path)
     # existing lineage/candidate data untouched.
     reopened = RecipeAttemptStore(db_path)
     with sqlite3.connect(db_path) as check_again:
-        assert int(check_again.execute("PRAGMA user_version").fetchone()[0]) == 3
+        assert int(check_again.execute("PRAGMA user_version").fetchone()[0]) == RECIPE_ATTEMPT_STORE_SCHEMA_VERSION
     assert reopened.get_candidate_lineage(attempt.attempt_id) is not None
     assert len(reopened.list_candidate_attempts(attempt.attempt_id)) == 1
 

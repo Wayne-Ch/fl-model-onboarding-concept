@@ -50,7 +50,7 @@ assert (
 )
 
 RECIPE_ATTEMPT_SCHEMA_VERSION = "1.0.0"
-RECIPE_ATTEMPT_STORE_SCHEMA_VERSION = 3
+RECIPE_ATTEMPT_STORE_SCHEMA_VERSION = 4
 LEGACY_PROFILE_FINGERPRINT = hashlib.sha256(b"legacy-profile-missing-v1").hexdigest()
 
 _HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -1521,6 +1521,25 @@ class RecipeAttemptStore:
         with self._connect() as connection:
             return self._load_attempt(connection, attempt_id_value)
 
+    def get_attempt_reuse_source(self, attempt_id: str) -> str | None:
+        """Return the durable `reuse_source_attempt_id` marker for `attempt_id`
+        (see `_migrate_v3_to_v4`), or `None` if this attempt was never started
+        as a candidate-selection-reuse materialization. Raises `KeyError` if
+        the attempt does not exist. Deliberately reads the raw column directly
+        rather than going through `RecipeAttempt`/the `recipe_attempt` JSON
+        schema, since this marker is internal bookkeeping for
+        `LocalOnboardingService._materialize_reused_generated_attempt`, not
+        part of the attempt's public serialized shape."""
+        attempt_id_value = _coerce_str(attempt_id, "attempt_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT reuse_source_attempt_id FROM attempts WHERE attempt_id = ?",
+                (attempt_id_value,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(attempt_id_value)
+            return row["reuse_source_attempt_id"]
+
     def list_attempts(self) -> tuple[RecipeAttempt, ...]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -1532,8 +1551,23 @@ class RecipeAttemptStore:
             ).fetchall()
             return tuple(self._load_attempt(connection, row["attempt_id"]) for row in rows)
 
-    def start_attempt(self, attempt_id: str) -> RecipeAttempt:
+    def start_attempt(self, attempt_id: str, *, reuse_source_attempt_id: str | None = None) -> RecipeAttempt:
+        """Transition `attempt_id` from `GENERATED` to `RUNNING`.
+
+        `reuse_source_attempt_id`, when provided, is the winner attempt id a
+        candidate-selection-reuse materialization is being sourced from (see
+        `LocalOnboardingService._materialize_reused_generated_attempt`). It is
+        written atomically with the `RUNNING` transition, in the same
+        transaction, so it is always durable by the time any caller can ever
+        observe this attempt as `RUNNING` -- including a fresh process after a
+        crash/restart. Ordinary (non-reuse) callers omit it and the column
+        stays `NULL`, exactly as it always has been."""
         attempt_id_value = _coerce_str(attempt_id, "attempt_id")
+        normalized_reuse_source = (
+            _coerce_str(reuse_source_attempt_id, "reuse_source_attempt_id")
+            if reuse_source_attempt_id is not None
+            else None
+        )
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE;")
             row = self._load_attempt(connection, attempt_id_value)
@@ -1542,8 +1576,8 @@ class RecipeAttemptStore:
                     f"Attempt '{attempt_id_value}' cannot transition to running from '{row.state.value}'."
                 )
             connection.execute(
-                "UPDATE attempts SET state = ? WHERE attempt_id = ?",
-                (AttemptState.RUNNING.value, attempt_id_value),
+                "UPDATE attempts SET state = ?, reuse_source_attempt_id = ? WHERE attempt_id = ?",
+                (AttemptState.RUNNING.value, normalized_reuse_source, attempt_id_value),
             )
             return self._load_attempt(connection, attempt_id_value)
 
@@ -2654,6 +2688,10 @@ class RecipeAttemptStore:
             self._migrate_v2_to_v3(connection)
             connection.execute("PRAGMA user_version = 3;")
             current = 3
+        if current < 4:
+            self._migrate_v3_to_v4(connection)
+            connection.execute("PRAGMA user_version = 4;")
+            current = 4
         if current != RECIPE_ATTEMPT_STORE_SCHEMA_VERSION:
             raise RecipeAttemptMigrationError(
                 f"Unsupported recipe-attempt store schema version {current}; "
@@ -2846,6 +2884,30 @@ class RecipeAttemptStore:
             """
         )
 
+    def _migrate_v3_to_v4(self, connection: sqlite3.Connection) -> None:
+        """Additive Slice 3B2a revision: a single nullable durable marker column
+        on `attempts` recording which winner attempt a candidate-selection-reuse
+        materialization was sourced from.
+
+        This is the smallest durable state needed to safely resume a reused
+        attempt's `RUNNING` state after a process crash/restart between
+        `start_attempt` and `finish_attempt_succeeded` (see
+        `LocalOnboardingService._materialize_reused_generated_attempt`): the
+        marker is written atomically with the transition to `RUNNING` in
+        `start_attempt`, so a `RUNNING` attempt whose marker names the exact
+        expected winner is known -- without guessing -- to be an in-flight
+        reuse materialization (never a real dispatched build) that is safe to
+        resume by copying only the winner gates not yet recorded. No existing
+        column, table, or the `recipe_attempt` JSON schema is touched; this is
+        read/written directly via SQL, independent of `RecipeAttempt`
+        serialization. Re-running this migration against an already-migrated
+        database is a no-op.
+        """
+        if not self._column_exists(connection, "attempts", "reuse_source_attempt_id"):
+            connection.execute(
+                "ALTER TABLE attempts ADD COLUMN reuse_source_attempt_id TEXT"
+            )
+
     def _ensure_profile_fingerprint_column(
         self,
         connection: sqlite3.Connection,
@@ -2870,11 +2932,32 @@ class RecipeAttemptStore:
         )
 
     def _recover_interrupted_attempts(self, connection: sqlite3.Connection) -> None:
+        """Restart-time fail-closed recovery for ordinary (non-reuse) attempts.
+
+        Any attempt still `RUNNING` at store startup is, in general, an
+        unrecoverable crashed build: nothing durable records enough about an
+        in-flight Mobius/Olive/runtime-validation build to safely resume or
+        re-verify it, so it is unconditionally marked `FAILED` here (a fresh
+        idempotency key is required to retry).
+
+        The one narrow exception is a `RUNNING` attempt whose durable
+        `reuse_source_attempt_id` marker is set (see `_migrate_v3_to_v4` and
+        `LocalOnboardingService._materialize_reused_generated_attempt`): that
+        marker means this attempt's `RUNNING` state came only from an
+        in-progress candidate-selection-reuse materialization -- deterministic
+        gate copies from an already-`SUCCEEDED` winner attempt, never a real
+        dispatched build -- which `_materialize_reused_generated_attempt`
+        itself safely re-validates and resumes (or fails closed, if the
+        marker or partial gate history do not check out) the next time this
+        exact Idempotency-Key is retried. Sweeping it into `FAILED` here would
+        make that always-recoverable case impossible to complete without a
+        needless new attempt.
+        """
         rows = connection.execute(
             """
             SELECT attempt_id
             FROM attempts
-            WHERE state = ?
+            WHERE state = ? AND reuse_source_attempt_id IS NULL
             """,
             (AttemptState.RUNNING.value,),
         ).fetchall()

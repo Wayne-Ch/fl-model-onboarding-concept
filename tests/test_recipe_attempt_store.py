@@ -17,6 +17,7 @@ from fl_model_onboarding.architecture_capabilities import (
 from fl_model_onboarding.recipe_attempt_store import (
     ATTEMPT_GATE_ORDER,
     LEGACY_PROFILE_FINGERPRINT,
+    RECIPE_ATTEMPT_STORE_SCHEMA_VERSION,
     AttemptFailure,
     AttemptFailureClassification,
     AttemptGate,
@@ -667,7 +668,7 @@ def test_migration_v1_to_v2_adds_profile_fingerprint_columns(tmp_path: Path) -> 
     with sqlite3.connect(db_path) as check:
         check.row_factory = sqlite3.Row
         user_version = int(check.execute("PRAGMA user_version").fetchone()[0])
-        assert user_version == 3
+        assert user_version == RECIPE_ATTEMPT_STORE_SCHEMA_VERSION
         generated_columns = {
             row["name"] for row in check.execute("PRAGMA table_info(generated_recipes)").fetchall()
         }
@@ -731,7 +732,7 @@ def test_migration_v1_to_v2_adds_profile_fingerprint_columns(tmp_path: Path) -> 
     # database is idempotent: no error, same schema version, same data.
     reopened = RecipeAttemptStore(db_path)
     with sqlite3.connect(db_path) as check_again:
-        assert int(check_again.execute("PRAGMA user_version").fetchone()[0]) == 3
+        assert int(check_again.execute("PRAGMA user_version").fetchone()[0]) == RECIPE_ATTEMPT_STORE_SCHEMA_VERSION
     assert reopened.get_attempt("attempt-legacy").attempt_id == "attempt-legacy"
     assert reopened.get_candidate_lineage("attempt-legacy") is None
 
