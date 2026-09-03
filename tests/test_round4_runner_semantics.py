@@ -5,6 +5,7 @@ import json
 import sys
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -319,3 +320,206 @@ def test_load_quality_validation_evidence_detects_job_mismatch(tmp_path: Path) -
     )
     assert isinstance(loaded, dict)
     assert loaded["status"] == "metrics-ref-job-mismatch"
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.text = json.dumps(payload)
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+
+class _SequencedClient:
+    def __init__(self, responses: dict[tuple[str, str], list[tuple[int, dict[str, Any]]]]) -> None:
+        self._responses = responses
+        self._offsets: dict[tuple[str, str], int] = {}
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def request(self, method: str, path: str, **kwargs: Any) -> _FakeResponse:
+        key = (method, path)
+        self.calls.append((method, path, kwargs))
+        if key not in self._responses:
+            raise AssertionError(f"Unexpected request: {method} {path}")
+        rows = self._responses[key]
+        if not rows:
+            raise AssertionError(f"No responses configured for {method} {path}")
+        index = self._offsets.get(key, 0)
+        if index >= len(rows):
+            status, payload = rows[-1]
+        else:
+            status, payload = rows[index]
+            self._offsets[key] = index + 1
+        return _FakeResponse(status, payload)
+
+
+def _attempt_payload(
+    *,
+    workflow_outcome: str,
+    lineage_selection_state: str,
+    fallback_attempt_state: str,
+    fallback_selection_status: str,
+) -> dict[str, Any]:
+    fallback_candidate = {
+        "candidate_attempt_id": "cand-fallback",
+        "attempt_id": "attempt-fallback",
+        "candidate_index": 1,
+        "candidate_id": "int4-block-size-64",
+        "role": "quality_retry",
+        "attempt_state": fallback_attempt_state,
+        "selection_status": fallback_selection_status,
+        "invocation_counters": {
+            "mobius_build_invocation_count": None,
+            "olive_optimize_invocation_count": None,
+            "total_invocation_count": None,
+        },
+        "validated_scope": {},
+    }
+    selected_candidate = fallback_candidate if fallback_selection_status == "selected" else None
+    return {
+        "attempt_id": "attempt-parent",
+        "state": "failed",
+        "workflow_outcome": workflow_outcome,
+        "build_job_id": "job-parent",
+        "candidate_selection": {
+            "lineage_selection_state": lineage_selection_state,
+            "selected_candidate": selected_candidate,
+            "candidates": [
+                {
+                    "candidate_attempt_id": "cand-default",
+                    "attempt_id": "attempt-parent",
+                    "candidate_index": 0,
+                    "candidate_id": "default-int4",
+                    "role": "default",
+                    "attempt_state": "failed",
+                    "selection_status": "not_selected",
+                    "invocation_counters": {
+                        "mobius_build_invocation_count": 1,
+                        "olive_optimize_invocation_count": 1,
+                        "total_invocation_count": 2,
+                    },
+                    "validated_scope": {},
+                },
+                fallback_candidate,
+            ],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("terminal_workflow_outcome", "terminal_lineage_state", "terminal_fallback_state", "terminal_selection"),
+    [
+        ("selected", "selected", "succeeded", "selected"),
+        ("exhausted", "exhausted", "failed", "not_selected"),
+    ],
+)
+def test_poll_terminal_attempt_workflow_waits_until_lineage_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_workflow_outcome: str,
+    terminal_lineage_state: str,
+    terminal_fallback_state: str,
+    terminal_selection: str,
+) -> None:
+    module = _load_round_runner_module()
+    parent_path = "/api/recipes/generated/attempts/attempt-parent"
+    pending_payload = _attempt_payload(
+        workflow_outcome="pending",
+        lineage_selection_state="pending",
+        fallback_attempt_state="running",
+        fallback_selection_status="not_selected",
+    )
+    terminal_payload = _attempt_payload(
+        workflow_outcome=terminal_workflow_outcome,
+        lineage_selection_state=terminal_lineage_state,
+        fallback_attempt_state=terminal_fallback_state,
+        fallback_selection_status=terminal_selection,
+    )
+    client = _SequencedClient(
+        {
+            ("GET", parent_path): [
+                (200, pending_payload),
+                (200, pending_payload),
+                (200, terminal_payload),
+            ]
+        }
+    )
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+    payload, timed_out, timeout_detail = module._poll_terminal_attempt_workflow(
+        client,
+        attempt_id="attempt-parent",
+        timeout_seconds=30,
+        poll_seconds=1,
+    )
+    assert timed_out is False
+    assert timeout_detail is None
+    assert payload["workflow_outcome"] == terminal_workflow_outcome
+    assert payload["candidate_selection"]["lineage_selection_state"] == terminal_lineage_state
+    parent_get_calls = [call for call in client.calls if call[0] == "GET" and call[1] == parent_path]
+    assert len(parent_get_calls) == 3
+    assert not [call for call in client.calls if call[0] == "POST" and "/cancel" in call[1]]
+
+
+def test_poll_terminal_attempt_workflow_timeout_cancels_inflight_child_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_round_runner_module()
+    parent_path = "/api/recipes/generated/attempts/attempt-parent"
+    child_path = "/api/recipes/generated/attempts/attempt-fallback"
+    cancel_path = "/api/builds/job-fallback/cancel"
+    pending_payload = _attempt_payload(
+        workflow_outcome="pending",
+        lineage_selection_state="pending",
+        fallback_attempt_state="running",
+        fallback_selection_status="not_selected",
+    )
+    exhausted_payload = _attempt_payload(
+        workflow_outcome="exhausted",
+        lineage_selection_state="exhausted",
+        fallback_attempt_state="cancelled",
+        fallback_selection_status="not_selected",
+    )
+    client = _SequencedClient(
+        {
+            ("GET", parent_path): [
+                (200, pending_payload),
+                (200, exhausted_payload),
+            ],
+            ("GET", child_path): [
+                (
+                    200,
+                    {
+                        "attempt_id": "attempt-fallback",
+                        "state": "running",
+                        "build_job_id": "job-fallback",
+                    },
+                )
+            ],
+            ("POST", cancel_path): [(200, {"job_id": "job-fallback", "state": "cancelled"})],
+        }
+    )
+
+    clock = {"value": 0.0}
+
+    def _fake_time() -> float:
+        clock["value"] += 1.0
+        return clock["value"]
+
+    monkeypatch.setattr(module.time, "time", _fake_time)
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+    payload, timed_out, timeout_detail = module._poll_terminal_attempt_workflow(
+        client,
+        attempt_id="attempt-parent",
+        timeout_seconds=2,
+        poll_seconds=1,
+    )
+    assert timed_out is True
+    assert payload["workflow_outcome"] == "exhausted"
+    assert isinstance(timeout_detail, dict)
+    cancelled_children = timeout_detail.get("cancelled_children")
+    assert isinstance(cancelled_children, list) and len(cancelled_children) == 1
+    row = cancelled_children[0]
+    assert row["attempt_id"] == "attempt-fallback"
+    assert row["build_job_id"] == "job-fallback"
+    assert row["cancel"]["status_code"] == 200

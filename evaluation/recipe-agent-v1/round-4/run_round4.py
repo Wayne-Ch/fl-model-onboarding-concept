@@ -31,6 +31,7 @@ EXPECTED_FROZEN_MODELS: tuple[tuple[str, str], ...] = (
     ("ibm-granite/granite-3.2-2b-instruct", "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3"),
 )
 TERMINAL_STATES = {"succeeded", "failed", "cancelled"}
+TERMINAL_WORKFLOW_OUTCOMES = {"not_applicable", "selected", "exhausted", "reused"}
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"[A-Za-z]:(?:\\|/(?!/))[^\"'\r\n]*")
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 HF_TOKEN_RE = re.compile(r"\bhf_[A-Za-z0-9]{16,}\b")
@@ -759,6 +760,165 @@ def _poll_terminal_job(
     )
 
 
+def _candidate_selection_entries(attempt_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    selection = attempt_payload.get("candidate_selection")
+    if not isinstance(selection, dict):
+        return []
+    rows = selection.get("candidates")
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _candidate_attempts_in_flight(attempt_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    in_flight: list[dict[str, Any]] = []
+    for row in _candidate_selection_entries(attempt_payload):
+        attempt_id_raw = row.get("attempt_id")
+        attempt_id = str(attempt_id_raw).strip() if isinstance(attempt_id_raw, str) else ""
+        if not attempt_id:
+            continue
+        attempt_state_raw = row.get("attempt_state")
+        attempt_state = str(attempt_state_raw).strip().lower() if isinstance(attempt_state_raw, str) else ""
+        if attempt_state in TERMINAL_STATES:
+            continue
+        in_flight.append(
+            {
+                "attempt_id": attempt_id,
+                "attempt_state": attempt_state,
+                "candidate_attempt_id": row.get("candidate_attempt_id"),
+                "candidate_index": row.get("candidate_index"),
+                "candidate_id": row.get("candidate_id"),
+            }
+        )
+    return in_flight
+
+
+def _attempt_lineage_pending(attempt_payload: dict[str, Any]) -> bool:
+    workflow_outcome_raw = attempt_payload.get("workflow_outcome")
+    workflow_outcome = (
+        str(workflow_outcome_raw).strip().lower() if isinstance(workflow_outcome_raw, str) else ""
+    )
+    if workflow_outcome == "pending":
+        return True
+    selection = attempt_payload.get("candidate_selection")
+    if not isinstance(selection, dict):
+        return False
+    lineage_state_raw = selection.get("lineage_selection_state")
+    lineage_state = str(lineage_state_raw).strip().lower() if isinstance(lineage_state_raw, str) else ""
+    return lineage_state == "pending"
+
+
+def _attempt_lineage_terminal(attempt_payload: dict[str, Any]) -> bool:
+    workflow_outcome_raw = attempt_payload.get("workflow_outcome")
+    workflow_outcome = (
+        str(workflow_outcome_raw).strip().lower() if isinstance(workflow_outcome_raw, str) else ""
+    )
+    if workflow_outcome and workflow_outcome not in TERMINAL_WORKFLOW_OUTCOMES and workflow_outcome != "pending":
+        return False
+    if _attempt_lineage_pending(attempt_payload):
+        return False
+    if _candidate_attempts_in_flight(attempt_payload):
+        return False
+    return True
+
+
+def _poll_terminal_attempt_workflow(
+    client: TestClient,
+    *,
+    attempt_id: str,
+    timeout_seconds: int,
+    poll_seconds: int,
+) -> tuple[dict[str, Any], bool, dict[str, Any] | None]:
+    deadline = time.time() + timeout_seconds
+    last_payload: dict[str, Any] | None = None
+    while time.time() < deadline:
+        status, payload = _request(client, "GET", f"/api/recipes/generated/attempts/{attempt_id}")
+        if status != 200:
+            return (
+                {
+                    "attempt_id": attempt_id,
+                    "state": "failed",
+                    "failure": {
+                        "stage": "polling",
+                        "classification": "api_error",
+                        "message": f"Polling /api/recipes/generated/attempts/{attempt_id} returned HTTP {status}.",
+                        "detail": payload,
+                    },
+                },
+                False,
+                None,
+            )
+        assert isinstance(payload, dict)
+        last_payload = payload
+        if _attempt_lineage_terminal(payload):
+            return payload, False, None
+        time.sleep(max(1, poll_seconds))
+
+    timeout_reason = "Round 4 timeout guard reached before candidate lineage became terminal."
+    cancelled_children: list[dict[str, Any]] = []
+    if last_payload is not None:
+        for child in _candidate_attempts_in_flight(last_payload):
+            child_attempt_id = str(child.get("attempt_id") or "").strip()
+            if not child_attempt_id:
+                continue
+            child_status, child_payload = _request(
+                client,
+                "GET",
+                f"/api/recipes/generated/attempts/{child_attempt_id}",
+            )
+            child_row: dict[str, Any] = {
+                "attempt_id": child_attempt_id,
+                "candidate_attempt_id": child.get("candidate_attempt_id"),
+                "candidate_index": child.get("candidate_index"),
+                "candidate_id": child.get("candidate_id"),
+                "attempt_http_status": child_status,
+            }
+            if child_status == 200 and isinstance(child_payload, dict):
+                child_row["attempt_state"] = child_payload.get("state")
+                build_job_id_raw = child_payload.get("build_job_id")
+                build_job_id = str(build_job_id_raw).strip() if isinstance(build_job_id_raw, str) else ""
+                child_row["build_job_id"] = build_job_id or None
+                child_state = str(child_payload.get("state", "")).lower()
+                if build_job_id and child_state not in TERMINAL_STATES:
+                    cancel_status, cancel_payload = _request(
+                        client,
+                        "POST",
+                        f"/api/builds/{build_job_id}/cancel",
+                        json={"reason": timeout_reason},
+                    )
+                    child_row["cancel"] = {
+                        "status_code": cancel_status,
+                        "payload": cancel_payload,
+                    }
+            else:
+                child_row["detail"] = child_payload
+            cancelled_children.append(child_row)
+
+    final_status, final_payload = _request(client, "GET", f"/api/recipes/generated/attempts/{attempt_id}")
+    timeout_detail: dict[str, Any] = {
+        "cancelled_children": cancelled_children,
+    }
+    if final_status == 200 and isinstance(final_payload, dict):
+        return final_payload, True, timeout_detail
+    if last_payload is not None:
+        timeout_detail["final_attempt_http_status"] = final_status
+        timeout_detail["final_attempt_payload"] = final_payload
+        return last_payload, True, timeout_detail
+    return (
+        {
+            "attempt_id": attempt_id,
+            "state": "failed",
+            "failure": {
+                "stage": "polling",
+                "classification": "timeout",
+                "message": "Timed out and failed to retrieve terminal attempt workflow state.",
+            },
+        },
+        True,
+        timeout_detail,
+    )
+
+
 def _compact_model_detail(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"raw": payload}
@@ -960,6 +1120,8 @@ def _compact_attempt(payload: Any) -> dict[str, Any]:
         "gates": gates,
         "failure": compact_failure,
         "quality_validation": payload.get("quality_validation"),
+        "workflow_outcome": payload.get("workflow_outcome"),
+        "candidate_selection": payload.get("candidate_selection"),
     }
 
 
@@ -1547,6 +1709,7 @@ def _run_one_model(
         "manifest_catalog_match": model_entry.get("catalog_match"),
         "manifest_recipe_exists": model_entry.get("recipe_exists"),
     }
+    model_deadline = time.time() + max(1, model_timeout_seconds)
 
     service: LocalOnboardingService | None = None
     try:
@@ -1646,10 +1809,11 @@ def _run_one_model(
                     else:
                         attempt_id = ""
                     if job_id:
+                        job_timeout_seconds = max(1, int(model_deadline - time.time()))
                         job_payload, timed_out, cancel_result = _poll_terminal_job(
                             client,
                             job_id=job_id,
-                            timeout_seconds=model_timeout_seconds,
+                            timeout_seconds=job_timeout_seconds,
                             poll_seconds=poll_seconds,
                         )
                         result["job_poll_timed_out"] = timed_out
@@ -1685,6 +1849,22 @@ def _run_one_model(
                             "GET",
                             f"/api/recipes/generated/attempts/{attempt_id}",
                         )
+                        if attempt_status == 200 and isinstance(attempt_payload, dict):
+                            if not _attempt_lineage_terminal(attempt_payload):
+                                attempt_timeout_seconds = max(1, int(model_deadline - time.time()))
+                                (
+                                    attempt_payload,
+                                    attempt_workflow_timed_out,
+                                    attempt_timeout_cancel,
+                                ) = _poll_terminal_attempt_workflow(
+                                    client,
+                                    attempt_id=attempt_id,
+                                    timeout_seconds=attempt_timeout_seconds,
+                                    poll_seconds=poll_seconds,
+                                )
+                                result["attempt_workflow_poll_timed_out"] = attempt_workflow_timed_out
+                                if attempt_timeout_cancel is not None:
+                                    result["attempt_workflow_timeout_cancel"] = attempt_timeout_cancel
                         result["attempt_http_status"] = attempt_status
                         result["attempt"] = _compact_attempt(attempt_payload)
                     else:
