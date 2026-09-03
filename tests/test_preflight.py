@@ -393,6 +393,45 @@ def test_preflight_probe_forwards_cancellation_event(tmp_path: Path) -> None:
     assert all(event is cancellation for event in runner.cancel_events)
 
 
+def test_preflight_cancelled_probe_result_is_not_cached(tmp_path: Path) -> None:
+    (tmp_path / "cache").mkdir()
+
+    class Runner:
+        def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+            if cancel_event is not None and cancel_event.is_set():
+                return CommandResult(spec=spec, exit_code=1, stdout="", stderr="terminated: cancelled")
+            argv = spec.argv
+            if argv[:2] == ("foundry", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="0.11.0\n", stderr="")
+            if argv[:2] == ("mobius", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0 help\n", stderr="")
+            if argv[:2] == ("mobius", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="mobius 0.1.0\n", stderr="")
+            if argv[:2] == ("olive", "--help"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0 help\n", stderr="")
+            if argv[:2] == ("olive", "--version"):
+                return CommandResult(spec=spec, exit_code=0, stdout="olive 0.13.0\n", stderr="")
+            if _is_python_probe(spec):
+                return _package_probe_response(spec)
+            raise RuntimeError(f"Unhandled fake command: {spec.argv}")
+
+    request = _request(tmp_path, tmp_path / "out")
+    inspector = PreflightInspector(Runner(), FakeFoundry(), FakeHF())
+
+    cancellation = Event()
+    cancellation.set()
+    cancelled = inspector.inspect(request, cancellation_event=cancellation)
+    assert not cancelled.ok
+    assert any(
+        blocker.classification == FailureClassification.TOOL_UNAVAILABLE
+        for blocker in cancelled.blockers
+    )
+
+    recovered = inspector.inspect(request)
+    assert recovered.ok
+    assert "preflight-cache-hit" not in recovered.warnings
+
+
 def test_preflight_probe_failure_is_not_reported_as_missing_dependency(tmp_path: Path) -> None:
     (tmp_path / "cache").mkdir()
 

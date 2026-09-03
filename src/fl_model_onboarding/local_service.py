@@ -138,7 +138,7 @@ from .recipes import (
     RecipeStatus,
 )
 from .serialization import to_jsonable
-from .state_machine import CANCELLABLE_STATES, fail_job, transition
+from .state_machine import CANCELLABLE_STATES, cancel_job, fail_job, transition
 from .subprocess_runner import SafeSubprocessRunner
 from .workspace_layout import default_workspace_base, workspace_root_for_job
 
@@ -302,6 +302,10 @@ class ServiceError(RuntimeError):
         self.code = code
         self.status_code = status_code
         self.detail = detail or {}
+
+
+class _PreflightCancelled(RuntimeError):
+    """Raised when preflight execution is cancelled and must not be cached."""
 
 
 @dataclass(frozen=True)
@@ -5097,6 +5101,17 @@ class LocalOnboardingService:
                 job.request,
                 cancellation_event=cancellation_event,
             )
+        except _PreflightCancelled:
+            with self._lock:
+                live = self._jobs.get(job_id)
+                if live is None or live.state in {JobState.SUCCEEDED, JobState.FAILED, JobState.CANCELLED}:
+                    return
+                cancel_job(live, "Build cancelled during preflight checks.")
+                live.finished_utc = datetime.now(timezone.utc)
+                self._store.save_job(live)
+            # Outside `self._lock`: see `_safe_sync_generated_attempt`.
+            self._safe_sync_generated_attempt(job=live)
+            return
         except Exception as exc:
             classified = FailureInfo(
                 stage=JobState.PREFLIGHT,
@@ -5263,16 +5278,27 @@ class LocalOnboardingService:
         fallback_cache_payload: dict[str, object],
         cancellation_event: Event | None = None,
     ) -> tuple[PreflightResult, bool, str]:
-        result = self._call_preflight_inspector(
-            request,
-            cancellation_event=cancellation_event,
-        )
+        if cancellation_event is not None and cancellation_event.is_set():
+            raise _PreflightCancelled("Preflight inspection cancelled before execution.")
+        try:
+            result = self._call_preflight_inspector(
+                request,
+                cancellation_event=cancellation_event,
+            )
+        except Exception as exc:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise _PreflightCancelled("Preflight inspection cancelled during execution.") from exc
+            raise
+        if cancellation_event is not None and cancellation_event.is_set():
+            raise _PreflightCancelled("Preflight inspection cancelled during execution.")
         cache_key = result.cache_key or _sha256_json(
             {
                 **fallback_cache_payload,
             }
         )
         with self._lock:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise _PreflightCancelled("Preflight inspection cancelled before cache persistence.")
             cached = self._preflight_cache.get(cache_key)
             if cached is not None:
                 return cached, True, cache_key
