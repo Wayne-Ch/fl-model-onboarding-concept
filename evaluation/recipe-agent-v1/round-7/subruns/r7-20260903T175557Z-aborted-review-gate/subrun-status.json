@@ -2,7 +2,7 @@
   "round": "round-7",
   "subrun_id": "r7-20260903T175557Z",
   "status": "aborted",
-  "classification": "aborted_before_full_run_after_new_coordinator_directive",
+  "classification": "aborted_before_full_run_due_review_gate",
   "valid_baseline": false,
   "summary": "Run was intentionally stopped after coordinator directive requiring Smol retry-orchestration root-cause fix before any full rerun.",
   "observed_progress": {
