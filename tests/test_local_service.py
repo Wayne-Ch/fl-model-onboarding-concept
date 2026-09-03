@@ -1026,13 +1026,28 @@ def test_service_close_cancels_inflight_preflight_probe(tmp_path: Path) -> None:
     inspector = BlockingUntilCancelledPreflightInspector()
     service = _service(tmp_path, preflight_inspector=inspector)
     closed = False
+    job_id = ""
     try:
-        service.create_build(_submission(), idempotency_key="k-close-during-preflight")
+        job, _ = service.create_build(_submission(), idempotency_key="k-close-during-preflight")
+        job_id = job.job_id
         assert inspector.started.wait(timeout=5.0)
         service.close()
         closed = True
         assert inspector.seen_cancellation_event is not None
         assert inspector.seen_cancellation_event.is_set()
+        with sqlite3.connect(tmp_path / "state.sqlite3") as connection:
+            cached_rows = connection.execute("SELECT COUNT(*) AS c FROM preflight_cache").fetchone()
+            assert cached_rows is not None
+            assert int(cached_rows[0]) == 0
+        reopened = _service(tmp_path, preflight_inspector=PassingPreflightInspector())
+        try:
+            cancelled = reopened.get_build(job_id)
+            assert cancelled.state == JobState.CANCELLED
+            assert cancelled.failure is not None
+            assert cancelled.failure.classification == FailureClassification.CANCELLED
+            assert cancelled.failure.stage == JobState.PREFLIGHT
+        finally:
+            reopened.close()
     finally:
         if not closed:
             try:

@@ -238,21 +238,23 @@ class PreflightInspector:
                 warnings.append(f"Hugging Face metadata probe failed: {classified.message}")
 
         cache_key: str | None = None
+        cache_allowed = cancellation_event is None or not cancellation_event.is_set()
         if hf_sha:
             try:
                 cache_key = build_preflight_cache_key(request, huggingface_sha=hf_sha, tools=tools)
-                cached = self._cache.get(cache_key)
-                if cached is not None:
-                    return self._merge_with_environment(
-                        request=request,
-                        cache_key=cache_key,
-                        workspace_free_gb=workspace_free_gb,
-                        cache_free_gb=cache_free_gb,
-                        compatibility=cached,
-                        environment_blockers=tuple(environment_blockers),
-                        environment_warnings=tuple(environment_warnings),
-                        add_cache_hit_warning=True,
-                    )
+                if cache_allowed:
+                    cached = self._cache.get(cache_key)
+                    if cached is not None:
+                        return self._merge_with_environment(
+                            request=request,
+                            cache_key=cache_key,
+                            workspace_free_gb=workspace_free_gb,
+                            cache_free_gb=cache_free_gb,
+                            compatibility=cached,
+                            environment_blockers=tuple(environment_blockers),
+                            environment_warnings=tuple(environment_warnings),
+                            add_cache_hit_warning=True,
+                        )
             except Exception as exc:
                 warnings.append(f"Preflight cache key unavailable: {exc}")
         else:
@@ -290,7 +292,7 @@ class PreflightInspector:
             blockers=tuple(compatibility_blockers),
             warnings=tuple(warnings),
         )
-        if cache_key:
+        if cache_key and cache_allowed and not (cancellation_event is not None and cancellation_event.is_set()):
             self._cache.put(cache_key, compatibility_result)
         return self._merge_with_environment(
             request=request,
