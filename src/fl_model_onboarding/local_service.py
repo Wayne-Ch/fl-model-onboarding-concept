@@ -972,6 +972,7 @@ class LocalOnboardingService:
                 self._store.save_job(job)
 
         self._recover_orphaned_candidate_lineages()
+        self._recover_abandoned_reuse_attempts_at_startup()
 
         self._worker = Thread(target=self._worker_loop, name="fl-onboard-worker", daemon=True)
         self._worker.start()
@@ -1491,7 +1492,12 @@ class LocalOnboardingService:
                             evidence_ref=gate.evidence_ref,
                             metrics_ref=gate.metrics_ref,
                         )
-                    return self._recipe_attempt_store.finish_attempt_succeeded(attempt_id)
+                    finished = self._recipe_attempt_store.finish_attempt_succeeded(attempt_id)
+                    self._record_reuse_dispatch_evidence(
+                        reused_attempt_id=attempt_id,
+                        winner_attempt_id=winner_attempt.attempt_id,
+                    )
+                    return finished
 
                 if attempt.state != AttemptState.GENERATED:
                     raise ServiceError(
@@ -1518,9 +1524,238 @@ class LocalOnboardingService:
                         evidence_ref=gate.evidence_ref,
                         metrics_ref=gate.metrics_ref,
                     )
-                return self._recipe_attempt_store.finish_attempt_succeeded(attempt.attempt_id)
+                finished = self._recipe_attempt_store.finish_attempt_succeeded(attempt.attempt_id)
+                self._record_reuse_dispatch_evidence(
+                    reused_attempt_id=attempt.attempt_id,
+                    winner_attempt_id=winner_attempt.attempt_id,
+                )
+                return finished
         finally:
             self._release_attempt_sync_guard(attempt_id, guard)
+
+    def _record_reuse_dispatch_evidence(self, *, reused_attempt_id: str, winner_attempt_id: str) -> None:
+        """Persist durable measured-zero dispatch evidence (Slice 3B2b) for a
+        candidate-selection-reuse attempt that just finished `SUCCEEDED`
+        without ever creating, enqueuing, or invoking the build stage runner.
+
+        Called only from the exact branches of `_materialize_reused_generated_attempt`
+        and `_recover_abandoned_reuse_attempt` that return a successfully
+        finished reuse result without ever touching the build stage runner --
+        never derived merely from a generation-identity match. Looks up the
+        winner's own durable candidate-plan row for its policy/quality-profile
+        identity and lineage; a missing winner candidate row (which should
+        never happen -- reuse is only ever sourced from a previously-selected
+        candidate winner) is treated as a benign no-op, since evidence is a
+        best-effort durable record of an operation that has already fully and
+        safely completed, never a gate on its correctness. Idempotent: safe
+        to call again for an already-recorded `reused_attempt_id` (for
+        example on a resumed materialization).
+        """
+        winner_candidate = self._recipe_attempt_store.find_candidate_attempt_by_attempt_id(winner_attempt_id)
+        if winner_candidate is None:
+            return
+        self._recipe_attempt_store.record_reuse_dispatch_evidence(
+            reused_attempt_id=reused_attempt_id,
+            source_attempt_id=winner_candidate.attempt_id,
+            source_candidate_attempt_id=winner_candidate.candidate_attempt_id,
+            parent_attempt_id=winner_candidate.parent_attempt_id,
+            policy_id=winner_candidate.policy_id,
+            policy_version=winner_candidate.policy_version,
+            policy_fingerprint=winner_candidate.policy_fingerprint,
+            quality_profile_fingerprint=winner_candidate.quality_profile_fingerprint,
+        )
+
+    def _finalize_abandoned_reuse_attempt_failed(
+        self,
+        *,
+        attempt_id: str,
+        reuse_source_attempt_id: str,
+        reason: str,
+    ) -> Any:
+        """Fail a candidate-selection-reuse attempt terminally with an
+        explicit, sanitized reason (Slice 3B2b abandoned-recovery), instead
+        of ever leaving it `RUNNING` forever. Never swallows/hides the
+        failure as a success: this is the fail-closed counterpart of
+        `_recover_abandoned_reuse_attempt`'s successful-completion path."""
+        try:
+            return self._recipe_attempt_store.finish_attempt_failed(
+                attempt_id,
+                failure=AttemptFailure(
+                    classification=AttemptFailureClassification.INTERNAL_ERROR,
+                    stage="candidate_selection_reuse_recovery",
+                    message=_sanitize_attempt_failure_message(
+                        "Abandoned candidate-selection-reuse attempt could not be safely recovered: "
+                        f"{reason}."
+                    ),
+                    evidence_refs=(f"attempt://{reuse_source_attempt_id}",),
+                    source_owner="fl-onboarding",
+                    next_action="Resubmit the original recipe fingerprint with a new idempotency key to retry.",
+                ),
+            )
+        except AttemptStateTransitionError:
+            # Another concurrent caller (poll or resubmission) already moved this
+            # attempt to a terminal state first; return whatever it now is
+            # rather than raising -- never leave the caller without a result.
+            return self._recipe_attempt_store.get_attempt(attempt_id)
+
+    def _recover_abandoned_reuse_attempt(self, attempt_id: str) -> Any:
+        """Bounded recovery (Slice 3B2b) for a marked `RUNNING`
+        candidate-selection-reuse attempt whose client never resubmitted the
+        original Idempotency-Key and only polls `get_recipe_attempt`, or a
+        fresh service startup after a crash left it `RUNNING` with no
+        in-memory guard/job mapping ever able to resume it (candidate-
+        selection reuse never creates a `BuildJob`, so the ordinary
+        `get_recipe_attempt` job-sync path can never reach it either).
+
+        Reads the durable `reuse_source_attempt_id` marker directly and never
+        trusts identity match alone: it revalidates that the source is still
+        a genuinely registered, `SELECTED` candidate winner with a fully
+        validated selection scope, that its own linked attempt actually
+        reached `SUCCEEDED`, and that this attempt's own recorded gate
+        history is a strict prefix of the source's gate history -- the same
+        defense-in-depth check `_materialize_reused_generated_attempt`
+        already performs for its own `RUNNING`-resume branch. If every check
+        passes, copies only the remaining genuine source gate evidence,
+        finishes this attempt as `SUCCEEDED`, and records measured-zero
+        dispatch evidence -- never dispatching to the build stage runner. If
+        the source is missing/corrupt/untrusted, fails this attempt
+        terminally with an explicit, sanitized reason instead of ever
+        leaving it `RUNNING` forever.
+
+        Uses the exact same per-attempt guard as
+        `_materialize_reused_generated_attempt`, keyed by `attempt_id`, so a
+        concurrent resubmission of the same Idempotency-Key and a concurrent
+        `get_recipe_attempt` poll can never race each other into double-
+        finishing (or double-failing) this attempt.
+
+        Returns the (possibly just-completed) attempt, or `None` if
+        `attempt_id` does not exist, is not currently `RUNNING`, or has no
+        reuse marker at all -- an ordinary non-reuse `RUNNING` attempt, which
+        this must never auto-resume."""
+        guard = self._acquire_attempt_sync_guard(attempt_id)
+        try:
+            with guard.lock:
+                try:
+                    attempt = self._recipe_attempt_store.get_attempt(attempt_id)
+                except KeyError:
+                    return None
+                if attempt.state != AttemptState.RUNNING:
+                    return attempt
+                try:
+                    reuse_source_attempt_id = self._recipe_attempt_store.get_attempt_reuse_source(attempt_id)
+                except KeyError:
+                    return None
+                if reuse_source_attempt_id is None:
+                    return None  # Ordinary non-reuse RUNNING attempt: never auto-resumed here.
+
+                source_candidate = self._recipe_attempt_store.find_candidate_attempt_by_attempt_id(
+                    reuse_source_attempt_id
+                )
+                if source_candidate is None:
+                    return self._finalize_abandoned_reuse_attempt_failed(
+                        attempt_id=attempt_id,
+                        reuse_source_attempt_id=reuse_source_attempt_id,
+                        reason=(
+                            f"reuse source attempt '{reuse_source_attempt_id}' is not a registered "
+                            "candidate winner"
+                        ),
+                    )
+                if source_candidate.selection_status != CandidateWinnerStatus.SELECTED:
+                    return self._finalize_abandoned_reuse_attempt_failed(
+                        attempt_id=attempt_id,
+                        reuse_source_attempt_id=reuse_source_attempt_id,
+                        reason=(
+                            f"reuse source candidate '{source_candidate.candidate_attempt_id}' is not "
+                            "marked selected"
+                        ),
+                    )
+                if not source_candidate.has_fully_validated_selection_scope:
+                    return self._finalize_abandoned_reuse_attempt_failed(
+                        attempt_id=attempt_id,
+                        reuse_source_attempt_id=reuse_source_attempt_id,
+                        reason=(
+                            f"reuse source candidate '{source_candidate.candidate_attempt_id}' has an "
+                            "incomplete validated selection scope"
+                        ),
+                    )
+                try:
+                    winner_attempt = self._recipe_attempt_store.get_attempt(reuse_source_attempt_id)
+                except KeyError:
+                    return self._finalize_abandoned_reuse_attempt_failed(
+                        attempt_id=attempt_id,
+                        reuse_source_attempt_id=reuse_source_attempt_id,
+                        reason=f"reuse source attempt '{reuse_source_attempt_id}' no longer exists",
+                    )
+                if winner_attempt.state != AttemptState.SUCCEEDED:
+                    return self._finalize_abandoned_reuse_attempt_failed(
+                        attempt_id=attempt_id,
+                        reuse_source_attempt_id=reuse_source_attempt_id,
+                        reason=(
+                            f"reuse source attempt '{reuse_source_attempt_id}' is "
+                            f"'{winner_attempt.state.value}', expected 'succeeded'"
+                        ),
+                    )
+                for index, recorded_gate in enumerate(attempt.gate_results):
+                    if (
+                        index >= len(winner_attempt.gate_results)
+                        or recorded_gate.gate != winner_attempt.gate_results[index].gate
+                    ):
+                        return self._finalize_abandoned_reuse_attempt_failed(
+                            attempt_id=attempt_id,
+                            reuse_source_attempt_id=reuse_source_attempt_id,
+                            reason=(
+                                "abandoned reuse attempt gate history does not match the reuse "
+                                "source attempt"
+                            ),
+                        )
+                try:
+                    for gate in winner_attempt.gate_results[len(attempt.gate_results) :]:
+                        self._recipe_attempt_store.record_attempt_gate(
+                            attempt_id=attempt_id,
+                            gate=gate.gate,
+                            status=gate.status,
+                            evidence_ref=gate.evidence_ref,
+                            metrics_ref=gate.metrics_ref,
+                        )
+                    finished = self._recipe_attempt_store.finish_attempt_succeeded(attempt_id)
+                except RecipeAttemptStoreError as exc:
+                    return self._finalize_abandoned_reuse_attempt_failed(
+                        attempt_id=attempt_id,
+                        reuse_source_attempt_id=reuse_source_attempt_id,
+                        reason=f"failed to complete abandoned reuse attempt: {exc}",
+                    )
+                self._record_reuse_dispatch_evidence(
+                    reused_attempt_id=attempt_id,
+                    winner_attempt_id=reuse_source_attempt_id,
+                )
+                return finished
+        finally:
+            self._release_attempt_sync_guard(attempt_id, guard)
+
+    def _recover_abandoned_reuse_attempts_at_startup(self) -> None:
+        """Restart-time recovery (Slice 3B2b) mirroring `get_recipe_attempt`'s
+        lazy poll-triggered recovery: any attempt still `RUNNING` with a
+        durable `reuse_source_attempt_id` marker and no build-job mapping
+        (candidate-selection reuse never creates one) is proactively
+        completed or failed terminally here, so a fresh service startup
+        alone -- with no client poll or resubmission at all -- is enough to
+        resolve it. Ordinary non-reuse `RUNNING` attempts are untouched here:
+        the store's own `_recover_interrupted_attempts` already marks those
+        `FAILED` at construction time."""
+        for attempt in self._recipe_attempt_store.list_attempts():
+            if attempt.state != AttemptState.RUNNING:
+                continue
+            with self._lock:
+                already_mapped = attempt.attempt_id in self._attempt_to_build_job
+            if already_mapped:
+                continue
+            try:
+                reuse_source = self._recipe_attempt_store.get_attempt_reuse_source(attempt.attempt_id)
+            except KeyError:
+                continue
+            if reuse_source is None:
+                continue
+            self._recover_abandoned_reuse_attempt(attempt.attempt_id)
 
     def _resolve_generated_recipe_preview(
         self,
@@ -2328,6 +2563,19 @@ class LocalOnboardingService:
             }:
                 self._safe_sync_generated_attempt(job=mapped_job)
                 attempt = self._recipe_attempt_store.get_attempt(normalized)
+            elif mapped_job is None and attempt.state == AttemptState.RUNNING:
+                # Slice 3B2b: a RUNNING attempt with no mapped BuildJob can never
+                # be synced by the ordinary job-sync path above -- candidate-
+                # selection reuse never creates one. If it is a marked, abandoned
+                # reuse materialization (the client only polled and never
+                # resubmitted the original Idempotency-Key), complete or fail it
+                # here instead of leaving it RUNNING forever. A no-op for every
+                # other RUNNING attempt (returns `None`, and `attempt` is left
+                # untouched): an ordinary in-flight build with no reuse marker is
+                # never auto-resumed.
+                recovered = self._recover_abandoned_reuse_attempt(normalized)
+                if recovered is not None:
+                    attempt = recovered
         return self._serialize_recipe_attempt(attempt)
 
     def create_generated_recipe_attempt(

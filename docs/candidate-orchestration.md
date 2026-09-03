@@ -262,7 +262,7 @@ nothing hardcoded or inferred.
    the other on a case-insensitive destination filesystem (the default on
    Windows/NTFS). Post-copy hash verification remains mandatory and unchanged.
 
-## Slice 3B2a delivered and 3B2b handoff
+## Slice 3B2a delivered
 
 - **Selected-candidate reuse is now wired into preview + generated-attempt dispatch.**
   `local_service.py` now builds an exact `CandidateSelectionReuseQuery` from the
@@ -279,9 +279,6 @@ nothing hardcoded or inferred.
   mismatches (lineage state drift, missing winner recipe/job refs, policy candidate
   re-derivation mismatch) surface explicitly as integrity errors; ordinary identity or
   validated-scope mismatches remain safe misses and proceed down the normal build path.
-- **Exact 3B2b handoff.** Remaining scope is the broader matrix: invalidation/idempotency
-  edge cases, stale/corrupt data recovery hardening, concurrency races around reuse
-  materialization, and measured evidence coverage beyond the two core no-runner cases.
 - **No API/OpenAPI/route/UI changes.** Candidate lineage/evidence/selection state is
   only ever visible through direct `RecipeAttemptStore` access (as these tests do);
   `_serialize_recipe_attempt`'s response shape is unchanged.
@@ -290,3 +287,225 @@ nothing hardcoded or inferred.
   `ProductionBuildStageRunner` wired with a fully faked `ProcessRunner` and a fake,
   deterministic `TextInferenceBackend` — no network access, no real Mobius/Olive/
   onnxruntime/Foundry Local tooling.
+
+## Slice 3B2b delivered: full invalidation matrix, evidence, abandoned-recovery
+
+Scope for this slice, entirely inside `local_service.py` /
+`recipe_attempt_store.py` and their test files. No API/OpenAPI response
+contract, `web`/`web_dist`, runner build semantics, selection trigger/policy,
+quality profile/prompts, or root index changed anywhere in this slice. No
+real tools/models.
+
+### A. Complete exact invalidation matrix
+
+Selected-candidate reuse (`RecipeAttemptStore.find_reusable_candidate_selection`)
+already compared every field of `CandidateSelectionReuseQuery` by strict SQL
+equality against the winner's own recorded provenance; this slice adds
+exhaustive, parameterized proof of that fact for every one of the ten
+reuse-identity fields, plus a full sanity check that the exact, unmodified
+query is a genuine hit before any single field is mismatched:
+
+- model_id, revision_sha, requested_device, requested_precision,
+  compiler_version, capability_fingerprint, toolchain_fingerprint,
+  profile_fingerprint (the eight generation-identity fields shared with
+  Slice 1's verified-recipe reuse and Slice 2's candidate registration), plus
+- quality_profile_fingerprint and policy_fingerprint (the two Slice 2
+  additions specific to candidate-selection reuse).
+
+See `tests/test_recipe_candidate_attempts.py::
+test_find_reusable_candidate_selection_rejects_every_reuse_identity_field_mismatch`
+(parameterized over all ten fields). Null/missing/malformed fields are never
+wildcarded: `LocalOnboardingService._build_candidate_selection_reuse_query`
+already returns `None` (safe miss, no reuse offered at all) the moment any
+single identity field on the current request is missing/blank, and
+`_normalize_candidate_selection_reuse_query` rejects malformed hex/empty
+values outright rather than coercing them into a match. Only the fields the
+existing contracts already explicitly normalize (device/precision case,
+hex-fingerprint case) are ever normalized; there is still no cross-host or
+cross-toolchain reuse path anywhere.
+
+The selection's *validated* scope (`validated_target_device`,
+`validated_target_ep`, `validated_toolchain_fingerprint`,
+`validated_environment_scope`) is a second, independent invalidation layer
+enforced in `LocalOnboardingService._resolve_reusable_candidate_selection`:
+a winner missing any one of those four fields
+(`CandidateAttemptRecord.has_fully_validated_selection_scope`) is never
+treated as reusable regardless of identity match, and a mismatch between the
+current request's expected device/EP/toolchain/environment (derived from the
+*current* generated recipe's compiled `olive`/`mobius` payload) and the
+winner's recorded validated fields is likewise a safe miss, not an error.
+`tests/test_local_service_candidate_orchestration.py::
+test_policy_fingerprint_mismatch_forces_normal_build_dispatch_not_reuse`
+proves the full-stack, service-level consequence for the policy-identity
+dimension specifically: once the service's active policy fingerprint no
+longer matches the winner's recorded lineage policy fingerprint, a request
+against the exact same recipe fingerprint safely misses reuse and dispatches
+a genuine new `BuildJob` (`build_job_id` is set, a new job id distinct from
+the winner's own job is created, and the build actually runs and succeeds
+end to end) — never the stale-policy winner's artifact.
+
+### B. Stale/corrupt safety
+
+Newly covered, service-level, in `tests/test_local_service_candidate_orchestration.py`:
+
+- **Missing winner generated recipe.** If the winner candidate's own
+  `recipe_fingerprint` no longer resolves to a `generated_recipes` row (a
+  stale cache eviction, or direct corruption), reuse fails closed with
+  `CANDIDATE_SELECTION_REUSE_INTEGRITY_ERROR` (500) before ever creating an
+  attempt row for the requesting Idempotency-Key
+  (`test_reuse_resolution_fails_closed_when_winner_generated_recipe_row_is_missing`).
+- **Tampered winner recipe fingerprint.** If the winner's recorded
+  `recipe_fingerprint` is repointed at a different, *genuinely existing*
+  generated recipe (not merely a dangling reference), the trusted-recompile
+  cross-check in `_resolve_reusable_candidate_selection` (re-deriving the
+  expected trusted candidate recipe from the parent's own generated record
+  and the current policy, then comparing fingerprints) still fails closed
+  rather than ever serving the wrong artifact
+  (`test_reuse_resolution_fails_closed_when_winner_recipe_fingerprint_is_tampered`).
+- **Non-`SUCCEEDED` source.** If the winner's own linked attempt is no
+  longer `SUCCEEDED` (corrupted/tampered after selection), reuse fails closed
+  rather than ever reusing a non-verified source
+  (`test_reuse_resolution_fails_closed_when_winner_attempt_state_is_tampered_non_succeeded`).
+- **Cross-model link / unselected-lineage corruption** were already covered
+  at the store level (`test_select_verified_candidate_attempt_refuses_corrupt_cross_identity_row`,
+  `test_find_reusable_candidate_selection_refuses_corrupt_selected_row` in
+  `tests/test_recipe_candidate_attempts.py`) and remain unchanged.
+- `CandidateReuseIntegrityError` is never swallowed anywhere in this path: it
+  always surfaces as a 500 `ServiceError`, and no test in this slice ever
+  observes a mismatched/corrupt reuse attempt reach a `succeeded` state or a
+  wrong-artifact attempt row. No private filesystem paths or raw internal
+  data ever appear in these error messages — every message is built from
+  already-public attempt/candidate ids and enum values, exactly like the
+  existing 3B2a integrity errors.
+
+### C. Persisted measured-zero dispatch evidence
+
+New additive migration `_migrate_v4_to_v5` (schema version 4 → 5) creates
+`candidate_reuse_dispatch_evidence` — one row per successfully materialized
+reuse attempt:
+
+| column | meaning |
+| --- | --- |
+| `reused_attempt_id` (PK) | the consumer's own attempt that was reused into |
+| `source_attempt_id` / `source_candidate_attempt_id` / `parent_attempt_id` | the winner's own attempt/candidate/lineage identity |
+| `policy_id` / `policy_version` / `policy_fingerprint` / `quality_profile_fingerprint` | the winner's recorded selection scope identity |
+| `reused_without_build` | always `1` (`True`) |
+| `runner_dispatch_count` / `mobius_invocation_count` / `olive_invocation_count` | always `0` for this reuse operation |
+| `recorded_utc` | bookkeeping only — never part of any fingerprint/identity comparison |
+
+`RecipeAttemptStore.record_reuse_dispatch_evidence` is called from exactly
+three service-layer branches, all of which are the same branches that return
+a completed reuse result *without* ever creating, enqueuing, or invoking the
+build stage runner: `_materialize_reused_generated_attempt`'s fresh
+(`GENERATED`) and RUNNING-resume branches, and the new abandoned-reuse
+recovery path (below). It is never derived merely from a generation-identity
+match — `tests/test_local_service_candidate_orchestration.py::
+test_candidate0_default_reuse_persists_measured_zero_dispatch_evidence` and
+`test_candidate1_block64_reuse_persists_measured_zero_dispatch_evidence`
+install the existing runner-dispatch spy (`_install_runner_dispatch_spy`)
+around the reuse call and assert both that the spy saw zero calls *and* that
+the persisted evidence row shows zero counts, tying the durable record to the
+actually-observed absence of dispatch. The write is idempotent (a resumed
+materialization calling it twice for the same `reused_attempt_id` is a safe
+no-op — the first row is never overwritten, proven in
+`tests/test_recipe_candidate_attempts.py::
+test_record_reuse_dispatch_evidence_persists_measured_zero_and_is_idempotent`),
+and it never rewrites the source winner's own `CandidateInvocationCounters`
+row — both tests assert the winner's real (non-zero, e.g. Mobius 1/Olive 1
+for candidate 0 or Mobius `None`/Olive 1 for the block64 fallback) counters
+are exactly value-equal before and after. Legacy (pre-migration) attempts
+remain fully readable; `get_reuse_dispatch_evidence` returns `None` for any
+attempt with no recorded evidence, and the migration is additive/idempotent
+on reopen (`test_migration_v4_to_v5_is_additive_and_idempotent_on_reopen`).
+
+### D. Abandoned RUNNING reuse recovery
+
+Reviewer-identified gap: a marked `RUNNING` candidate-selection-reuse attempt
+never gets a `BuildJob` mapping (reuse never dispatches one), so the
+pre-existing `get_recipe_attempt` job-sync path could never reach it — if the
+client only ever polls `get_recipe_attempt` and never resubmits the original
+Idempotency-Key (the only thing that previously drove
+`_materialize_reused_generated_attempt`'s RUNNING-resume branch), the attempt
+stayed `RUNNING` forever.
+
+`LocalOnboardingService._recover_abandoned_reuse_attempt(attempt_id)` closes
+this gap:
+
+1. Reads the durable `reuse_source_attempt_id` marker directly (never trusts
+   identity match alone). Returns `None` (a strict no-op) if the attempt
+   doesn't exist, isn't `RUNNING`, or carries no reuse marker at all —
+   **ordinary non-reuse `RUNNING` attempts are never auto-resumed here**
+   (`test_get_recipe_attempt_poll_never_auto_resumes_ordinary_non_reuse_running_attempt`).
+2. Revalidates: the source is still a registered, `SELECTED` candidate
+   winner (`RecipeAttemptStore.find_candidate_attempt_by_attempt_id`) with a
+   fully validated selection scope, its own linked attempt actually reached
+   `SUCCEEDED`, and this attempt's own recorded gate history is a strict
+   prefix of the source's gate history — the same defense-in-depth check
+   `_materialize_reused_generated_attempt`'s own RUNNING-resume branch
+   already performs.
+3. If every check passes: copies only the remaining genuine source gate
+   evidence, finishes the attempt `SUCCEEDED`, and records measured-zero
+   dispatch evidence — never dispatching to the build stage runner.
+4. If the source is missing/corrupt/untrusted at any point:
+   `_finalize_abandoned_reuse_attempt_failed` fails the attempt terminally
+   (classification `INTERNAL_ERROR`, stage
+   `candidate_selection_reuse_recovery`) with an explicit, sanitized reason —
+   never left `RUNNING` forever
+   (`test_get_recipe_attempt_poll_fails_abandoned_reuse_attempt_terminally_when_source_untrusted`).
+
+Wired into two call sites, both idempotent and safe across restarts/polls:
+
+- **`get_recipe_attempt`** — when an attempt is `RUNNING` with no mapped
+  `BuildJob`, a single poll now completes (or fails) an abandoned reuse
+  attempt with no resubmission at all
+  (`test_get_recipe_attempt_poll_recovers_abandoned_running_reuse_attempt_without_resubmission`).
+- **`LocalOnboardingService.__init__`** — a new
+  `_recover_abandoned_reuse_attempts_at_startup` pass (run once, after
+  `_recover_orphaned_candidate_lineages`) proactively resolves every
+  abandoned `RUNNING` reuse attempt on a fresh service startup alone, with no
+  client poll or resubmission at all
+  (`test_fresh_service_startup_recovers_abandoned_running_reuse_attempt_with_no_poll_or_resubmission`).
+
+Both call sites — and a concurrent Idempotency-Key resubmission through
+`_materialize_reused_generated_attempt` — share the exact same per-attempt
+`_AttemptSyncGuard` keyed by `attempt_id` that 3B2a already introduced, so a
+poll racing a resubmission (or two concurrent polls) can never double-finish,
+double-fail, or deadlock: every caller serializes on the same lock, re-reads
+the attempt's current state once it acquires it, and only one caller ever
+performs the terminal transition
+(`test_abandoned_reuse_poll_and_resubmit_race_is_safe`). The guard map is
+always empty again once every concurrent caller has returned, exactly as in
+3B2a's own concurrency tests.
+
+## Slice 3C handoff
+
+Everything above is internal service/store behavior with **no** change to
+any public FastAPI/OpenAPI response contract, `web`/`web_dist`, runner build
+semantics, selection trigger/policy, quality profile/prompts, or root index.
+The exact fields Slice 3C's public API/UI work will need to surface, all
+already present on internal records today:
+
+- **Candidate-selection reuse** (`_candidate_selection_reuse_payload`,
+  already returned in preview/attempt payloads): `source_parent_attempt_id`,
+  `winner_candidate_attempt_id`, `winner_attempt_id`,
+  `winner_candidate_index`, `winner_candidate_id`,
+  `winner_recipe_fingerprint`, `selection_reason`, `policy_fingerprint`,
+  `quality_profile_fingerprint`, `winner_job_id`.
+- **Measured-zero dispatch evidence** (`CandidateReuseDispatchEvidence`, new
+  in this slice, read via `RecipeAttemptStore.get_reuse_dispatch_evidence`):
+  `reused_attempt_id`, `source_attempt_id`, `source_candidate_attempt_id`,
+  `parent_attempt_id`, `policy_id`, `policy_version`, `policy_fingerprint`,
+  `quality_profile_fingerprint`, `reused_without_build`,
+  `runner_dispatch_count`, `mobius_invocation_count`,
+  `olive_invocation_count`, `recorded_utc` (bookkeeping only — should not be
+  surfaced as if it were a fingerprint/identity field).
+- **Abandoned-reuse recovery outcome**: an attempt recovered this way is
+  indistinguishable in its serialized shape from any other reuse
+  materialization (`state`, `build_job_id: null`, full `gates`) — Slice 3C
+  does not need a separate "recovered" flag; the durable
+  `CandidateReuseDispatchEvidence` row (if surfaced) already lets a caller
+  tell a reuse attempt apart from a real build.
+- **No product claims beyond tests**: everything documented above is proven
+  by the specific tests named inline; nothing here describes behavior beyond
+  what those tests exercise.
+

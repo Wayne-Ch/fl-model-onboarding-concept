@@ -13,7 +13,9 @@ from __future__ import annotations
 import sqlite3
 
 from dataclasses import replace
+from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -877,6 +879,191 @@ def test_reuse_lookup_returns_selected_verified_child_with_full_provenance(tmp_p
     # Policy identity changes invalidate reuse.
     stale_policy = replace(query, policy_fingerprint="9" * 64)
     assert store.find_reusable_candidate_selection(stale_policy) is None
+
+
+def _selected_reuse_fixture(store: RecipeAttemptStore) -> tuple[Any, Any, CandidateAttemptRecord]:
+    """Shared Slice 3B2b fixture: a default candidate that fails at its first
+    gate, and a verified+selected block64 fallback candidate winner -- the
+    same shape as `test_reuse_lookup_returns_selected_verified_child_with_full_provenance`,
+    factored out for reuse by the full invalidation-matrix parametrization and
+    the measured-zero dispatch evidence tests."""
+    _default_generated, default_attempt = _create_and_start_attempt(store, idempotency_key="default")
+    _register_default(store, default_attempt.attempt_id)
+    _fail_attempt_at_first_gate(store, default_attempt.attempt_id)
+
+    _fallback_generated, fallback_attempt = _create_and_start_attempt(
+        store, idempotency_key="fallback", extra_available_files=("generation_config.json",)
+    )
+    fallback_candidate = _register_fallback(
+        store,
+        parent_attempt_id=default_attempt.attempt_id,
+        attempt_id=fallback_attempt.attempt_id,
+    )
+    _succeed_attempt(store, fallback_attempt.attempt_id)
+    store.select_verified_candidate_attempt(
+        parent_attempt_id=default_attempt.attempt_id,
+        candidate_attempt_id=fallback_candidate.candidate_attempt_id,
+        reason="fallback verified after retryable structural regression",
+        validated_target_device="cpu",
+        validated_target_ep="CPUExecutionProvider",
+        validated_toolchain_fingerprint=fallback_attempt.toolchain_fingerprint,
+        validated_environment_scope="foundry-local-onboarding",
+    )
+    winner = store.get_candidate_attempt(fallback_candidate.candidate_attempt_id)
+    return default_attempt, fallback_attempt, winner
+
+
+@pytest.mark.parametrize(
+    ("field_name", "override_value"),
+    [
+        ("model_id", "totally-different-model"),
+        ("revision_sha", "f" * 40),
+        ("requested_device", "gpu"),
+        ("requested_precision", "int8"),
+        ("compiler_version", "9.9.9"),
+        ("capability_fingerprint", "a" * 64),
+        ("toolchain_fingerprint", "b" * 64),
+        ("profile_fingerprint", "c" * 64),
+        ("quality_profile_fingerprint", "e" * 64),
+        ("policy_fingerprint", "9" * 64),
+    ],
+)
+def test_find_reusable_candidate_selection_rejects_every_reuse_identity_field_mismatch(
+    tmp_path: Path,
+    field_name: str,
+    override_value: str,
+) -> None:
+    """Slice 3B2b complete exact invalidation matrix: a selected-candidate
+    reuse lookup must safely miss (return `None`, never serve the wrong
+    winner) whenever the requesting query differs from the winner's
+    provenance on *any single one* of the full set of reuse-identity fields
+    -- the eight generation-identity fields (model/revision/device/precision/
+    compiler/capability/toolchain/profile) plus the quality-validation
+    profile fingerprint and the selection-policy fingerprint. Parameterized
+    over every field independently, proving no field is ever wildcarded."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    default_attempt, fallback_attempt, _winner = _selected_reuse_fixture(store)
+
+    query = _reuse_query_for(default_attempt=default_attempt, fallback_attempt=fallback_attempt)
+    # Sanity: the exact, unmodified query is a genuine hit before mismatching it.
+    assert store.find_reusable_candidate_selection(query) is not None
+
+    mismatched = replace(query, **{field_name: override_value})
+    assert store.find_reusable_candidate_selection(mismatched) is None
+
+
+# --------------------------------------------------------------------------
+# Slice 3B2b: persisted measured-zero candidate-selection-reuse dispatch evidence
+# --------------------------------------------------------------------------
+
+
+def test_record_reuse_dispatch_evidence_persists_measured_zero_and_is_idempotent(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+
+    # `reused_attempt_id` must be a real, distinct attempt row (the consumer's
+    # own materialized reuse attempt) -- the FK to `attempts` is enforced.
+    _reused_generated, reused_attempt = _create_and_start_attempt(
+        store, idempotency_key="reuse-consumer-1"
+    )
+
+    winner_before = store.get_attempt(winner.attempt_id)
+    winner_counters_before = winner.invocation_counters
+
+    reused_attempt_id = reused_attempt.attempt_id
+    evidence = store.record_reuse_dispatch_evidence(
+        reused_attempt_id=reused_attempt_id,
+        source_attempt_id=winner.attempt_id,
+        source_candidate_attempt_id=winner.candidate_attempt_id,
+        parent_attempt_id=winner.parent_attempt_id,
+        policy_id=winner.policy_id,
+        policy_version=winner.policy_version,
+        policy_fingerprint=winner.policy_fingerprint,
+        quality_profile_fingerprint=winner.quality_profile_fingerprint,
+    )
+    assert evidence.reused_attempt_id == reused_attempt_id
+    assert evidence.source_attempt_id == winner.attempt_id
+    assert evidence.source_candidate_attempt_id == winner.candidate_attempt_id
+    assert evidence.parent_attempt_id == winner.parent_attempt_id
+    assert evidence.policy_id == winner.policy_id
+    assert evidence.policy_version == winner.policy_version
+    assert evidence.policy_fingerprint == winner.policy_fingerprint
+    assert evidence.quality_profile_fingerprint == winner.quality_profile_fingerprint
+    assert evidence.reused_without_build is True
+    assert evidence.runner_dispatch_count == 0
+    assert evidence.mobius_invocation_count == 0
+    assert evidence.olive_invocation_count == 0
+
+    read_back = store.get_reuse_dispatch_evidence(reused_attempt_id)
+    assert read_back is not None
+    assert read_back == evidence
+
+    # The winner's own recorded attempt/candidate history -- including its real
+    # (non-zero) invocation counters -- is never touched by recording evidence
+    # for a completely different reused_attempt_id.
+    winner_after = store.get_attempt(winner.attempt_id)
+    winner_candidate_after = store.get_candidate_attempt(winner.candidate_attempt_id)
+    assert winner_after == winner_before
+    assert winner_candidate_after.invocation_counters == winner_counters_before
+
+    # Idempotent: recording again for the SAME reused_attempt_id (e.g. a
+    # resumed materialization) never overwrites the first persisted row, even
+    # with a different recorded_utc.
+    again = store.record_reuse_dispatch_evidence(
+        reused_attempt_id=reused_attempt_id,
+        source_attempt_id=winner.attempt_id,
+        source_candidate_attempt_id=winner.candidate_attempt_id,
+        parent_attempt_id=winner.parent_attempt_id,
+        policy_id=winner.policy_id,
+        policy_version=winner.policy_version,
+        policy_fingerprint=winner.policy_fingerprint,
+        quality_profile_fingerprint=winner.quality_profile_fingerprint,
+        recorded_utc=evidence.recorded_utc + timedelta(hours=1),
+    )
+    assert again == evidence
+
+
+def test_get_reuse_dispatch_evidence_returns_none_for_non_reuse_attempt(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _generated, attempt = _create_and_start_attempt(store, idempotency_key="plain")
+    _succeed_attempt(store, attempt.attempt_id)
+    assert store.get_reuse_dispatch_evidence(attempt.attempt_id) is None
+
+
+# --------------------------------------------------------------------------
+# Slice 3B2b: additive migration v4 -> v5 (candidate_reuse_dispatch_evidence)
+# --------------------------------------------------------------------------
+
+
+def test_migration_v4_to_v5_is_additive_and_idempotent_on_reopen(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy-v4.sqlite3"
+    seed_store = RecipeAttemptStore(db_path)
+    _generated, attempt = _create_and_start_attempt(seed_store, idempotency_key="seed")
+    _succeed_attempt(seed_store, attempt.attempt_id)
+    del seed_store
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DROP TABLE IF EXISTS candidate_reuse_dispatch_evidence;")
+        connection.execute("PRAGMA user_version = 4;")
+
+    migrated = RecipeAttemptStore(db_path)
+    with sqlite3.connect(db_path) as check:
+        assert int(check.execute("PRAGMA user_version").fetchone()[0]) == RECIPE_ATTEMPT_STORE_SCHEMA_VERSION
+        tables = {
+            row[0] for row in check.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+        }
+        assert "candidate_reuse_dispatch_evidence" in tables
+
+    # Pre-existing (legacy, pre-migration) attempt is untouched and has no
+    # reuse-dispatch evidence.
+    assert migrated.get_attempt(attempt.attempt_id).state == AttemptState.SUCCEEDED
+    assert migrated.get_reuse_dispatch_evidence(attempt.attempt_id) is None
+
+    # Reopening again (migration re-run) is idempotent: no error, same version.
+    reopened = RecipeAttemptStore(db_path)
+    with sqlite3.connect(db_path) as check_again:
+        assert int(check_again.execute("PRAGMA user_version").fetchone()[0]) == RECIPE_ATTEMPT_STORE_SCHEMA_VERSION
+    assert reopened.get_attempt(attempt.attempt_id).state == AttemptState.SUCCEEDED
 
 
 # --------------------------------------------------------------------------

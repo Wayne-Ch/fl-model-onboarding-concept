@@ -50,7 +50,7 @@ assert (
 )
 
 RECIPE_ATTEMPT_SCHEMA_VERSION = "1.0.0"
-RECIPE_ATTEMPT_STORE_SCHEMA_VERSION = 4
+RECIPE_ATTEMPT_STORE_SCHEMA_VERSION = 5
 LEGACY_PROFILE_FINGERPRINT = hashlib.sha256(b"legacy-profile-missing-v1").hexdigest()
 
 _HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -309,6 +309,38 @@ class RecipeCandidateLineage:
     selected_candidate_attempt_id: str | None
     selection_reason: str | None
     finalized_utc: datetime | None
+
+
+@dataclass(frozen=True)
+class CandidateReuseDispatchEvidence:
+    """Durable, typed measured-zero dispatch evidence for one
+    candidate-selection-reuse materialization (Slice 3B2b).
+
+    Recorded exactly once (idempotently) at the service dispatch boundary
+    that returns a reused attempt as ``SUCCEEDED`` without ever creating,
+    enqueuing, or invoking the build stage runner for that specific reuse
+    operation -- ``reused_without_build`` is always ``True`` and every
+    invocation-count field is always ``0`` for this row, never inferred
+    merely from a generation-identity match. This is a completely separate,
+    additional row: it never rewrites the source winner's own
+    ``candidate_attempts`` invocation counters. ``recorded_utc`` is
+    bookkeeping only and is never included in any fingerprint/identity
+    comparison.
+    """
+
+    reused_attempt_id: str
+    source_attempt_id: str
+    source_candidate_attempt_id: str
+    parent_attempt_id: str
+    policy_id: str
+    policy_version: str
+    policy_fingerprint: str
+    quality_profile_fingerprint: str
+    reused_without_build: bool
+    runner_dispatch_count: int
+    mobius_invocation_count: int
+    olive_invocation_count: int
+    recorded_utc: datetime
 
 
 @dataclass(frozen=True)
@@ -2588,6 +2620,123 @@ class RecipeAttemptStore:
             )
             return candidate
 
+    def record_reuse_dispatch_evidence(
+        self,
+        *,
+        reused_attempt_id: str,
+        source_attempt_id: str,
+        source_candidate_attempt_id: str,
+        parent_attempt_id: str,
+        policy_id: str,
+        policy_version: str,
+        policy_fingerprint: str,
+        quality_profile_fingerprint: str,
+        recorded_utc: datetime | None = None,
+    ) -> CandidateReuseDispatchEvidence:
+        """Idempotently record durable measured-zero dispatch evidence
+        (Slice 3B2b) for a candidate-selection-reuse attempt.
+
+        Always persists ``reused_without_build=True`` and a runner/Mobius/
+        Olive invocation count of exactly ``0``: the only intended caller is
+        the service-layer branch that returns this reuse result without ever
+        creating, enqueuing, or invoking the build stage runner for
+        ``reused_attempt_id`` (see
+        ``LocalOnboardingService._record_reuse_dispatch_evidence``). Calling
+        this more than once for the same ``reused_attempt_id`` -- for
+        example a resumed materialization completing on a fresh service
+        after a crash -- is a safe no-op: the first persisted row is never
+        overwritten, and the unchanged row is returned every time.
+        """
+        reused_attempt_id_value = _coerce_str(reused_attempt_id, "reused_attempt_id")
+        source_attempt_id_value = _coerce_str(source_attempt_id, "source_attempt_id")
+        source_candidate_attempt_id_value = _coerce_str(
+            source_candidate_attempt_id, "source_candidate_attempt_id"
+        )
+        parent_attempt_id_value = _coerce_str(parent_attempt_id, "parent_attempt_id")
+        policy_id_value = _coerce_str(policy_id, "policy_id")
+        policy_version_value = _coerce_str(policy_version, "policy_version")
+        policy_fingerprint_value = _coerce_str(policy_fingerprint, "policy_fingerprint")
+        quality_profile_fingerprint_value = _coerce_str(
+            quality_profile_fingerprint, "quality_profile_fingerprint"
+        )
+        recorded_value = _ensure_utc(recorded_utc or datetime.now(timezone.utc), "recorded_utc")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            existing = connection.execute(
+                "SELECT 1 FROM candidate_reuse_dispatch_evidence WHERE reused_attempt_id = ?",
+                (reused_attempt_id_value,),
+            ).fetchone()
+            if existing is None:
+                connection.execute(
+                    """
+                    INSERT INTO candidate_reuse_dispatch_evidence (
+                        reused_attempt_id, source_attempt_id, source_candidate_attempt_id,
+                        parent_attempt_id, policy_id, policy_version, policy_fingerprint,
+                        quality_profile_fingerprint, reused_without_build, runner_dispatch_count,
+                        mobius_invocation_count, olive_invocation_count, recorded_utc
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)
+                    """,
+                    (
+                        reused_attempt_id_value,
+                        source_attempt_id_value,
+                        source_candidate_attempt_id_value,
+                        parent_attempt_id_value,
+                        policy_id_value,
+                        policy_version_value,
+                        policy_fingerprint_value,
+                        quality_profile_fingerprint_value,
+                        _format_datetime(recorded_value),
+                    ),
+                )
+            return self._load_reuse_dispatch_evidence_locked(connection, reused_attempt_id_value)
+
+    def get_reuse_dispatch_evidence(self, reused_attempt_id: str) -> CandidateReuseDispatchEvidence | None:
+        """Read-only lookup of the durable reuse-dispatch evidence row for
+        ``reused_attempt_id``, or ``None`` if no reuse-dispatch evidence was
+        ever recorded for it (for example, an ordinary non-reuse attempt)."""
+        attempt_id_value = _coerce_str(reused_attempt_id, "reused_attempt_id")
+        with self._connect() as connection:
+            try:
+                return self._load_reuse_dispatch_evidence_locked(connection, attempt_id_value)
+            except KeyError:
+                return None
+
+    def _load_reuse_dispatch_evidence_locked(
+        self,
+        connection: sqlite3.Connection,
+        reused_attempt_id: str,
+    ) -> CandidateReuseDispatchEvidence:
+        row = connection.execute(
+            """
+            SELECT reused_attempt_id, source_attempt_id, source_candidate_attempt_id, parent_attempt_id,
+                   policy_id, policy_version, policy_fingerprint, quality_profile_fingerprint,
+                   reused_without_build, runner_dispatch_count, mobius_invocation_count,
+                   olive_invocation_count, recorded_utc
+            FROM candidate_reuse_dispatch_evidence
+            WHERE reused_attempt_id = ?
+            """,
+            (reused_attempt_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(reused_attempt_id)
+        return CandidateReuseDispatchEvidence(
+            reused_attempt_id=row["reused_attempt_id"],
+            source_attempt_id=row["source_attempt_id"],
+            source_candidate_attempt_id=row["source_candidate_attempt_id"],
+            parent_attempt_id=row["parent_attempt_id"],
+            policy_id=row["policy_id"],
+            policy_version=row["policy_version"],
+            policy_fingerprint=row["policy_fingerprint"],
+            quality_profile_fingerprint=row["quality_profile_fingerprint"],
+            reused_without_build=bool(row["reused_without_build"]),
+            runner_dispatch_count=int(row["runner_dispatch_count"]),
+            mobius_invocation_count=int(row["mobius_invocation_count"]),
+            olive_invocation_count=int(row["olive_invocation_count"]),
+            recorded_utc=_parse_datetime(
+                row["recorded_utc"], "candidate_reuse_dispatch_evidence.recorded_utc"
+            ),
+        )
+
     def _list_candidate_attempts_locked(
         self,
         connection: sqlite3.Connection,
@@ -2692,6 +2841,10 @@ class RecipeAttemptStore:
             self._migrate_v3_to_v4(connection)
             connection.execute("PRAGMA user_version = 4;")
             current = 4
+        if current < 5:
+            self._migrate_v4_to_v5(connection)
+            connection.execute("PRAGMA user_version = 5;")
+            current = 5
         if current != RECIPE_ATTEMPT_STORE_SCHEMA_VERSION:
             raise RecipeAttemptMigrationError(
                 f"Unsupported recipe-attempt store schema version {current}; "
@@ -2907,6 +3060,50 @@ class RecipeAttemptStore:
             connection.execute(
                 "ALTER TABLE attempts ADD COLUMN reuse_source_attempt_id TEXT"
             )
+
+    def _migrate_v4_to_v5(self, connection: sqlite3.Connection) -> None:
+        """Additive Slice 3B2b migration: a single new table durably recording
+        measured-zero candidate-selection-reuse dispatch evidence.
+
+        Each row is written exactly once (idempotently -- see
+        `record_reuse_dispatch_evidence`) by
+        `LocalOnboardingService` at the exact dispatch boundary where a
+        reused attempt finishes `SUCCEEDED` without ever creating, enqueuing,
+        or invoking the build stage runner for that specific reuse
+        operation: `reused_without_build` is always `1` and the three
+        invocation-count columns are always `0` for that row -- never
+        inferred merely from generation-identity match, and never a rewrite
+        of the source winner's own `candidate_attempts` invocation counters
+        (a completely separate row/table). `recorded_utc` is bookkeeping
+        only, deliberately excluded from every fingerprint/identity
+        comparison. No existing table/column is touched; re-running this
+        migration against an already-migrated database is a no-op.
+        """
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS candidate_reuse_dispatch_evidence (
+                reused_attempt_id TEXT PRIMARY KEY,
+                source_attempt_id TEXT NOT NULL,
+                source_candidate_attempt_id TEXT NOT NULL,
+                parent_attempt_id TEXT NOT NULL,
+                policy_id TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                policy_fingerprint TEXT NOT NULL,
+                quality_profile_fingerprint TEXT NOT NULL,
+                reused_without_build INTEGER NOT NULL DEFAULT 1,
+                runner_dispatch_count INTEGER NOT NULL DEFAULT 0,
+                mobius_invocation_count INTEGER NOT NULL DEFAULT 0,
+                olive_invocation_count INTEGER NOT NULL DEFAULT 0,
+                recorded_utc TEXT NOT NULL,
+                FOREIGN KEY(reused_attempt_id) REFERENCES attempts(attempt_id),
+                FOREIGN KEY(source_attempt_id) REFERENCES attempts(attempt_id),
+                FOREIGN KEY(source_candidate_attempt_id) REFERENCES candidate_attempts(candidate_attempt_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_candidate_reuse_dispatch_evidence_source
+                ON candidate_reuse_dispatch_evidence (source_attempt_id);
+            """
+        )
 
     def _ensure_profile_fingerprint_column(
         self,
@@ -3986,6 +4183,7 @@ __all__ = [
     "CandidateInvocationCounters",
     "CandidateLineageSelectionState",
     "CandidatePlanValidationError",
+    "CandidateReuseDispatchEvidence",
     "CandidateReuseIntegrityError",
     "CandidateSelectionConflictError",
     "CandidateSelectionReuseQuery",
