@@ -166,8 +166,8 @@ describe("CandidateSelectionSummary", () => {
     render(<CandidateSelectionSummary attempt={attempt} />);
 
     expect(screen.getByText("Automatic quality retry verified and selected.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "First recipe", level: 4 })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Automatic quality retry", level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "First recipe", level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Automatic quality retry", level: 3 })).toBeInTheDocument();
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("This recipe ran but did not pass the required quality checks.")).toBeInTheDocument();
     expect(screen.getByText("Selected as the verified recipe.")).toBeInTheDocument();
@@ -312,6 +312,123 @@ describe("CandidateSelectionSummary", () => {
 
     expect(screen.queryByText(/model capability/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/model quality/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps heading hierarchy correct: h2 section title, h3 candidate titles and Build work performed", () => {
+    const attempt = baseAttempt({
+      workflowOutcome: "selected",
+      candidateSelection: selection({
+        lineageSelectionState: "selected",
+        maxCandidates: 2,
+        selectedCandidate: {
+          candidateAttemptId: "cand-1",
+          attemptId: "attempt-2",
+          candidateIndex: 1,
+          candidateId: "int4-block-size-64"
+        },
+        candidates: [
+          candidateEntry({
+            candidateAttemptId: "cand-0",
+            attemptId: "attempt-1",
+            candidateIndex: 0,
+            candidateId: "default-int4",
+            role: "default",
+            attemptState: "failed",
+            selectionStatus: "not_selected"
+          }),
+          candidateEntry({
+            candidateAttemptId: "cand-1",
+            attemptId: "attempt-2",
+            candidateIndex: 1,
+            candidateId: "int4-block-size-64",
+            role: "quality_retry",
+            attemptState: "succeeded",
+            selectionStatus: "selected"
+          })
+        ],
+        aggregateInvocationCounters: { mobiusBuildInvocationCount: 1, oliveOptimizeInvocationCount: 2 }
+      })
+    });
+
+    render(<CandidateSelectionSummary attempt={attempt} />);
+
+    // The section title stays h2, and both the default and fallback candidate
+    // card titles plus the "Build work performed" heading nested underneath
+    // it are h3 -- never h4 -- so the outline never skips a level.
+    expect(screen.getByRole("heading", { name: "Recipe build result", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "First recipe", level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Automatic quality retry", level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Build work performed", level: 3 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument();
+  });
+
+  it("keeps 'Build work performed' as an h3 even on the no-timeline reused path", () => {
+    const attempt = baseAttempt({
+      workflowOutcome: "reused",
+      candidateSelection: selection({
+        candidates: [],
+        reuse: {
+          reusedWithoutBuild: true,
+          sourceAttemptId: "attempt-winner",
+          sourceCandidateAttemptId: "cand-winner",
+          sourceParentAttemptId: "attempt-parent",
+          policyId: "cpu-int4-recipe-selection-v1",
+          policyVersion: "1.0.0",
+          policyFingerprint: "b6b2e91a",
+          qualityProfileFingerprint: "q-profile",
+          runnerDispatchCount: 0,
+          mobiusInvocationCount: 0,
+          oliveInvocationCount: 0,
+          recordedUtc: "2026-01-01T00:00:00Z"
+        }
+      })
+    });
+
+    render(<CandidateSelectionSummary attempt={attempt} />);
+
+    expect(screen.getByRole("heading", { name: "Recipe build result", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Build work performed", level: 3 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument();
+  });
+
+  it("exposes the candidate timeline as an explicit list with ordered, role-visible listitems", () => {
+    const attempt = baseAttempt({
+      workflowOutcome: "pending",
+      candidateSelection: selection({
+        lineageSelectionState: "pending",
+        maxCandidates: 2,
+        candidates: [
+          candidateEntry({
+            candidateAttemptId: "cand-0",
+            candidateIndex: 0,
+            role: "default",
+            attemptState: "succeeded",
+            selectionStatus: "not_selected"
+          }),
+          candidateEntry({
+            candidateAttemptId: "cand-1",
+            candidateIndex: 1,
+            candidateId: "int4-block-size-64",
+            role: "quality_retry",
+            attemptState: "running",
+            selectionStatus: "not_selected"
+          })
+        ]
+      })
+    });
+
+    render(<CandidateSelectionSummary attempt={attempt} />);
+
+    // Explicit role="list" keeps the timeline in the accessibility tree even
+    // where list-style: none would otherwise strip the implicit list
+    // semantics (notably Safari/VoiceOver); the underlying <li> elements stay
+    // native listitems, in candidate_index order.
+    const list = screen.getByRole("list", { name: "Recipe build attempts" });
+    expect(list.tagName).toBe("OL");
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(within(items[0]).getByText("First recipe")).toBeInTheDocument();
+    expect(within(items[1]).getByText("Automatic quality retry")).toBeInTheDocument();
   });
 
   it("keeps ids/fingerprints/trigger/block_size/selection reason inside an accessible, keyboard-operable Technical details disclosure", async () => {

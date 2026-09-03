@@ -634,8 +634,21 @@ function parseCandidateReuseEvidence(input: unknown): CandidateReuseEvidence | u
   if (runnerDispatchCount === undefined || mobiusInvocationCount === undefined || oliveInvocationCount === undefined) {
     throw new ApiParseError("Expected numeric dispatch/invocation counts on candidate reuse evidence.");
   }
+  // Required field: this evidence type exists only to record a candidate
+  // that was returned as an alias of a previously selected winner's own
+  // build, never a new build for this attempt. The backend invariant
+  // guarantees `reused_without_build` is always `true` whenever this
+  // object is present, so a missing/malformed value must fail loudly
+  // instead of silently defaulting to `false`, and an explicit `false`
+  // is itself a contract violation the UI must never treat as reuse.
+  const reusedWithoutBuild = readBoolean(record, ["reused_without_build"]);
+  if (!reusedWithoutBuild) {
+    throw new ApiParseError(
+      "Expected reused_without_build to be true on candidate reuse evidence; a false value violates the reuse-without-build invariant."
+    );
+  }
   return {
-    reusedWithoutBuild: readBoolean(record, ["reused_without_build"], false),
+    reusedWithoutBuild,
     sourceAttemptId: readString(record, ["source_attempt_id"]),
     sourceCandidateAttemptId: readString(record, ["source_candidate_attempt_id"]),
     sourceParentAttemptId: readString(record, ["source_parent_attempt_id"]),

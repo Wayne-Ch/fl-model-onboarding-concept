@@ -144,7 +144,7 @@ function BuildWorkPerformed({
 }): JSX.Element {
   return (
     <div className="build-evidence">
-      <h4>Build work performed</h4>
+      <h3>Build work performed</h3>
       {noBuildRan ? (
         <p className="muted">No build ran for this attempt — a previously verified recipe was reused.</p>
       ) : null}
@@ -157,12 +157,12 @@ function BuildWorkPerformed({
 export function CandidateTimeline({ candidates }: { candidates: CandidateTimelineEntry[] }): JSX.Element {
   const ordered = sortCandidatesForDisplay(candidates);
   return (
-    <ol className="candidate-timeline" aria-label="Recipe build attempts">
+    <ol className="candidate-timeline" role="list" aria-label="Recipe build attempts">
       {ordered.map((candidate) => {
         const status = candidateStatusDisplay(candidate.attemptState);
         return (
           <li key={candidate.candidateAttemptId} className="candidate-card">
-            <h4>{candidateRoleLabel(candidate.role)}</h4>
+            <h3>{candidateRoleLabel(candidate.role)}</h3>
             <p className="candidate-status">
               <span className="status-glyph" aria-hidden="true">
                 {status.icon}

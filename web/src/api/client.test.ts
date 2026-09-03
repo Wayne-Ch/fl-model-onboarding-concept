@@ -661,6 +661,91 @@ describe("api client", () => {
     expect(attempt.candidateSelection?.reuse?.oliveInvocationCount).toBe(0);
   });
 
+  function reuseEvidencePayload(overrides: Record<string, unknown>): Record<string, unknown> {
+    return {
+      attempt_id: "attempt-reused",
+      recipe_fingerprint: "f".repeat(64),
+      state: "succeeded",
+      gates: [],
+      workflow_outcome: "reused",
+      candidate_selection: {
+        candidates: [],
+        reuse: {
+          reused_without_build: true,
+          source_attempt_id: "attempt-winner",
+          source_candidate_attempt_id: "cand-winner",
+          source_parent_attempt_id: "attempt-parent",
+          policy_id: "cpu-int4-recipe-selection-v1",
+          policy_version: "1.0.0",
+          policy_fingerprint: "b6b2e91a",
+          quality_profile_fingerprint: "q-profile",
+          runner_dispatch_count: 0,
+          mobius_invocation_count: 0,
+          olive_invocation_count: 0,
+          recorded_utc: "2026-01-01T00:00:00Z",
+          ...overrides
+        }
+      }
+    };
+  }
+
+  it("rejects candidate reuse evidence missing the required reused_without_build field", async () => {
+    const payload = reuseEvidencePayload({});
+    delete (payload.candidate_selection as { reuse: Record<string, unknown> }).reuse.reused_without_build;
+    const transport: Transport = {
+      request: vi.fn(async () => new Response(JSON.stringify(payload)))
+    };
+    const client = createApiClient({ transport });
+
+    await expect(client.getGeneratedRecipeAttempt("attempt-reused")).rejects.toThrowError(
+      "Expected boolean at reused_without_build"
+    );
+  });
+
+  it("rejects candidate reuse evidence with a null reused_without_build value", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () => new Response(JSON.stringify(reuseEvidencePayload({ reused_without_build: null }))))
+    };
+    const client = createApiClient({ transport });
+
+    await expect(client.getGeneratedRecipeAttempt("attempt-reused")).rejects.toThrowError(
+      "Expected boolean at reused_without_build"
+    );
+  });
+
+  it("rejects candidate reuse evidence with a wrong-type reused_without_build value", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () => new Response(JSON.stringify(reuseEvidencePayload({ reused_without_build: "true" }))))
+    };
+    const client = createApiClient({ transport });
+
+    await expect(client.getGeneratedRecipeAttempt("attempt-reused")).rejects.toThrowError(
+      "Expected boolean at reused_without_build"
+    );
+  });
+
+  it("rejects candidate reuse evidence that explicitly reports reused_without_build=false", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () => new Response(JSON.stringify(reuseEvidencePayload({ reused_without_build: false }))))
+    };
+    const client = createApiClient({ transport });
+
+    await expect(client.getGeneratedRecipeAttempt("attempt-reused")).rejects.toThrowError(
+      "reused_without_build to be true"
+    );
+  });
+
+  it("parses well-formed candidate reuse evidence with reused_without_build=true", async () => {
+    const transport: Transport = {
+      request: vi.fn(async () => new Response(JSON.stringify(reuseEvidencePayload({}))))
+    };
+    const client = createApiClient({ transport });
+
+    const attempt = await client.getGeneratedRecipeAttempt("attempt-reused");
+
+    expect(attempt.candidateSelection?.reuse?.reusedWithoutBuild).toBe(true);
+  });
+
   it("rejects a malformed candidate_selection whose candidates field is not an array", async () => {
     const transport: Transport = {
       request: vi.fn(async () =>
