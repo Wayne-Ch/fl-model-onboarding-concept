@@ -504,8 +504,7 @@
         "evidence",
         "toolchain",
         "input_metadata",
-        "promotion",
-        "trusted_candidate"
+        "promotion"
       ],
       "properties": {
         "compiler_version": {

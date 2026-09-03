@@ -63,6 +63,8 @@ from fl_model_onboarding.recipes import (
 )
 from fl_model_onboarding.state_machine import transition
 
+import pre_3a1_legacy_fixture
+
 
 class ContractProcessRunner:
     def __init__(self) -> None:
@@ -916,6 +918,86 @@ def test_production_runner_executes_trusted_block64_candidate_with_real_olive_ar
     assert counters.mobius_build_invocation_count == 1
     assert counters.olive_optimize_invocation_count == 1
     assert counters.total_invocation_count == 2
+
+
+# --- Basher: Slice 3A1 rejected-revision backward-compatibility fix --------
+#
+# `provenance.trusted_candidate` was added to `generated-recipe.schema.json`'s
+# `required` list by the rejected Slice 3A1 revision without a migration.
+# Every already-persisted pre-3A1 generated recipe payload has no
+# `trusted_candidate` key at all (not even `null`), and the production runner
+# revalidates persisted payloads with the latest schema before execution, so
+# every legacy recipe became unexecutable. This test feeds a real legacy
+# payload (pinned fixture, byte-identical to what the actual pre-3A1 compiler
+# produced) through the exact loader (`_load_generated_recipe_execution_plan`)
+# the production runner calls before executing a generated-recipe attempt.
+
+
+def test_legacy_pre_3a1_payload_resolves_through_execution_plan_loader() -> None:
+    payload = pre_3a1_legacy_fixture.legacy_payload()
+    assert "trusted_candidate" not in payload["provenance"]
+    assert "block_size" not in payload["recipe"]["olive"]
+
+    recipe, pinned_revision, resolution_outcome, capability_status = (
+        production_runner_module._load_generated_recipe_execution_plan(payload)
+    )
+
+    assert recipe.status == RecipeStatus.EXPERIMENTAL
+    assert recipe.huggingface_model_id == pre_3a1_legacy_fixture.PRE_3A1_MODEL_ID
+    assert recipe.olive is not None
+    assert recipe.olive.block_size is None
+    assert pinned_revision == pre_3a1_legacy_fixture.PRE_3A1_REVISION_SHA
+    assert resolution_outcome == "exact"
+    assert capability_status == "verified"
+
+
+def test_legacy_pre_3a1_payload_executes_end_to_end_through_generated_attempt_path(
+    tmp_path: Path,
+) -> None:
+    """Full end-to-end regression: a legacy pre-3A1-shaped `GeneratedRecipe`
+    (no `trusted_candidate`, no `block_size`) is registered as a persisted
+    generated-recipe attempt and actually executed through
+    `ProductionBuildStageRunner`, proving the production execution path --
+    not just schema validation -- resolves the default recipe successfully."""
+    # Recompiling the pinned pre-3A1 fixture input reproduces the exact same
+    # byte-for-byte legacy canonical JSON/fingerprint (proven in
+    # `tests/test_recipe_compiler.py::
+    # test_current_default_compile_reproduces_pre_3a1_canonical_json_and_fingerprint`),
+    # so this `GeneratedRecipe` *is* the legacy payload, not an approximation.
+    generated_candidate = _compile_generated_candidate(
+        pre_3a1_legacy_fixture.PRE_3A1_MODEL_ID,
+        pre_3a1_legacy_fixture.PRE_3A1_REVISION_SHA,
+    )
+    assert generated_candidate.fingerprint == pre_3a1_legacy_fixture.PRE_3A1_FINGERPRINT
+    assert generated_candidate.canonical_json == pre_3a1_legacy_fixture.PRE_3A1_CANONICAL_JSON
+
+    generated_record = _generated_record_for(generated_candidate)
+    attempt_id = "33333333-3333-3333-3333-333333333333"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.RUNNING,
+    )
+    request = _generated_request(tmp_path, generated_candidate, attempt_id=attempt_id)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-legacy-compat", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.SUCCEEDED
+    olive = next(spec for spec in process_runner.specs if spec.argv[:2] == ("olive", "optimize"))
+    assert "--block_size" not in olive.argv
 
 
 @pytest.mark.parametrize(("model_id", "revision_sha"), _FROZEN_FIVE_MODELS)

@@ -650,6 +650,27 @@ def _materialize_generated_recipe(
     )
 
 
+def _olive_args_to_payload(olive: OliveRecipeArgs | None) -> dict[str, object] | None:
+    if olive is None:
+        return None
+    payload: dict[str, object] = {
+        "input_source": olive.input_source,
+        "task": olive.task,
+        "precision": olive.precision,
+        "device": olive.device,
+        "provider": olive.provider,
+        "log_level": olive.log_level,
+    }
+    # `block_size` is only carried by a trusted candidate override (see
+    # `compile_trusted_candidate_recipe`). Omitting the key entirely -- rather
+    # than emitting it as `null` -- when it is unset keeps the default recipe's
+    # canonical JSON/fingerprint byte-compatible with pre-3A1 payloads that
+    # never had this key at all.
+    if olive.block_size is not None:
+        payload["block_size"] = olive.block_size
+    return payload
+
+
 def _recipe_to_payload(recipe: ModelRecipe) -> dict[str, object]:
     return {
         "id": recipe.id,
@@ -667,19 +688,7 @@ def _recipe_to_payload(recipe: ModelRecipe) -> dict[str, object]:
             "runtime": recipe.mobius.runtime,
             "dtype": recipe.mobius.dtype,
         },
-        "olive": (
-            {
-                "input_source": recipe.olive.input_source,
-                "task": recipe.olive.task,
-                "precision": recipe.olive.precision,
-                "device": recipe.olive.device,
-                "provider": recipe.olive.provider,
-                "log_level": recipe.olive.log_level,
-                "block_size": recipe.olive.block_size,
-            }
-            if recipe.olive is not None
-            else None
-        ),
+        "olive": _olive_args_to_payload(recipe.olive),
         "ancillary_files": [
             {
                 "relative_path": row.relative_path,
@@ -707,7 +716,7 @@ def _recipe_to_payload(recipe: ModelRecipe) -> dict[str, object]:
 
 
 def _provenance_to_payload(provenance: RecipeGenerationProvenance) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "compiler_version": provenance.compiler_version,
         "generation_kind": provenance.generation_kind,
         "capability_id": provenance.capability_id,
@@ -748,8 +757,15 @@ def _provenance_to_payload(provenance: RecipeGenerationProvenance) -> dict[str, 
             "available_files": list(provenance.input_metadata.available_files),
         },
         "promotion": _promotion_to_payload(provenance.promotion),
-        "trusted_candidate": _trusted_candidate_to_payload(provenance.trusted_candidate),
     }
+    # `trusted_candidate` is only present for a trusted fallback/candidate
+    # recipe (see `compile_trusted_candidate_recipe`). Omitting the key
+    # entirely -- rather than emitting it as `null` -- for the default/no-
+    # candidate case keeps the canonical JSON/fingerprint byte-compatible with
+    # pre-3A1 payloads that never had this key at all.
+    if provenance.trusted_candidate is not None:
+        payload["trusted_candidate"] = _trusted_candidate_to_payload(provenance.trusted_candidate)
+    return payload
 
 
 def _trusted_candidate_to_payload(

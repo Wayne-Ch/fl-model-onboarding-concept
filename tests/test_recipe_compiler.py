@@ -25,12 +25,15 @@ from fl_model_onboarding.recipe_compiler import (
     compile_trusted_candidate_recipe,
     generated_recipe_schema_path,
     promote_generated_recipe,
+    validate_generated_recipe_payload,
 )
 from fl_model_onboarding.recipe_selection_policy import (
     DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY,
     RecipeQuantizationOverride,
 )
 from fl_model_onboarding.recipes import RecipeStatus
+
+import pre_3a1_legacy_fixture
 
 _REVISION_SHA = "0123456789abcdef0123456789abcdef01234567"
 _ALT_REVISION_SHA = "89abcdef0123456789abcdef0123456789abcdef"
@@ -502,3 +505,131 @@ def test_trusted_candidate_default_rejects_declared_override() -> None:
     # check is ever reached -- defense in depth, not a gap.
     with pytest.raises(TrustedCandidateCompilationError, match="does not exactly match"):
         compile_trusted_candidate_recipe(default, policy=policy, candidate=tampered_default_candidate)
+
+
+# --- Basher: Slice 3A1 rejected-revision backward-compatibility fix --------
+#
+# `provenance.trusted_candidate` was added to the schema's `required` list by
+# the rejected Slice 3A1 revision without a migration. Every already-persisted
+# pre-3A1 generated recipe payload has no `trusted_candidate` key at all (not
+# even `null`), so it failed schema validation and became unexecutable by the
+# production runner. The fix makes `trusted_candidate` (and the pre-existing
+# `olive.block_size`) additive/optional: present only for a trusted fallback
+# candidate, omitted entirely for the default/no-candidate case so canonical
+# JSON/fingerprints stay byte-compatible with pre-3A1 output.
+#
+# The pinned legacy fixture (fingerprint/canonical JSON captured once from the
+# actual pre-3A1 compiler at commit 51f6009) lives in `pre_3a1_legacy_fixture`
+# so `tests/test_production_runner.py` can reuse the exact same payload for
+# its end-to-end execution-plan-loader regression test.
+
+
+def _pre_3a1_fixture_input() -> RecipeCompilerInput:
+    # Deliberately built inline (not via the shared `_llm_input` helper,
+    # whose defaults differ in `available_files`/`revision_sha`) so this
+    # matches, field for field, the exact `RecipeCompilerInput` used to
+    # generate the pinned pre-3A1 fixture in `pre_3a1_legacy_fixture`.
+    resolution = _resolve_capability(
+        model_id=pre_3a1_legacy_fixture.PRE_3A1_MODEL_ID,
+        model_type="llama",
+        architecture="LlamaForCausalLM",
+        requested_precision="auto",
+    )
+    return RecipeCompilerInput(
+        model_id=pre_3a1_legacy_fixture.PRE_3A1_MODEL_ID,
+        revision_sha=pre_3a1_legacy_fixture.PRE_3A1_REVISION_SHA,
+        model_type="llama",
+        architectures=("LlamaForCausalLM",),
+        task="llm",
+        requested_device="cpu",
+        requested_precision="auto",
+        is_gated=False,
+        requires_remote_code=False,
+        config_files=("config.json",),
+        tokenizer_files=("tokenizer.json",),
+        available_files=("config.json", "tokenizer.json"),
+        capability_resolution=resolution,
+        toolchain=_toolchain(),
+    )
+
+
+def test_legacy_pre_3a1_payload_has_no_trusted_candidate_or_block_size_keys() -> None:
+    payload = pre_3a1_legacy_fixture.legacy_payload()
+
+    assert "trusted_candidate" not in payload["provenance"]
+    assert "block_size" not in payload["recipe"]["olive"]
+
+
+def test_legacy_pre_3a1_payload_passes_current_schema_validation() -> None:
+    # This is the exact defect: the rejected revision added
+    # `trusted_candidate` to provenance's `required` list, so this
+    # already-persisted legacy payload (which has never had that key) failed
+    # validation and became unexecutable. It must validate cleanly now.
+    validate_generated_recipe_payload(pre_3a1_legacy_fixture.legacy_payload())
+
+
+def test_current_default_compile_reproduces_pre_3a1_canonical_json_and_fingerprint() -> None:
+    # Prove byte-for-byte compatibility -- not just "it still parses" -- by
+    # recompiling the exact same input the actual pre-3A1 compiler ran and
+    # asserting the canonical JSON/fingerprint are identical, i.e. the fix
+    # does not change default recipe payload shape or fingerprints at all.
+    compiled = compile_generated_recipe(_pre_3a1_fixture_input())
+
+    assert compiled.fingerprint == pre_3a1_legacy_fixture.PRE_3A1_FINGERPRINT
+    assert compiled.canonical_json == pre_3a1_legacy_fixture.PRE_3A1_CANONICAL_JSON
+    assert "trusted_candidate" not in compiled.payload()["provenance"]
+    assert "block_size" not in compiled.payload()["recipe"]["olive"]
+
+
+def test_block64_trusted_candidate_payload_emits_both_fields_and_passes_strict_schema() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    fallback = compile_trusted_candidate_recipe(default, policy=policy, candidate=policy.candidates[1])
+
+    payload = fallback.payload()
+    assert payload["recipe"]["olive"]["block_size"] == 64
+    assert payload["provenance"]["trusted_candidate"]["resolved_block_size"] == 64
+    assert payload["provenance"]["trusted_candidate"]["candidate_index"] == 1
+
+    # Explicit strict schema round-trip: re-validating the already-produced
+    # payload (independent of the compile-time validation call) must pass.
+    validate_generated_recipe_payload(payload)
+
+    # Default payload from the very same base recipe must still omit both
+    # keys entirely.
+    default_payload = default.payload()
+    assert "trusted_candidate" not in default_payload["provenance"]
+    assert "block_size" not in default_payload["recipe"]["olive"]
+
+
+def test_malformed_present_trusted_candidate_still_fails_closed() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    fallback = compile_trusted_candidate_recipe(default, policy=policy, candidate=policy.candidates[1])
+
+    payload = fallback.payload()
+    # Drop a required sub-field from a *present* trusted_candidate object.
+    tampered = json.loads(json.dumps(payload))
+    del tampered["provenance"]["trusted_candidate"]["policy_fingerprint"]
+
+    with pytest.raises(GeneratedRecipeCompileError, match="missing required key 'policy_fingerprint'"):
+        validate_generated_recipe_payload(tampered)
+
+
+def test_malformed_present_trusted_candidate_wrong_type_still_fails_closed() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    fallback = compile_trusted_candidate_recipe(default, policy=policy, candidate=policy.candidates[1])
+
+    payload = fallback.payload()
+    tampered = json.loads(json.dumps(payload))
+    tampered["provenance"]["trusted_candidate"]["candidate_index"] = "not-an-integer"
+
+    with pytest.raises(GeneratedRecipeCompileError, match="must be of type"):
+        validate_generated_recipe_payload(tampered)
+
+
+def test_schema_version_unchanged_by_compatibility_fix() -> None:
+    # The fix is strictly additive/optional; a schema/version bump or
+    # migration path is not needed since old payloads now validate as-is.
+    assert GENERATED_RECIPE_SCHEMA_VERSION == "1.0.0"
