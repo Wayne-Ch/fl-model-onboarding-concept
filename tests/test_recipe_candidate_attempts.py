@@ -1396,3 +1396,506 @@ def test_find_candidate_attempt_by_attempt_id_returns_none_for_untracked_attempt
     _succeed_attempt(store, attempt.attempt_id)
     assert store.find_candidate_attempt_by_attempt_id(attempt.attempt_id) is None
 
+
+# --------------------------------------------------------------------------
+# Reviewer-REJECTED 3B2b fix (Linus revision): reuse success/evidence
+# atomicity, conflicting-evidence fail-closed, legacy backfill.
+#
+# Before this revision the service called `finish_attempt_succeeded()`
+# (committed) and then separately `record_reuse_dispatch_evidence()` in a
+# second transaction. A crash/error between the two left a terminal
+# SUCCEEDED reuse attempt with no evidence, invisible to every recovery path
+# that only ever looked for a RUNNING attempt. The tests below exercise the
+# new single-transaction `finish_reused_attempt_succeeded_with_dispatch_evidence`
+# directly against the store (service-level crash/poll/resubmit/startup
+# coverage lives in `test_local_service_candidate_orchestration.py`).
+# --------------------------------------------------------------------------
+
+
+def test_migration_v5_to_v6_is_additive_and_idempotent_on_reopen(tmp_path: Path) -> None:
+    """Regression (reuse success/evidence atomicity revision): a genuine
+    f57ba7e-shape `user_version=5` database -- containing
+    `candidate_reuse_dispatch_evidence` (the real, already-shipped v4->v5
+    migration) but neither `candidate_reuse_evidence_backfill_failures` nor
+    `idx_attempts_reuse_source_by_state` -- must upgrade cleanly to v6, gain
+    both new objects, preserve all pre-existing data untouched, and be
+    idempotent on a second reopen. Migrations are append-only: this revision
+    must never have folded its new table/index back into the already-shipped
+    v4->v5 step, which a real v5 database would never re-run."""
+    db_path = tmp_path / "legacy-v5.sqlite3"
+    seed_store = RecipeAttemptStore(db_path)
+    _generated, attempt = _create_and_start_attempt(seed_store, idempotency_key="seed-v5")
+    _succeed_attempt(seed_store, attempt.attempt_id)
+    del seed_store
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DROP TABLE IF EXISTS candidate_reuse_evidence_backfill_failures;")
+        connection.execute("DROP INDEX IF EXISTS idx_attempts_reuse_source_by_state;")
+        connection.execute("PRAGMA user_version = 5;")
+        connection.commit()
+        tables_before = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        assert "candidate_reuse_dispatch_evidence" in tables_before
+        assert "candidate_reuse_evidence_backfill_failures" not in tables_before
+
+    assert RECIPE_ATTEMPT_STORE_SCHEMA_VERSION == 6
+
+    migrated = RecipeAttemptStore(db_path)
+    with sqlite3.connect(db_path) as check:
+        assert int(check.execute("PRAGMA user_version").fetchone()[0]) == RECIPE_ATTEMPT_STORE_SCHEMA_VERSION
+        tables = {
+            row[0] for row in check.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+        }
+        assert "candidate_reuse_evidence_backfill_failures" in tables
+        indexes = {
+            row[0] for row in check.execute("SELECT name FROM sqlite_master WHERE type = 'index'").fetchall()
+        }
+        assert "idx_attempts_reuse_source_by_state" in indexes
+
+    # Pre-existing (legacy, pre-migration) attempt is untouched.
+    assert migrated.get_attempt(attempt.attempt_id).state == AttemptState.SUCCEEDED
+    assert migrated.get_reuse_dispatch_evidence(attempt.attempt_id) is None
+    assert migrated.get_reuse_evidence_backfill_integrity_failure(attempt.attempt_id) is None
+
+    # Reopening again (migration re-run) is idempotent: no error, same version.
+    reopened = RecipeAttemptStore(db_path)
+    with sqlite3.connect(db_path) as check_again:
+        assert int(check_again.execute("PRAGMA user_version").fetchone()[0]) == RECIPE_ATTEMPT_STORE_SCHEMA_VERSION
+    assert reopened.get_attempt(attempt.attempt_id).state == AttemptState.SUCCEEDED
+
+
+def _create_and_start_reused_attempt(
+    store: RecipeAttemptStore,
+    *,
+    winner: CandidateAttemptRecord,
+    idempotency_key: str,
+) -> Any:
+    """Create and start a fresh attempt as a genuine candidate-selection-reuse
+    materialization sourced from `winner`: the durable
+    `reuse_source_attempt_id` marker is set atomically with the `RUNNING`
+    transition, exactly as `LocalOnboardingService._materialize_reused_generated_attempt`
+    does before ever calling `finish_reused_attempt_succeeded_with_dispatch_evidence`.
+    No gates are copied and it is not finished; callers do that themselves."""
+    generated_record = store.get_generated_recipe(winner.recipe_fingerprint)
+    assert generated_record is not None
+    request = build_attempt_request_from_generated(generated_record)
+    request_fingerprint = build_attempt_request_fingerprint(request)
+    attempt, _replay = store.create_attempt(
+        idempotency_key=idempotency_key,
+        request=request,
+        request_fingerprint=request_fingerprint,
+    )
+    store.start_attempt(attempt.attempt_id, reuse_source_attempt_id=winner.attempt_id)
+    return store.get_attempt(attempt.attempt_id)
+
+
+def _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+    store: RecipeAttemptStore,
+    *,
+    winner: CandidateAttemptRecord,
+    idempotency_key: str,
+) -> Any:
+    """Simulate the reviewer-REJECTED pre-fix split success/evidence code
+    path (or a crash between the two writes it used to perform): start a
+    fresh attempt as a candidate-selection-reuse materialization sourced
+    from `winner`, copy every one of its gates, then finish it SUCCEEDED via
+    the *ordinary* (non-atomic) `finish_attempt_succeeded` -- which, unlike
+    `finish_reused_attempt_succeeded_with_dispatch_evidence`, never records
+    dispatch evidence. Used only to seed a legacy/crash row for the backfill
+    tests below; no current write path can ever produce this shape."""
+    winner_attempt = store.get_attempt(winner.attempt_id)
+    reused_attempt = _create_and_start_reused_attempt(
+        store, winner=winner, idempotency_key=idempotency_key
+    )
+    for gate in winner_attempt.gate_results:
+        store.record_attempt_gate(
+            attempt_id=reused_attempt.attempt_id,
+            gate=gate.gate,
+            status=gate.status,
+            evidence_ref=gate.evidence_ref,
+            metrics_ref=gate.metrics_ref,
+        )
+    store.finish_attempt_succeeded(reused_attempt.attempt_id)
+    return store.get_attempt(reused_attempt.attempt_id)
+
+
+def _copy_winner_gates(store: RecipeAttemptStore, *, attempt_id: str, winner_attempt: Any) -> None:
+    for gate in winner_attempt.gate_results:
+        store.record_attempt_gate(
+            attempt_id=attempt_id,
+            gate=gate.gate,
+            status=gate.status,
+            evidence_ref=gate.evidence_ref,
+            metrics_ref=gate.metrics_ref,
+        )
+
+
+def test_finish_reused_attempt_succeeded_with_dispatch_evidence_happy_path(tmp_path: Path) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+    winner_attempt = store.get_attempt(winner.attempt_id)
+
+    reused_attempt = _create_and_start_reused_attempt(
+        store, winner=winner, idempotency_key="atomic-happy-path-1"
+    )
+    _copy_winner_gates(store, attempt_id=reused_attempt.attempt_id, winner_attempt=winner_attempt)
+
+    finished = store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+        reused_attempt.attempt_id,
+        source_attempt_id=winner.attempt_id,
+    )
+    assert finished.state == AttemptState.SUCCEEDED
+
+    evidence = store.get_reuse_dispatch_evidence(reused_attempt.attempt_id)
+    assert evidence is not None
+    assert evidence.source_attempt_id == winner.attempt_id
+    assert evidence.source_candidate_attempt_id == winner.candidate_attempt_id
+    assert evidence.parent_attempt_id == winner.parent_attempt_id
+    assert evidence.policy_id == winner.policy_id
+    assert evidence.policy_version == winner.policy_version
+    assert evidence.policy_fingerprint == winner.policy_fingerprint
+    assert evidence.quality_profile_fingerprint == winner.quality_profile_fingerprint
+    assert evidence.reused_without_build is True
+    assert evidence.runner_dispatch_count == 0
+    assert evidence.mobius_invocation_count == 0
+    assert evidence.olive_invocation_count == 0
+
+    # Idempotent replay: calling again with the same source is a safe no-op,
+    # never re-inserting or changing the recorded evidence.
+    again = store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+        reused_attempt.attempt_id,
+        source_attempt_id=winner.attempt_id,
+    )
+    assert again.state == AttemptState.SUCCEEDED
+    assert store.get_reuse_dispatch_evidence(reused_attempt.attempt_id) == evidence
+
+
+def test_finish_reused_attempt_succeeded_rejects_mismatched_durable_source_marker(tmp_path: Path) -> None:
+    """The durable `reuse_source_attempt_id` marker (written atomically by
+    `start_attempt`) must be verified against the supplied `source_attempt_id`
+    -- a caller can never simply assert a different source than what was
+    actually durably recorded at `start_attempt` time."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+
+    _reused_generated, reused_attempt = _create_and_start_attempt(
+        store, idempotency_key="atomic-mismatched-marker-1"
+    )
+    with pytest.raises(CandidateReuseIntegrityError, match="reuse_source_attempt_id"):
+        store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+            reused_attempt.attempt_id,
+            source_attempt_id=winner.attempt_id,
+        )
+    # No marker was ever set on this plain attempt (started without one), so
+    # the mismatch is detected and the attempt is left exactly as it was.
+    assert store.get_attempt(reused_attempt.attempt_id).state == AttemptState.RUNNING
+    assert store.get_reuse_dispatch_evidence(reused_attempt.attempt_id) is None
+
+
+def test_finish_reused_attempt_succeeded_rejects_already_succeeded_missing_evidence(
+    tmp_path: Path,
+) -> None:
+    """Exact reviewer-repro window: an attempt already terminally SUCCEEDED
+    with a matching reuse marker but no recorded evidence (the legacy/crash
+    shape the old split code path could produce) must never be silently
+    re-completed by the new atomic method -- it can only ever be healed by
+    the explicit legacy-backfill path."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+    legacy_attempt = _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+        store, winner=winner, idempotency_key="legacy-no-evidence-1"
+    )
+    assert legacy_attempt.state == AttemptState.SUCCEEDED
+    assert store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id) is None
+
+    with pytest.raises(CandidateReuseIntegrityError, match="backfill"):
+        store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+            legacy_attempt.attempt_id,
+            source_attempt_id=winner.attempt_id,
+        )
+    # Still no evidence -- never fabricated by the rejected call.
+    assert store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id) is None
+    assert store.get_attempt(legacy_attempt.attempt_id).state == AttemptState.SUCCEEDED
+
+
+def test_finish_reused_attempt_succeeded_rolls_back_both_on_injected_evidence_insert_failure(
+    tmp_path: Path,
+) -> None:
+    """Crash/injected-failure safety (Issue 1): if the evidence insert step
+    itself raises, the WHOLE transaction must roll back -- the attempt stays
+    RUNNING and no evidence is ever persisted, never a SUCCEEDED attempt with
+    no evidence. A subsequent (un-patched) call completes it exactly once."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+    winner_attempt = store.get_attempt(winner.attempt_id)
+    reused_attempt = _create_and_start_reused_attempt(
+        store, winner=winner, idempotency_key="atomic-inject-evidence-failure-1"
+    )
+    _copy_winner_gates(store, attempt_id=reused_attempt.attempt_id, winner_attempt=winner_attempt)
+
+    original_insert = store._insert_or_verify_reuse_dispatch_evidence_locked
+    call_count = {"n": 0}
+
+    def _failing_insert(*args, **kwargs):  # noqa: ANN002, ANN003
+        call_count["n"] += 1
+        raise RuntimeError("simulated crash inside evidence insert")
+
+    store._insert_or_verify_reuse_dispatch_evidence_locked = _failing_insert  # type: ignore[method-assign]
+    try:
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+                reused_attempt.attempt_id,
+                source_attempt_id=winner.attempt_id,
+            )
+    finally:
+        store._insert_or_verify_reuse_dispatch_evidence_locked = original_insert  # type: ignore[method-assign]
+    assert call_count["n"] == 1
+
+    # Rolled back: still RUNNING, no evidence -- exactly the reviewer's
+    # required recoverable window, never a terminal SUCCEEDED-without-evidence
+    # attempt.
+    assert store.get_attempt(reused_attempt.attempt_id).state == AttemptState.RUNNING
+    assert store.get_reuse_dispatch_evidence(reused_attempt.attempt_id) is None
+
+    # A fresh (un-patched) call completes it exactly once.
+    finished = store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+        reused_attempt.attempt_id,
+        source_attempt_id=winner.attempt_id,
+    )
+    assert finished.state == AttemptState.SUCCEEDED
+    evidence = store.get_reuse_dispatch_evidence(reused_attempt.attempt_id)
+    assert evidence is not None
+    assert evidence.source_attempt_id == winner.attempt_id
+
+
+def test_finish_reused_attempt_succeeded_rolls_back_both_on_injected_failure_after_update_before_commit(
+    tmp_path: Path,
+) -> None:
+    """Crash/injected-failure safety (Issue 1), narrower window: the evidence
+    insert AND the attempt's `SUCCEEDED` UPDATE both execute inside the same
+    transaction, but the final read-back (before the transaction commits)
+    raises. The whole transaction -- including the already-executed INSERT
+    and UPDATE -- must still roll back completely: the attempt is left
+    RUNNING and no evidence row survives, proving atomicity does not merely
+    stop at "the two statements ran", but genuinely spans commit."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+    winner_attempt = store.get_attempt(winner.attempt_id)
+    reused_attempt = _create_and_start_reused_attempt(
+        store, winner=winner, idempotency_key="atomic-inject-post-update-failure-1"
+    )
+    _copy_winner_gates(store, attempt_id=reused_attempt.attempt_id, winner_attempt=winner_attempt)
+
+    original_load_attempt = store._load_attempt
+    call_count = {"n": 0}
+
+    def _load_attempt_fail_on_third_call(connection, attempt_id):  # noqa: ANN001
+        call_count["n"] += 1
+        # Call sequence inside finish_reused_attempt_succeeded_with_dispatch_evidence:
+        # 1) load the reused attempt, 2) load the source attempt (validation),
+        # 3) the final read-back after the UPDATE -- fail exactly there.
+        if call_count["n"] == 3:
+            raise RuntimeError("simulated crash after UPDATE, before commit")
+        return original_load_attempt(connection, attempt_id)
+
+    store._load_attempt = _load_attempt_fail_on_third_call  # type: ignore[method-assign]
+    try:
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+                reused_attempt.attempt_id,
+                source_attempt_id=winner.attempt_id,
+            )
+    finally:
+        store._load_attempt = original_load_attempt  # type: ignore[method-assign]
+    assert call_count["n"] == 3
+
+    # Rolled back in full: RUNNING, no evidence -- the INSERT and UPDATE that
+    # already executed inside the doomed transaction never survive commit.
+    assert store.get_attempt(reused_attempt.attempt_id).state == AttemptState.RUNNING
+    assert store.get_reuse_dispatch_evidence(reused_attempt.attempt_id) is None
+
+    # A fresh (un-patched) call completes it exactly once.
+    finished = store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+        reused_attempt.attempt_id,
+        source_attempt_id=winner.attempt_id,
+    )
+    assert finished.state == AttemptState.SUCCEEDED
+    assert store.get_reuse_dispatch_evidence(reused_attempt.attempt_id) is not None
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "source_attempt_id",
+        "source_candidate_attempt_id",
+        "parent_attempt_id",
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "quality_profile_fingerprint",
+    ],
+)
+def test_record_reuse_dispatch_evidence_rejects_every_conflicting_identity_field_mismatch(
+    tmp_path: Path,
+    field_name: str,
+) -> None:
+    """Issue 2: every identity-bearing field on a second `record_reuse_dispatch_evidence`
+    call for the SAME `reused_attempt_id` must be compared against the
+    already-persisted row. An identical replay stays a safe no-op (already
+    covered by `test_record_reuse_dispatch_evidence_persists_measured_zero_and_is_idempotent`);
+    parameterized here over every single field independently, a conflicting
+    value must raise `CandidateReuseIntegrityError` instead of silently
+    returning the stale existing row."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+    _reused_generated, reused_attempt = _create_and_start_attempt(
+        store, idempotency_key="conflicting-evidence-1"
+    )
+    reused_attempt_id = reused_attempt.attempt_id
+
+    base_kwargs = dict(
+        reused_attempt_id=reused_attempt_id,
+        source_attempt_id=winner.attempt_id,
+        source_candidate_attempt_id=winner.candidate_attempt_id,
+        parent_attempt_id=winner.parent_attempt_id,
+        policy_id=winner.policy_id,
+        policy_version=winner.policy_version,
+        policy_fingerprint=winner.policy_fingerprint,
+        quality_profile_fingerprint=winner.quality_profile_fingerprint,
+    )
+    first = store.record_reuse_dispatch_evidence(**base_kwargs)
+
+    conflicting_kwargs = dict(base_kwargs)
+    conflicting_kwargs[field_name] = f"conflicting-{field_name}-value"
+    with pytest.raises(CandidateReuseIntegrityError, match=field_name):
+        store.record_reuse_dispatch_evidence(**conflicting_kwargs)
+
+    # Never overwritten by the rejected conflicting call.
+    assert store.get_reuse_dispatch_evidence(reused_attempt_id) == first
+
+
+def test_find_legacy_succeeded_reuse_attempts_missing_evidence_and_backfill_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+    winner_counters_before = winner.invocation_counters
+
+    legacy_attempt = _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+        store, winner=winner, idempotency_key="legacy-sweep-1"
+    )
+
+    # Discoverable by the bounded, indexed legacy-backfill lookup.
+    missing = store.find_legacy_succeeded_reuse_attempts_missing_evidence()
+    assert legacy_attempt.attempt_id in missing
+
+    # Some other, ordinary SUCCEEDED attempt with no reuse marker is never
+    # returned by this query.
+    _plain_generated, plain_attempt = _create_and_start_attempt(store, idempotency_key="plain-unrelated-1")
+    _succeed_attempt(store, plain_attempt.attempt_id)
+    assert plain_attempt.attempt_id not in store.find_legacy_succeeded_reuse_attempts_missing_evidence()
+
+    evidence = store.backfill_reused_attempt_dispatch_evidence(
+        legacy_attempt.attempt_id,
+        source_attempt_id=winner.attempt_id,
+    )
+    assert evidence.source_attempt_id == winner.attempt_id
+    assert evidence.source_candidate_attempt_id == winner.candidate_attempt_id
+    assert evidence.reused_without_build is True
+    assert evidence.runner_dispatch_count == 0
+
+    # The already-terminal attempt row itself, and the source's own real
+    # invocation counters, are never touched by backfilling evidence.
+    assert store.get_attempt(legacy_attempt.attempt_id).state == AttemptState.SUCCEEDED
+    winner_candidate_after = store.get_candidate_attempt(winner.candidate_attempt_id)
+    assert winner_candidate_after.invocation_counters == winner_counters_before
+
+    # No longer discoverable by the missing-evidence sweep.
+    assert legacy_attempt.attempt_id not in store.find_legacy_succeeded_reuse_attempts_missing_evidence()
+
+    # Idempotent across "restarts": a second backfill call (e.g. a repeated
+    # startup sweep) returns the exact same evidence, never a duplicate row.
+    again = store.backfill_reused_attempt_dispatch_evidence(
+        legacy_attempt.attempt_id,
+        source_attempt_id=winner.attempt_id,
+    )
+    assert again == evidence
+
+
+def test_backfill_reused_attempt_dispatch_evidence_fails_closed_for_untrusted_source(
+    tmp_path: Path,
+) -> None:
+    """Legacy/crash backfill must never fabricate evidence for a source that
+    can no longer be trusted (here: the winning candidate is no longer
+    marked `selected`) -- it must raise an explicit, detectable integrity
+    error instead, leaving the already-terminal attempt exactly as it was."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+    legacy_attempt = _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+        store, winner=winner, idempotency_key="legacy-corrupt-source-1"
+    )
+
+    with sqlite3.connect(store.db_path) as connection:
+        connection.execute(
+            "UPDATE candidate_attempts SET selection_status = ?, selected_by = NULL WHERE candidate_attempt_id = ?",
+            ("not_selected", winner.candidate_attempt_id),
+        )
+        connection.commit()
+
+    with pytest.raises(CandidateReuseIntegrityError, match="not marked selected"):
+        store.backfill_reused_attempt_dispatch_evidence(
+            legacy_attempt.attempt_id,
+            source_attempt_id=winner.attempt_id,
+        )
+
+    # Never fabricated: no evidence row, and the already-terminal attempt is
+    # left exactly as it was -- never touched or un-succeeded.
+    assert store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id) is None
+    assert store.get_attempt(legacy_attempt.attempt_id).state == AttemptState.SUCCEEDED
+    assert legacy_attempt.attempt_id in store.find_legacy_succeeded_reuse_attempts_missing_evidence()
+
+
+def test_record_reuse_evidence_backfill_integrity_failure_is_durable_sanitized_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    """The explicit, detectable audit trail for a legacy attempt whose source
+    could not be safely revalidated: sanitized (never raw secrets/paths),
+    durable across lookups, and first-write-wins like every other reuse
+    evidence write in this file."""
+    store = RecipeAttemptStore(tmp_path / "recipe-attempt.sqlite3")
+    _default_attempt, _fallback_attempt, winner = _selected_reuse_fixture(store)
+    legacy_attempt = _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+        store, winner=winner, idempotency_key="legacy-audit-1"
+    )
+
+    assert store.get_reuse_evidence_backfill_integrity_failure(legacy_attempt.attempt_id) is None
+
+    recorded = store.record_reuse_evidence_backfill_integrity_failure(
+        attempt_id=legacy_attempt.attempt_id,
+        reuse_source_attempt_id=winner.attempt_id,
+        reason="reuse source candidate is not marked selected api_key: super-secret-value-123",
+    )
+    assert recorded.attempt_id == legacy_attempt.attempt_id
+    assert recorded.reuse_source_attempt_id == winner.attempt_id
+    assert "not marked selected" in recorded.reason
+    # Inline key=value-style secrets are redacted before persistence -- the
+    # raw value is never durably stored.
+    assert "super-secret-value-123" not in recorded.reason
+    assert "REDACTED" in recorded.reason
+
+    read_back = store.get_reuse_evidence_backfill_integrity_failure(legacy_attempt.attempt_id)
+    assert read_back == recorded
+
+    # First-write-wins: a later call with a different reason never overwrites
+    # the first persisted audit row.
+    again = store.record_reuse_evidence_backfill_integrity_failure(
+        attempt_id=legacy_attempt.attempt_id,
+        reuse_source_attempt_id=winner.attempt_id,
+        reason="a completely different later reason",
+    )
+    assert again == recorded
+

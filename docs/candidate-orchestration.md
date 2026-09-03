@@ -393,12 +393,13 @@ reuse attempt:
 | `runner_dispatch_count` / `mobius_invocation_count` / `olive_invocation_count` | always `0` for this reuse operation |
 | `recorded_utc` | bookkeeping only — never part of any fingerprint/identity comparison |
 
-`RecipeAttemptStore.record_reuse_dispatch_evidence` is called from exactly
-three service-layer branches, all of which are the same branches that return
-a completed reuse result *without* ever creating, enqueuing, or invoking the
+`RecipeAttemptStore.finish_reused_attempt_succeeded_with_dispatch_evidence`
+(see the atomicity revision below) is called from exactly three
+service-layer branches, all of which are the same branches that return a
+completed reuse result *without* ever creating, enqueuing, or invoking the
 build stage runner: `_materialize_reused_generated_attempt`'s fresh
-(`GENERATED`) and RUNNING-resume branches, and the new abandoned-reuse
-recovery path (below). It is never derived merely from a generation-identity
+(`GENERATED`) and RUNNING-resume branches, and the abandoned-reuse recovery
+path (below). It is never derived merely from a generation-identity
 match — `tests/test_local_service_candidate_orchestration.py::
 test_candidate0_default_reuse_persists_measured_zero_dispatch_evidence` and
 `test_candidate1_block64_reuse_persists_measured_zero_dispatch_evidence`
@@ -476,6 +477,142 @@ performs the terminal transition
 (`test_abandoned_reuse_poll_and_resubmit_race_is_safe`). The guard map is
 always empty again once every concurrent caller has returned, exactly as in
 3B2a's own concurrency tests.
+
+## Reviewer-REJECTED fix: reuse success/evidence atomicity (Linus revision)
+
+Scope for this revision, entirely inside `local_service.py` /
+`recipe_attempt_store.py` and their test files, same constraints as Slice
+3B2b above. No API/OpenAPI/route/UI, runner, selection trigger/policy,
+quality profile/prompts, or root index changed. No real tools/models.
+
+### Issue 1 — non-atomic success + evidence
+
+The original 3B2b code called `finish_attempt_succeeded()` (its own
+committed transaction) and then separately `record_reuse_dispatch_evidence()`
+in a second transaction. A crash or error between the two left a terminal
+`succeeded` reuse attempt with no evidence row — invisible forever to every
+recovery/poll/resubmit path, all of which only ever looked for a
+*non-terminal* (`RUNNING`) reuse attempt to resume.
+
+`RecipeAttemptStore.finish_reused_attempt_succeeded_with_dispatch_evidence`
+closes this gap: one `BEGIN IMMEDIATE` transaction that (1) loads/validates
+the reused attempt is `RUNNING` (or idempotently already `succeeded` with
+identical evidence), (2) verifies the durable `reuse_source_attempt_id`
+marker matches the supplied source, (3) revalidates the source using the
+same trusted store invariants 3B2a/3B2b already established (registered,
+`SELECTED` candidate winner with a fully validated selection scope, its own
+attempt `SUCCEEDED`, full generation-identity match via
+`_require_matching_candidate_generation_identity`), (4) inserts the durable
+measured-zero evidence row — deriving every identity-bearing field from the
+source's own trusted candidate-plan row, never from caller-supplied values —
+and (5) transitions the attempt to `succeeded`. Any failure at any step rolls
+back the whole transaction (the store's `_connect()` context manager already
+rolls back on any raised exception): the attempt is left exactly as it was
+(`RUNNING`, no evidence row), fully recoverable by the existing
+startup/poll/resubmit resume logic, never a terminal `succeeded` attempt with
+no evidence.
+
+`_materialize_reused_generated_attempt` (both its fresh-`GENERATED` and
+`RUNNING`-resume branches) and `_recover_abandoned_reuse_attempt` now call
+this single atomic method directly; every split
+"`finish_attempt_succeeded` then separately record evidence" call site is
+gone. Ordinary (non-reuse) `finish_attempt_succeeded` is untouched.
+
+Already-`succeeded` with **no** evidence (the exact legacy/crash shape the
+old code could produce) is deliberately never silently re-completed by this
+method — see
+`tests/test_recipe_candidate_attempts.py::test_finish_reused_attempt_succeeded_rejects_already_succeeded_missing_evidence`.
+That case can only be healed by the explicit legacy-backfill path below.
+
+Crash-injection coverage (`tests/test_recipe_candidate_attempts.py`):
+`test_finish_reused_attempt_succeeded_rolls_back_both_on_injected_evidence_insert_failure`
+and
+`test_finish_reused_attempt_succeeded_rolls_back_both_on_injected_failure_after_update_before_commit`
+each inject a failure at a different point inside the transaction (before
+the evidence insert, and after the evidence insert *and* the `succeeded`
+`UPDATE` but before the final commit) and assert full rollback (`RUNNING`,
+no evidence) followed by a single successful completion on retry. At the
+service level,
+`tests/test_local_service_candidate_orchestration.py::test_reuse_materialization_atomic_finish_evidence_injected_failure_rolls_back_and_resumes_once_on_fresh_service`
+proves the same thing through the real `create_generated_recipe_attempt`
+request path and a fresh service instance, mirroring the existing 3B2a/3B2b
+crash-recovery tests.
+
+### Issue 2 — conflicting evidence silently ignored
+
+`record_reuse_dispatch_evidence` previously returned the existing row on a
+repeat call for the same `reused_attempt_id` without ever comparing the new
+call's identity fields against what was already persisted. It now routes
+through a shared `_insert_or_verify_reuse_dispatch_evidence_locked`: every
+identity-bearing field (`source_attempt_id`, `source_candidate_attempt_id`,
+`parent_attempt_id`, `policy_id`, `policy_version`, `policy_fingerprint`,
+`quality_profile_fingerprint`) is compared against an already-persisted row.
+An identical replay stays a safe no-op; any single mismatched field raises
+`CandidateReuseIntegrityError` naming only the mismatched field(s), never
+overwriting the existing row and never echoing raw values. The four
+store-fixed measured fields (`reused_without_build`,
+`runner_dispatch_count`, `mobius_invocation_count`,
+`olive_invocation_count`) are never compared — they are always the same
+constants for every row, never caller-supplied. See
+`tests/test_recipe_candidate_attempts.py::test_record_reuse_dispatch_evidence_rejects_every_conflicting_identity_field_mismatch`
+(parameterized over all seven fields).
+
+### Legacy/crash backfill
+
+For attempts a pre-fix service could already have left `succeeded` with a
+reuse marker but no evidence:
+
+- `RecipeAttemptStore.find_legacy_succeeded_reuse_attempts_missing_evidence`
+  is a bounded, indexed query (`idx_attempts_reuse_source_by_state`) finding
+  every such row without a full table scan.
+- `RecipeAttemptStore.backfill_reused_attempt_dispatch_evidence` atomically
+  revalidates the source with the exact same trusted invariants as above and
+  inserts the missing evidence — it never reruns any tool, never touches the
+  already-immutable attempt row, and never rewrites any gate/source
+  invocation counter.
+- If the source is corrupt/untrusted, no evidence is ever fabricated;
+  instead `LocalOnboardingService._backfill_legacy_reuse_dispatch_evidence`
+  records an explicit, sanitized audit row via
+  `RecipeAttemptStore.record_reuse_evidence_backfill_integrity_failure` (new
+  `candidate_reuse_evidence_backfill_failures` table) so the gap stays
+  detectable instead of silently persisting forever — never a hard failure
+  for an unrelated poll/resubmit caller.
+- Wired opportunistically into `get_recipe_attempt` (poll), the
+  `_materialize_reused_generated_attempt` resubmission early-return branch,
+  and a new startup sweep `_recover_legacy_reuse_dispatch_evidence_at_startup`
+  (run once, after `_recover_abandoned_reuse_attempts_at_startup`).
+
+See `tests/test_recipe_candidate_attempts.py::
+test_find_legacy_succeeded_reuse_attempts_missing_evidence_and_backfill_is_idempotent`,
+`test_backfill_reused_attempt_dispatch_evidence_fails_closed_for_untrusted_source`,
+and `test_record_reuse_evidence_backfill_integrity_failure_is_durable_sanitized_and_idempotent`
+at the store level, and
+`tests/test_local_service_candidate_orchestration.py::
+test_startup_backfills_legacy_succeeded_reuse_attempt_missing_evidence`,
+`test_poll_backfills_legacy_succeeded_reuse_attempt_missing_evidence`,
+`test_resubmit_backfills_legacy_succeeded_reuse_attempt_missing_evidence`, and
+`test_backfill_records_audit_failure_and_never_fabricates_evidence_for_untrusted_legacy_source`
+at the service level.
+
+### Schema: additive `_migrate_v5_to_v6` (schema version 5 → 6)
+
+Migrations are treated as immutable/append-only once shipped: the 3B2b
+`_migrate_v4_to_v5` step already produced real `user_version=5` databases,
+so this revision's new `candidate_reuse_evidence_backfill_failures` table and
+`idx_attempts_reuse_source_by_state` index are added in a brand-new
+`_migrate_v5_to_v6` step instead of being folded back into the already-shipped
+v4→v5 migration, which a real v5 database would never re-run. See
+`tests/test_recipe_candidate_attempts.py::test_migration_v5_to_v6_is_additive_and_idempotent_on_reopen`,
+which constructs an exact f57ba7e-shape v5 database (containing
+`candidate_reuse_dispatch_evidence` but neither of the new v6 objects) and
+proves the upgrade is additive, data-preserving, and idempotent on reopen.
+
+### Locking
+
+Every new/changed store method uses the store's own transaction
+(`BEGIN IMMEDIATE`) plus the existing per-attempt `_AttemptSyncGuard`; no
+call site holds the service-wide `self._lock` across any of this work,
+preserving the existing 3B1 lock-ordering design.
 
 ## Slice 3C handoff
 

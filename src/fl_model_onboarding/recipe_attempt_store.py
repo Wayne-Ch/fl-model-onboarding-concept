@@ -50,7 +50,7 @@ assert (
 )
 
 RECIPE_ATTEMPT_SCHEMA_VERSION = "1.0.0"
-RECIPE_ATTEMPT_STORE_SCHEMA_VERSION = 5
+RECIPE_ATTEMPT_STORE_SCHEMA_VERSION = 6
 LEGACY_PROFILE_FINGERPRINT = hashlib.sha256(b"legacy-profile-missing-v1").hexdigest()
 
 _HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -341,6 +341,32 @@ class CandidateReuseDispatchEvidence:
     mobius_invocation_count: int
     olive_invocation_count: int
     recorded_utc: datetime
+
+
+@dataclass(frozen=True)
+class ReuseEvidenceBackfillIntegrityFailure:
+    """Durable, typed audit record (reuse success/evidence atomicity revision)
+    for a legacy/crash candidate-selection-reuse attempt that reached
+    terminal ``SUCCEEDED`` with its durable ``reuse_source_attempt_id``
+    marker set but no recorded dispatch evidence -- only reachable from the
+    pre-fix split success/evidence code path (or a crash between the two
+    writes it used to perform) -- whose source could not be safely
+    revalidated at backfill time.
+
+    The attempt row itself is already terminal and immutable and is never
+    touched or amended by this record: recording this is a completely
+    separate, best-effort audit trail whose only purpose is to make an
+    otherwise-silent "evidence can never be safely backfilled" gap
+    detectable instead of omitted. ``reason`` is redacted with the same
+    ``_sanitize_message`` helper used for attempt failures before being
+    persisted: it never contains raw store/service exception internals,
+    secrets, or private paths.
+    """
+
+    attempt_id: str
+    reuse_source_attempt_id: str
+    reason: str
+    detected_utc: datetime
 
 
 @dataclass(frozen=True)
@@ -1725,6 +1751,177 @@ class RecipeAttemptStore:
             )
             return self._load_attempt(connection, attempt_id_value)
 
+    def finish_reused_attempt_succeeded_with_dispatch_evidence(
+        self,
+        attempt_id: str,
+        *,
+        source_attempt_id: str,
+        finished_utc: datetime | None = None,
+        recorded_utc: datetime | None = None,
+    ) -> RecipeAttempt:
+        """Atomically finish a candidate-selection-reuse attempt as
+        ``SUCCEEDED`` together with its durable measured-zero dispatch
+        evidence, in ONE ``BEGIN IMMEDIATE`` transaction: both durable facts
+        become visible to every other reader/process together, or neither
+        does.
+
+        Reviewer-REJECTED-fix (reuse success/evidence atomicity revision,
+        Issue 1): the previous code called ``finish_attempt_succeeded``
+        (its own committed transaction) and then separately recorded
+        dispatch evidence in a second transaction. A crash or error between
+        the two left a terminal ``SUCCEEDED`` reuse attempt with no
+        evidence, forever invisible to every recovery/backfill path that
+        only ever looked for a *non-terminal* (``RUNNING``) reuse attempt.
+        This method closes that gap by performing every step -- validating,
+        inserting evidence, and transitioning to ``SUCCEEDED`` -- inside one
+        transaction: on any failure the whole transaction rolls back (via
+        :meth:`_connect`), the attempt is left exactly as it was (``RUNNING``,
+        with no evidence row), and it stays fully recoverable by the
+        existing startup/poll/resubmit resume logic.
+
+        In order:
+
+        1. Loads ``attempt_id`` and fails closed unless it is currently
+           ``RUNNING``, or already terminally ``SUCCEEDED`` with dispatch
+           evidence that exactly matches this exact call's resolved
+           identity fields (a safe idempotent replay -- for example a
+           resumed materialization retried against an already-completed
+           attempt). An already-``SUCCEEDED`` attempt with **no** recorded
+           evidence is a legacy/crash row from the pre-fix split code path
+           and is deliberately never silently re-completed here: that case
+           requires the explicit legacy-backfill path (see
+           :meth:`backfill_reused_attempt_dispatch_evidence`), which
+           revalidates and records evidence for an already-terminal attempt
+           without ever pretending this method's ordinary success path ran.
+        2. Verifies the durable ``reuse_source_attempt_id`` marker (written
+           atomically with the ``RUNNING`` transition by :meth:`start_attempt`)
+           equals the supplied ``source_attempt_id`` -- never trusting a
+           caller-supplied source alone.
+        3. Re-validates the source using the same trusted store invariants
+           :meth:`find_reusable_candidate_selection` and
+           :meth:`_recover_abandoned_reuse_attempt`-equivalent logic already
+           rely on: the source must be a registered, ``SELECTED`` candidate
+           winner with a fully validated selection scope, its own linked
+           attempt must have reached ``SUCCEEDED``, and it must share this
+           attempt's full generation identity
+           (:func:`_require_matching_candidate_generation_identity`).
+        4. Inserts (or, on an idempotent replay, verifies) the durable
+           measured-zero dispatch evidence row, deriving every
+           identity-bearing field directly from the source's own trusted
+           candidate-plan row -- never from caller-supplied values.
+        5. Transitions ``attempt_id`` to ``SUCCEEDED``.
+
+        Raises :class:`CandidateReuseIntegrityError` for every fail-closed
+        integrity check above, :class:`AttemptStateTransitionError` if
+        ``attempt_id`` is in any other (non-``RUNNING``,
+        non-matching-``SUCCEEDED``) state, and propagates any exception
+        raised by an injected failure so the enclosing transaction rolls
+        back untouched.
+        """
+        attempt_id_value = _coerce_str(attempt_id, "attempt_id")
+        source_attempt_id_value = _coerce_str(source_attempt_id, "source_attempt_id")
+        finished_value = _ensure_utc(finished_utc or datetime.now(timezone.utc), "finished_utc")
+        recorded_value = _ensure_utc(recorded_utc or datetime.now(timezone.utc), "recorded_utc")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            attempt = self._load_attempt(connection, attempt_id_value)
+
+            durable_source_row = connection.execute(
+                "SELECT reuse_source_attempt_id FROM attempts WHERE attempt_id = ?",
+                (attempt_id_value,),
+            ).fetchone()
+            durable_source = durable_source_row["reuse_source_attempt_id"] if durable_source_row else None
+            if durable_source != source_attempt_id_value:
+                raise CandidateReuseIntegrityError(
+                    f"Attempt '{attempt_id_value}' durable reuse_source_attempt_id marker does not "
+                    "match the supplied source attempt; refusing to finish it as a reuse success."
+                )
+
+            source_candidate = self._find_candidate_attempt_by_attempt_id_locked(
+                connection, source_attempt_id_value
+            )
+            if source_candidate is None:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse source attempt '{source_attempt_id_value}' is not a registered candidate "
+                    "winner."
+                )
+            if source_candidate.selection_status != CandidateWinnerStatus.SELECTED:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse source candidate '{source_candidate.candidate_attempt_id}' is not marked "
+                    "selected."
+                )
+            if not source_candidate.has_fully_validated_selection_scope:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse source candidate '{source_candidate.candidate_attempt_id}' has an "
+                    "incomplete validated selection scope."
+                )
+            source_attempt = self._load_attempt(connection, source_attempt_id_value)
+            if source_attempt.state != AttemptState.SUCCEEDED:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse source attempt '{source_attempt_id_value}' is '{source_attempt.state.value}', "
+                    "expected 'succeeded'."
+                )
+            _require_matching_candidate_generation_identity(
+                source_attempt,
+                attempt,
+                error_cls=CandidateReuseIntegrityError,
+            )
+
+            expected_evidence_fields = {
+                "source_attempt_id": source_candidate.attempt_id,
+                "source_candidate_attempt_id": source_candidate.candidate_attempt_id,
+                "parent_attempt_id": source_candidate.parent_attempt_id,
+                "policy_id": source_candidate.policy_id,
+                "policy_version": source_candidate.policy_version,
+                "policy_fingerprint": source_candidate.policy_fingerprint,
+                "quality_profile_fingerprint": source_candidate.quality_profile_fingerprint,
+            }
+
+            if attempt.state == AttemptState.SUCCEEDED:
+                existing_evidence = self._try_load_reuse_dispatch_evidence_locked(
+                    connection, attempt_id_value
+                )
+                if existing_evidence is None:
+                    raise CandidateReuseIntegrityError(
+                        f"Attempt '{attempt_id_value}' already succeeded as a candidate-selection-reuse "
+                        "materialization but has no recorded dispatch evidence. This is a legacy/crash "
+                        "row from before atomic success+evidence recording; it requires explicit legacy "
+                        "backfill, never a repeat of the atomic finish operation."
+                    )
+                mismatched = _reuse_dispatch_evidence_identity_mismatches(
+                    existing_evidence, **expected_evidence_fields
+                )
+                if mismatched:
+                    raise CandidateReuseIntegrityError(
+                        f"Attempt '{attempt_id_value}' already has recorded dispatch evidence that "
+                        f"conflicts with the resolved source identity for field(s): "
+                        f"{', '.join(mismatched)}."
+                    )
+                return attempt
+
+            if attempt.state != AttemptState.RUNNING:
+                raise AttemptStateTransitionError(
+                    f"Attempt '{attempt_id_value}' cannot transition to succeeded from "
+                    f"'{attempt.state.value}'."
+                )
+            _require_complete_successful_gates(attempt.gate_results)
+
+            self._insert_or_verify_reuse_dispatch_evidence_locked(
+                connection,
+                reused_attempt_id=attempt_id_value,
+                recorded_utc=recorded_value,
+                **expected_evidence_fields,
+            )
+            connection.execute(
+                """
+                UPDATE attempts
+                SET state = ?, finished_utc = ?, failure_json = NULL
+                WHERE attempt_id = ?
+                """,
+                (AttemptState.SUCCEEDED.value, _format_datetime(finished_value), attempt_id_value),
+            )
+            return self._load_attempt(connection, attempt_id_value)
+
     def finish_attempt_failed(
         self,
         attempt_id: str,
@@ -2538,19 +2735,26 @@ class RecipeAttemptStore:
         """
         attempt_id_value = _coerce_str(attempt_id, "attempt_id")
         with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT candidate_attempt_id
-                FROM candidate_attempts
-                WHERE attempt_id = ?
-                ORDER BY candidate_index ASC
-                LIMIT 1
-                """,
-                (attempt_id_value,),
-            ).fetchone()
-            if row is None:
-                return None
-            return self._load_candidate_attempt(connection, row["candidate_attempt_id"])
+            return self._find_candidate_attempt_by_attempt_id_locked(connection, attempt_id_value)
+
+    def _find_candidate_attempt_by_attempt_id_locked(
+        self,
+        connection: sqlite3.Connection,
+        attempt_id: str,
+    ) -> CandidateAttemptRecord | None:
+        row = connection.execute(
+            """
+            SELECT candidate_attempt_id
+            FROM candidate_attempts
+            WHERE attempt_id = ?
+            ORDER BY candidate_index ASC
+            LIMIT 1
+            """,
+            (attempt_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._load_candidate_attempt(connection, row["candidate_attempt_id"])
 
     def find_reusable_candidate_selection(
         self,
@@ -2640,12 +2844,26 @@ class RecipeAttemptStore:
         Olive invocation count of exactly ``0``: the only intended caller is
         the service-layer branch that returns this reuse result without ever
         creating, enqueuing, or invoking the build stage runner for
-        ``reused_attempt_id`` (see
-        ``LocalOnboardingService._record_reuse_dispatch_evidence``). Calling
-        this more than once for the same ``reused_attempt_id`` -- for
-        example a resumed materialization completing on a fresh service
-        after a crash -- is a safe no-op: the first persisted row is never
+        ``reused_attempt_id``. Calling this more than once for the same
+        ``reused_attempt_id`` with the *same* identity fields -- for example
+        a resumed materialization completing on a fresh service after a
+        crash -- is a safe no-op: the first persisted row is never
         overwritten, and the unchanged row is returned every time.
+
+        Reviewer-REJECTED-fix (reuse success/evidence atomicity revision,
+        Issue 2): every identity-bearing field is now compared against an
+        already-persisted row instead of being silently ignored. A second
+        call for the same ``reused_attempt_id`` whose ``source_attempt_id``,
+        ``source_candidate_attempt_id``, ``parent_attempt_id``,
+        ``policy_id``, ``policy_version``, ``policy_fingerprint``, or
+        ``quality_profile_fingerprint`` differs from the row already on disk
+        raises :class:`CandidateReuseIntegrityError` instead of silently
+        returning the stale existing row: durable dispatch evidence must
+        never silently claim a different provenance than what actually
+        happened. The measured fields (``reused_without_build``,
+        ``runner_dispatch_count``, ``mobius_invocation_count``,
+        ``olive_invocation_count``) are store-fixed constants for every row
+        and are therefore never compared.
         """
         reused_attempt_id_value = _coerce_str(reused_attempt_id, "reused_attempt_id")
         source_attempt_id_value = _coerce_str(source_attempt_id, "source_attempt_id")
@@ -2662,33 +2880,84 @@ class RecipeAttemptStore:
         recorded_value = _ensure_utc(recorded_utc or datetime.now(timezone.utc), "recorded_utc")
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE;")
-            existing = connection.execute(
-                "SELECT 1 FROM candidate_reuse_dispatch_evidence WHERE reused_attempt_id = ?",
-                (reused_attempt_id_value,),
-            ).fetchone()
-            if existing is None:
-                connection.execute(
-                    """
-                    INSERT INTO candidate_reuse_dispatch_evidence (
-                        reused_attempt_id, source_attempt_id, source_candidate_attempt_id,
-                        parent_attempt_id, policy_id, policy_version, policy_fingerprint,
-                        quality_profile_fingerprint, reused_without_build, runner_dispatch_count,
-                        mobius_invocation_count, olive_invocation_count, recorded_utc
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)
-                    """,
-                    (
-                        reused_attempt_id_value,
-                        source_attempt_id_value,
-                        source_candidate_attempt_id_value,
-                        parent_attempt_id_value,
-                        policy_id_value,
-                        policy_version_value,
-                        policy_fingerprint_value,
-                        quality_profile_fingerprint_value,
-                        _format_datetime(recorded_value),
-                    ),
+            return self._insert_or_verify_reuse_dispatch_evidence_locked(
+                connection,
+                reused_attempt_id=reused_attempt_id_value,
+                source_attempt_id=source_attempt_id_value,
+                source_candidate_attempt_id=source_candidate_attempt_id_value,
+                parent_attempt_id=parent_attempt_id_value,
+                policy_id=policy_id_value,
+                policy_version=policy_version_value,
+                policy_fingerprint=policy_fingerprint_value,
+                quality_profile_fingerprint=quality_profile_fingerprint_value,
+                recorded_utc=recorded_value,
+            )
+
+    def _insert_or_verify_reuse_dispatch_evidence_locked(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        reused_attempt_id: str,
+        source_attempt_id: str,
+        source_candidate_attempt_id: str,
+        parent_attempt_id: str,
+        policy_id: str,
+        policy_version: str,
+        policy_fingerprint: str,
+        quality_profile_fingerprint: str,
+        recorded_utc: datetime,
+    ) -> CandidateReuseDispatchEvidence:
+        """Shared, transaction-scoped insert-or-verify for durable reuse
+        dispatch evidence: inserts a fresh row the first time
+        ``reused_attempt_id`` is seen, or fail-closed verifies every
+        identity-bearing field against an already-persisted row (see
+        :meth:`record_reuse_dispatch_evidence`). Callers are responsible for
+        opening (and, on any raised exception, implicitly rolling back via
+        :meth:`_connect`) the enclosing ``BEGIN IMMEDIATE`` transaction: this
+        never opens its own, so it composes into a larger atomic operation
+        such as :meth:`finish_reused_attempt_succeeded_with_dispatch_evidence`.
+        """
+        existing = self._try_load_reuse_dispatch_evidence_locked(connection, reused_attempt_id)
+        if existing is not None:
+            mismatched = _reuse_dispatch_evidence_identity_mismatches(
+                existing,
+                source_attempt_id=source_attempt_id,
+                source_candidate_attempt_id=source_candidate_attempt_id,
+                parent_attempt_id=parent_attempt_id,
+                policy_id=policy_id,
+                policy_version=policy_version,
+                policy_fingerprint=policy_fingerprint,
+                quality_profile_fingerprint=quality_profile_fingerprint,
+            )
+            if mismatched:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse dispatch evidence for attempt '{reused_attempt_id}' already exists with "
+                    f"different value(s) for field(s): {', '.join(mismatched)}. Refusing to overwrite "
+                    "existing durable evidence with conflicting provenance."
                 )
-            return self._load_reuse_dispatch_evidence_locked(connection, reused_attempt_id_value)
+            return existing
+        connection.execute(
+            """
+            INSERT INTO candidate_reuse_dispatch_evidence (
+                reused_attempt_id, source_attempt_id, source_candidate_attempt_id,
+                parent_attempt_id, policy_id, policy_version, policy_fingerprint,
+                quality_profile_fingerprint, reused_without_build, runner_dispatch_count,
+                mobius_invocation_count, olive_invocation_count, recorded_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?)
+            """,
+            (
+                reused_attempt_id,
+                source_attempt_id,
+                source_candidate_attempt_id,
+                parent_attempt_id,
+                policy_id,
+                policy_version,
+                policy_fingerprint,
+                quality_profile_fingerprint,
+                _format_datetime(recorded_utc),
+            ),
+        )
+        return self._load_reuse_dispatch_evidence_locked(connection, reused_attempt_id)
 
     def get_reuse_dispatch_evidence(self, reused_attempt_id: str) -> CandidateReuseDispatchEvidence | None:
         """Read-only lookup of the durable reuse-dispatch evidence row for
@@ -2696,10 +2965,17 @@ class RecipeAttemptStore:
         ever recorded for it (for example, an ordinary non-reuse attempt)."""
         attempt_id_value = _coerce_str(reused_attempt_id, "reused_attempt_id")
         with self._connect() as connection:
-            try:
-                return self._load_reuse_dispatch_evidence_locked(connection, attempt_id_value)
-            except KeyError:
-                return None
+            return self._try_load_reuse_dispatch_evidence_locked(connection, attempt_id_value)
+
+    def _try_load_reuse_dispatch_evidence_locked(
+        self,
+        connection: sqlite3.Connection,
+        reused_attempt_id: str,
+    ) -> CandidateReuseDispatchEvidence | None:
+        try:
+            return self._load_reuse_dispatch_evidence_locked(connection, reused_attempt_id)
+        except KeyError:
+            return None
 
     def _load_reuse_dispatch_evidence_locked(
         self,
@@ -2734,6 +3010,232 @@ class RecipeAttemptStore:
             olive_invocation_count=int(row["olive_invocation_count"]),
             recorded_utc=_parse_datetime(
                 row["recorded_utc"], "candidate_reuse_dispatch_evidence.recorded_utc"
+            ),
+        )
+
+    def find_legacy_succeeded_reuse_attempts_missing_evidence(
+        self,
+        *,
+        limit: int = 200,
+    ) -> tuple[str, ...]:
+        """Bounded, indexed lookup (reuse success/evidence atomicity
+        revision) for legacy/crash rows: attempts already terminally
+        ``SUCCEEDED`` with a durable ``reuse_source_attempt_id`` marker set,
+        but with no matching row in ``candidate_reuse_dispatch_evidence``.
+
+        Only reachable from the pre-fix code path that called
+        ``finish_attempt_succeeded`` and recorded dispatch evidence in two
+        separate transactions (or a crash between the two), since every
+        current write path uses
+        :meth:`finish_reused_attempt_succeeded_with_dispatch_evidence`,
+        which can never durably leave this gap. Uses the
+        ``idx_attempts_reuse_source_by_state`` index (see
+        ``_migrate_v5_to_v6``) plus the existing
+        ``candidate_reuse_dispatch_evidence`` primary key, so it never scans
+        every attempt row. ``limit`` bounds a single call's work; callers
+        needing to sweep more rows call again."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT a.attempt_id
+                FROM attempts AS a
+                LEFT JOIN candidate_reuse_dispatch_evidence AS e
+                    ON e.reused_attempt_id = a.attempt_id
+                WHERE a.state = ?
+                  AND a.reuse_source_attempt_id IS NOT NULL
+                  AND e.reused_attempt_id IS NULL
+                ORDER BY a.attempt_id ASC
+                LIMIT ?
+                """,
+                (AttemptState.SUCCEEDED.value, int(limit)),
+            ).fetchall()
+            return tuple(row["attempt_id"] for row in rows)
+
+    def backfill_reused_attempt_dispatch_evidence(
+        self,
+        attempt_id: str,
+        *,
+        source_attempt_id: str,
+        recorded_utc: datetime | None = None,
+    ) -> CandidateReuseDispatchEvidence:
+        """Legacy/crash backfill (reuse success/evidence atomicity revision):
+        insert the missing durable dispatch evidence row for an attempt that
+        is *already* terminally ``SUCCEEDED`` with a matching durable
+        ``reuse_source_attempt_id`` marker, without ever touching the
+        already-immutable attempt row, rerunning any tool, or rewriting any
+        gate/source invocation counter.
+
+        Fails closed with :class:`CandidateReuseIntegrityError` -- never
+        fabricating evidence -- unless every one of the following holds, in
+        one ``BEGIN IMMEDIATE`` transaction:
+
+        1. ``attempt_id`` exists and is ``AttemptState.SUCCEEDED``.
+        2. Its durable ``reuse_source_attempt_id`` marker equals the
+           supplied ``source_attempt_id``.
+        3. The source is still a registered, ``SELECTED`` candidate winner
+           with a fully validated selection scope, and its own linked
+           attempt reached ``SUCCEEDED``.
+        4. The source shares ``attempt_id``'s full generation identity.
+
+        If evidence already exists (for example a concurrent caller backfilled
+        it first) this is an idempotent no-op verifying identity, exactly like
+        :meth:`record_reuse_dispatch_evidence`. Callers (see
+        ``LocalOnboardingService._backfill_legacy_reuse_dispatch_evidence``)
+        are expected to catch :class:`CandidateReuseIntegrityError` and record
+        an explicit, sanitized audit failure via
+        :meth:`record_reuse_evidence_backfill_integrity_failure` rather than
+        letting it surface as an unhandled error to an unrelated poll/get
+        caller.
+        """
+        attempt_id_value = _coerce_str(attempt_id, "attempt_id")
+        source_attempt_id_value = _coerce_str(source_attempt_id, "source_attempt_id")
+        recorded_value = _ensure_utc(recorded_utc or datetime.now(timezone.utc), "recorded_utc")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            attempt = self._load_attempt(connection, attempt_id_value)
+            if attempt.state != AttemptState.SUCCEEDED:
+                raise CandidateReuseIntegrityError(
+                    f"Attempt '{attempt_id_value}' is '{attempt.state.value}', expected 'succeeded' for "
+                    "legacy reuse-evidence backfill."
+                )
+            durable_source_row = connection.execute(
+                "SELECT reuse_source_attempt_id FROM attempts WHERE attempt_id = ?",
+                (attempt_id_value,),
+            ).fetchone()
+            durable_source = durable_source_row["reuse_source_attempt_id"] if durable_source_row else None
+            if durable_source != source_attempt_id_value:
+                raise CandidateReuseIntegrityError(
+                    f"Attempt '{attempt_id_value}' durable reuse_source_attempt_id marker does not "
+                    "match the supplied source attempt; refusing to backfill evidence."
+                )
+            source_candidate = self._find_candidate_attempt_by_attempt_id_locked(
+                connection, source_attempt_id_value
+            )
+            if source_candidate is None:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse source attempt '{source_attempt_id_value}' is not a registered candidate "
+                    "winner."
+                )
+            if source_candidate.selection_status != CandidateWinnerStatus.SELECTED:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse source candidate '{source_candidate.candidate_attempt_id}' is not marked "
+                    "selected."
+                )
+            if not source_candidate.has_fully_validated_selection_scope:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse source candidate '{source_candidate.candidate_attempt_id}' has an "
+                    "incomplete validated selection scope."
+                )
+            source_attempt = self._load_attempt(connection, source_attempt_id_value)
+            if source_attempt.state != AttemptState.SUCCEEDED:
+                raise CandidateReuseIntegrityError(
+                    f"Reuse source attempt '{source_attempt_id_value}' is '{source_attempt.state.value}', "
+                    "expected 'succeeded'."
+                )
+            _require_matching_candidate_generation_identity(
+                source_attempt,
+                attempt,
+                error_cls=CandidateReuseIntegrityError,
+            )
+            return self._insert_or_verify_reuse_dispatch_evidence_locked(
+                connection,
+                reused_attempt_id=attempt_id_value,
+                source_attempt_id=source_candidate.attempt_id,
+                source_candidate_attempt_id=source_candidate.candidate_attempt_id,
+                parent_attempt_id=source_candidate.parent_attempt_id,
+                policy_id=source_candidate.policy_id,
+                policy_version=source_candidate.policy_version,
+                policy_fingerprint=source_candidate.policy_fingerprint,
+                quality_profile_fingerprint=source_candidate.quality_profile_fingerprint,
+                recorded_utc=recorded_value,
+            )
+
+    def record_reuse_evidence_backfill_integrity_failure(
+        self,
+        *,
+        attempt_id: str,
+        reuse_source_attempt_id: str,
+        reason: str,
+        detected_utc: datetime | None = None,
+    ) -> ReuseEvidenceBackfillIntegrityFailure:
+        """Idempotently record a durable, sanitized audit row (reuse
+        success/evidence atomicity revision) for a legacy/crash
+        candidate-selection-reuse attempt whose missing dispatch evidence
+        could not be safely backfilled -- see
+        :meth:`backfill_reused_attempt_dispatch_evidence`. The already-terminal
+        ``SUCCEEDED`` attempt row is never touched: this is a completely
+        separate, best-effort audit trail making the gap explicitly
+        detectable instead of silently omitted. ``reason`` is redacted with
+        the same ``_sanitize_message`` helper used for attempt failures.
+        First-write-wins, exactly like :meth:`record_reuse_dispatch_evidence`:
+        a later call for the same ``attempt_id`` never overwrites the first
+        persisted row."""
+        attempt_id_value = _coerce_str(attempt_id, "attempt_id")
+        reuse_source_attempt_id_value = _coerce_str(
+            reuse_source_attempt_id, "reuse_source_attempt_id"
+        )
+        reason_value = _sanitize_message(reason, path="reuse_evidence_backfill_failure.reason")
+        detected_value = _ensure_utc(detected_utc or datetime.now(timezone.utc), "detected_utc")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE;")
+            existing = self._try_load_reuse_evidence_backfill_integrity_failure_locked(
+                connection, attempt_id_value
+            )
+            if existing is not None:
+                return existing
+            connection.execute(
+                """
+                INSERT INTO candidate_reuse_evidence_backfill_failures (
+                    attempt_id, reuse_source_attempt_id, reason, detected_utc
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (
+                    attempt_id_value,
+                    reuse_source_attempt_id_value,
+                    reason_value,
+                    _format_datetime(detected_value),
+                ),
+            )
+            loaded = self._try_load_reuse_evidence_backfill_integrity_failure_locked(
+                connection, attempt_id_value
+            )
+            assert loaded is not None
+            return loaded
+
+    def get_reuse_evidence_backfill_integrity_failure(
+        self, attempt_id: str
+    ) -> ReuseEvidenceBackfillIntegrityFailure | None:
+        """Read-only lookup of the durable audit row recorded by
+        :meth:`record_reuse_evidence_backfill_integrity_failure`, or ``None``
+        if legacy backfill for ``attempt_id`` never hit an integrity
+        failure (including if it was never attempted, or succeeded)."""
+        attempt_id_value = _coerce_str(attempt_id, "attempt_id")
+        with self._connect() as connection:
+            return self._try_load_reuse_evidence_backfill_integrity_failure_locked(
+                connection, attempt_id_value
+            )
+
+    def _try_load_reuse_evidence_backfill_integrity_failure_locked(
+        self,
+        connection: sqlite3.Connection,
+        attempt_id: str,
+    ) -> ReuseEvidenceBackfillIntegrityFailure | None:
+        row = connection.execute(
+            """
+            SELECT attempt_id, reuse_source_attempt_id, reason, detected_utc
+            FROM candidate_reuse_evidence_backfill_failures
+            WHERE attempt_id = ?
+            """,
+            (attempt_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return ReuseEvidenceBackfillIntegrityFailure(
+            attempt_id=row["attempt_id"],
+            reuse_source_attempt_id=row["reuse_source_attempt_id"],
+            reason=row["reason"],
+            detected_utc=_parse_datetime(
+                row["detected_utc"], "candidate_reuse_evidence_backfill_failures.detected_utc"
             ),
         )
 
@@ -2845,6 +3347,10 @@ class RecipeAttemptStore:
             self._migrate_v4_to_v5(connection)
             connection.execute("PRAGMA user_version = 5;")
             current = 5
+        if current < 6:
+            self._migrate_v5_to_v6(connection)
+            connection.execute("PRAGMA user_version = 6;")
+            current = 6
         if current != RECIPE_ATTEMPT_STORE_SCHEMA_VERSION:
             raise RecipeAttemptMigrationError(
                 f"Unsupported recipe-attempt store schema version {current}; "
@@ -3102,6 +3608,51 @@ class RecipeAttemptStore:
 
             CREATE INDEX IF NOT EXISTS idx_candidate_reuse_dispatch_evidence_source
                 ON candidate_reuse_dispatch_evidence (source_attempt_id);
+            """
+        )
+
+    def _migrate_v5_to_v6(self, connection: sqlite3.Connection) -> None:
+        """Additive reuse success/evidence atomicity revision migration: a new
+        table durably auditing legacy-backfill integrity failures, plus a new
+        index supporting the bounded legacy-backfill lookup.
+
+        Migrations are treated as immutable/append-only once shipped:
+        `_migrate_v4_to_v5` already produced real `user_version=5` databases
+        (Slice 3B2b), so this revision's new table/index are added in a
+        brand-new `_migrate_v5_to_v6` step instead of being folded back into
+        `_migrate_v4_to_v5` -- a database already sitting at `user_version=5`
+        would never re-run an edited v4->v5 step and would silently miss the
+        new table/index forever. No existing table/column is touched;
+        re-running this migration against an already-migrated database is a
+        no-op.
+
+        `candidate_reuse_evidence_backfill_failures` records a sanitized,
+        durable audit trail (see
+        `RecipeAttemptStore.record_reuse_evidence_backfill_integrity_failure`)
+        for a legacy/crash candidate-selection-reuse attempt whose missing
+        dispatch evidence could not be safely backfilled because its source
+        could no longer be trusted -- the already-terminal `SUCCEEDED`
+        attempt row itself is never touched or amended.
+
+        `idx_attempts_reuse_source_by_state` is a bounded, indexed
+        legacy-backfill lookup (see
+        `find_legacy_succeeded_reuse_attempts_missing_evidence`) letting a
+        fresh service startup find every `SUCCEEDED` attempt carrying the
+        durable reuse marker with no matching dispatch-evidence row, without
+        ever scanning every attempt row.
+        """
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS candidate_reuse_evidence_backfill_failures (
+                attempt_id TEXT PRIMARY KEY,
+                reuse_source_attempt_id TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                detected_utc TEXT NOT NULL,
+                FOREIGN KEY(attempt_id) REFERENCES attempts(attempt_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_attempts_reuse_source_by_state
+                ON attempts (state, reuse_source_attempt_id);
             """
         )
 
@@ -3635,6 +4186,42 @@ def _require_matching_candidate_generation_identity(
             "A candidate must share the parent's full generation identity; only its "
             "recipe_fingerprint and quantization parameters may differ."
         )
+
+
+def _reuse_dispatch_evidence_identity_mismatches(
+    existing: CandidateReuseDispatchEvidence,
+    *,
+    source_attempt_id: str,
+    source_candidate_attempt_id: str,
+    parent_attempt_id: str,
+    policy_id: str,
+    policy_version: str,
+    policy_fingerprint: str,
+    quality_profile_fingerprint: str,
+) -> list[str]:
+    """Return the names of every identity-bearing field on which an
+    already-persisted ``CandidateReuseDispatchEvidence`` row differs from a
+    newly supplied set of values. Deliberately excludes the measured fields
+    (``reused_without_build``, ``runner_dispatch_count``,
+    ``mobius_invocation_count``, ``olive_invocation_count``): those are
+    store-fixed constants for every row, never caller-supplied, so they can
+    never legitimately differ and are not identity."""
+    comparisons = {
+        "source_attempt_id": (existing.source_attempt_id, source_attempt_id),
+        "source_candidate_attempt_id": (
+            existing.source_candidate_attempt_id,
+            source_candidate_attempt_id,
+        ),
+        "parent_attempt_id": (existing.parent_attempt_id, parent_attempt_id),
+        "policy_id": (existing.policy_id, policy_id),
+        "policy_version": (existing.policy_version, policy_version),
+        "policy_fingerprint": (existing.policy_fingerprint, policy_fingerprint),
+        "quality_profile_fingerprint": (
+            existing.quality_profile_fingerprint,
+            quality_profile_fingerprint,
+        ),
+    }
+    return [name for name, (old, new) in comparisons.items() if old != new]
 
 
 def _assert_attempt_request_matches_generated(
@@ -4202,6 +4789,7 @@ __all__ = [
     "RecipeCandidateLineage",
     "RecipePromotionConflictError",
     "RecipeReuseQuery",
+    "ReuseEvidenceBackfillIntegrityFailure",
     "VerifiedRecipeRecord",
     "build_attempt_request_fingerprint",
     "build_attempt_request_from_generated",

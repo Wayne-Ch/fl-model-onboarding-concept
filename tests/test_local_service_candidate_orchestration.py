@@ -2336,3 +2336,294 @@ def test_abandoned_reuse_poll_and_resubmit_race_is_safe(
         assert evidence is not None
     finally:
         service.close()
+
+
+# --------------------------------------------------------------------------
+# Reviewer-REJECTED 3B2b fix (Linus revision): reuse success/evidence
+# atomicity, and legacy/crash backfill for attempts a pre-fix service could
+# have left terminally SUCCEEDED with no dispatch evidence.
+# --------------------------------------------------------------------------
+
+
+def test_reuse_materialization_atomic_finish_evidence_injected_failure_rolls_back_and_resumes_once_on_fresh_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reviewer-REJECTED-fix regression (Issue 1): the previous code called
+    `finish_attempt_succeeded` (committed) then separately
+    `record_reuse_dispatch_evidence` in a second transaction, so a crash
+    between the two left a terminal SUCCEEDED attempt with no evidence,
+    forever invisible to recovery. Simulate a crash INSIDE the new
+    single-transaction `finish_reused_attempt_succeeded_with_dispatch_evidence`
+    (after every winner gate is already durably copied) on one service
+    instance, then prove a fresh instance resumes and completes it exactly
+    once via the ordinary RUNNING-resume path -- never producing a terminal
+    SUCCEEDED-without-evidence attempt at any point."""
+    idempotency_key = "atomic-finish-crash-consumer-1"
+    service_a = _service(tmp_path)
+    try:
+        source_job, source_attempt, default_fingerprint = _create_default_attempt(
+            service_a, idempotency_key="atomic-finish-crash-source-1"
+        )
+        assert _wait_for_job_terminal(service_a, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service_a, source_attempt_id)
+
+        store = service_a._recipe_attempt_store
+
+        def _interrupting_finish(*args, **kwargs):  # noqa: ANN002, ANN003
+            raise RuntimeError("simulated crash inside atomic finish+evidence")
+
+        store.finish_reused_attempt_succeeded_with_dispatch_evidence = _interrupting_finish  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            service_a.create_generated_recipe_attempt(
+                recipe_fingerprint=default_fingerprint,
+                idempotency_key=idempotency_key,
+                model_id=_model(),
+            )
+        assert not service_a._attempt_sync_guards, "guard leaked after simulated crash"
+
+        interrupted = next(
+            candidate_attempt
+            for candidate_attempt in store.list_attempts()
+            if candidate_attempt.idempotency_key == idempotency_key
+        )
+        assert interrupted.state == AttemptState.RUNNING
+        assert len(interrupted.gate_results) == 7  # every winner gate was already durably copied
+        assert store.get_attempt_reuse_source(interrupted.attempt_id) == source_attempt_id
+        # Never a terminal SUCCEEDED-without-evidence attempt at any point.
+        assert store.get_reuse_dispatch_evidence(interrupted.attempt_id) is None
+    finally:
+        service_a.close()
+
+    service_b = _service(tmp_path)
+    try:
+        dispatch_counts = _install_runner_dispatch_spy(service_b, monkeypatch)
+
+        resumed_job, _replay, resumed_attempt = service_b.create_generated_recipe_attempt(
+            recipe_fingerprint=default_fingerprint,
+            idempotency_key=idempotency_key,
+            model_id=_model(),
+        )
+        assert resumed_attempt["state"] == "succeeded"
+        assert resumed_attempt["attempt_id"] == interrupted.attempt_id
+        assert resumed_job.job_id == source_job.job_id
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+        assert not service_b._attempt_sync_guards
+
+        final_attempt = service_b._recipe_attempt_store.get_attempt(interrupted.attempt_id)
+        assert final_attempt.state == AttemptState.SUCCEEDED
+        evidence = service_b._recipe_attempt_store.get_reuse_dispatch_evidence(interrupted.attempt_id)
+        assert evidence is not None
+        assert evidence.source_attempt_id == source_attempt_id
+
+        # Idempotent retry: no re-finish, no dispatch, same evidence.
+        _again_job, _again_replay, again_attempt = service_b.create_generated_recipe_attempt(
+            recipe_fingerprint=default_fingerprint,
+            idempotency_key=idempotency_key,
+            model_id=_model(),
+        )
+        assert again_attempt["state"] == "succeeded"
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+        assert service_b._recipe_attempt_store.get_reuse_dispatch_evidence(interrupted.attempt_id) == evidence
+    finally:
+        service_b.close()
+
+
+def _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+    service: LocalOnboardingService,
+    *,
+    source_attempt_id: str,
+    idempotency_key: str,
+):
+    """Simulate the reviewer-REJECTED pre-fix split success/evidence code
+    path (or a crash between the two writes it used to perform) directly
+    against a real, already-running service's store: start a fresh attempt
+    as a candidate-selection-reuse materialization sourced from
+    `source_attempt_id`'s winning candidate, copy every one of its gates,
+    then finish it SUCCEEDED via the *ordinary* (non-atomic)
+    `finish_attempt_succeeded` -- which never records dispatch evidence.
+    Used only to seed a legacy/crash row for the backfill tests below; no
+    current write path (including this exact service) can ever produce this
+    shape on its own."""
+    store = service._recipe_attempt_store
+    winner_candidate = store.list_candidate_attempts(source_attempt_id)[0]
+    winner_attempt = store.get_attempt(winner_candidate.attempt_id)
+    generated_record = store.get_generated_recipe(winner_candidate.recipe_fingerprint)
+    assert generated_record is not None
+    request = build_attempt_request_from_generated(generated_record)
+    request_fingerprint = build_attempt_request_fingerprint(request)
+    attempt, _replay = store.create_attempt(
+        idempotency_key=idempotency_key,
+        request=request,
+        request_fingerprint=request_fingerprint,
+    )
+    store.start_attempt(attempt.attempt_id, reuse_source_attempt_id=winner_candidate.attempt_id)
+    for gate in winner_attempt.gate_results:
+        store.record_attempt_gate(
+            attempt_id=attempt.attempt_id,
+            gate=gate.gate,
+            status=gate.status,
+            evidence_ref=gate.evidence_ref,
+            metrics_ref=gate.metrics_ref,
+        )
+    store.finish_attempt_succeeded(attempt.attempt_id)
+    return store.get_attempt(attempt.attempt_id), winner_candidate
+
+
+def test_startup_backfills_legacy_succeeded_reuse_attempt_missing_evidence(tmp_path: Path) -> None:
+    """Legacy/crash backfill: a SUCCEEDED reuse-marked attempt with missing
+    dispatch evidence (the shape the pre-fix split success/evidence code
+    path could leave behind) must be healed automatically the next time a
+    service starts up -- no poll or resubmission at all -- and stay
+    idempotent across further restarts."""
+    service_a = _service(tmp_path)
+    try:
+        source_job, source_attempt, _fingerprint = _create_default_attempt(
+            service_a, idempotency_key="legacy-startup-source-1"
+        )
+        assert _wait_for_job_terminal(service_a, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service_a, source_attempt_id)
+
+        legacy_attempt, winner_candidate = _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+            service_a, source_attempt_id=source_attempt_id, idempotency_key="legacy-startup-consumer-1"
+        )
+        assert legacy_attempt.state == AttemptState.SUCCEEDED
+        assert service_a._recipe_attempt_store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id) is None
+    finally:
+        service_a.close()
+
+    service_b = _service(tmp_path)
+    try:
+        evidence = service_b._recipe_attempt_store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id)
+        assert evidence is not None
+        assert evidence.source_attempt_id == winner_candidate.attempt_id
+        assert evidence.reused_without_build is True
+        assert evidence.runner_dispatch_count == 0
+        assert service_b._recipe_attempt_store.get_attempt(legacy_attempt.attempt_id).state == AttemptState.SUCCEEDED
+    finally:
+        service_b.close()
+
+    # Idempotent across further restarts: a third fresh service observes the
+    # exact same evidence row, never re-inserting or duplicating it.
+    service_c = _service(tmp_path)
+    try:
+        evidence_again = service_c._recipe_attempt_store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id)
+        assert evidence_again == evidence
+    finally:
+        service_c.close()
+
+
+def test_poll_backfills_legacy_succeeded_reuse_attempt_missing_evidence(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    try:
+        source_job, source_attempt, _fingerprint = _create_default_attempt(
+            service, idempotency_key="legacy-poll-source-1"
+        )
+        assert _wait_for_job_terminal(service, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service, source_attempt_id)
+
+        legacy_attempt, winner_candidate = _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+            service, source_attempt_id=source_attempt_id, idempotency_key="legacy-poll-consumer-1"
+        )
+        assert service._recipe_attempt_store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id) is None
+
+        polled = service.get_recipe_attempt(attempt_id=legacy_attempt.attempt_id)
+        assert polled["state"] == "succeeded"
+
+        evidence = service._recipe_attempt_store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id)
+        assert evidence is not None
+        assert evidence.source_attempt_id == winner_candidate.attempt_id
+
+        # Idempotent: polling again observes the exact same evidence.
+        polled_again = service.get_recipe_attempt(attempt_id=legacy_attempt.attempt_id)
+        assert polled_again["state"] == "succeeded"
+        assert service._recipe_attempt_store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id) == evidence
+    finally:
+        service.close()
+
+
+def test_resubmit_backfills_legacy_succeeded_reuse_attempt_missing_evidence(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    try:
+        source_job, source_attempt, default_fingerprint = _create_default_attempt(
+            service, idempotency_key="legacy-resubmit-source-1"
+        )
+        assert _wait_for_job_terminal(service, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service, source_attempt_id)
+
+        consumer_key = "legacy-resubmit-consumer-1"
+        legacy_attempt, winner_candidate = _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+            service, source_attempt_id=source_attempt_id, idempotency_key=consumer_key
+        )
+        assert service._recipe_attempt_store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id) is None
+
+        _job, _replay, resubmitted_attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=default_fingerprint,
+            idempotency_key=consumer_key,
+            model_id=_model(),
+        )
+        assert resubmitted_attempt["state"] == "succeeded"
+        assert resubmitted_attempt["attempt_id"] == legacy_attempt.attempt_id
+
+        evidence = service._recipe_attempt_store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id)
+        assert evidence is not None
+        assert evidence.source_attempt_id == winner_candidate.attempt_id
+    finally:
+        service.close()
+
+
+def test_backfill_records_audit_failure_and_never_fabricates_evidence_for_untrusted_legacy_source(
+    tmp_path: Path,
+) -> None:
+    """Legacy/crash backfill must never fabricate evidence for a source that
+    can no longer be trusted (here: the winning candidate is no longer
+    marked `selected`) -- it must record an explicit, sanitized, detectable
+    audit failure instead, and the poll caller must still simply observe the
+    already-terminal `succeeded` attempt, never a hard failure."""
+    service = _service(tmp_path)
+    try:
+        source_job, source_attempt, _fingerprint = _create_default_attempt(
+            service, idempotency_key="legacy-corrupt-source-1"
+        )
+        assert _wait_for_job_terminal(service, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service, source_attempt_id)
+
+        legacy_attempt, winner_candidate = _seed_legacy_succeeded_reuse_attempt_missing_evidence(
+            service, source_attempt_id=source_attempt_id, idempotency_key="legacy-corrupt-consumer-1"
+        )
+
+        store = service._recipe_attempt_store
+        with sqlite3.connect(store.db_path) as connection:
+            connection.execute(
+                "UPDATE candidate_attempts SET selection_status = ?, selected_by = NULL "
+                "WHERE candidate_attempt_id = ?",
+                ("not_selected", winner_candidate.candidate_attempt_id),
+            )
+            connection.commit()
+
+        polled = service.get_recipe_attempt(attempt_id=legacy_attempt.attempt_id)
+        # Never a hard failure for the poll caller, and never fabricated
+        # evidence for the untrusted source.
+        assert polled["state"] == "succeeded"
+        assert store.get_reuse_dispatch_evidence(legacy_attempt.attempt_id) is None
+
+        audit = store.get_reuse_evidence_backfill_integrity_failure(legacy_attempt.attempt_id)
+        assert audit is not None
+        assert "not marked selected" in audit.reason
+        assert audit.reuse_source_attempt_id == winner_candidate.attempt_id
+
+        # Idempotent: polling again never re-raises, duplicates, or overwrites
+        # the audit row.
+        polled_again = service.get_recipe_attempt(attempt_id=legacy_attempt.attempt_id)
+        assert polled_again["state"] == "succeeded"
+        assert store.get_reuse_evidence_backfill_integrity_failure(legacy_attempt.attempt_id) == audit
+    finally:
+        service.close()

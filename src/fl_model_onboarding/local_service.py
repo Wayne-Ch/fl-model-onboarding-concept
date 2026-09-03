@@ -973,6 +973,7 @@ class LocalOnboardingService:
 
         self._recover_orphaned_candidate_lineages()
         self._recover_abandoned_reuse_attempts_at_startup()
+        self._recover_legacy_reuse_dispatch_evidence_at_startup()
 
         self._worker = Thread(target=self._worker_loop, name="fl-onboard-worker", daemon=True)
         self._worker.start()
@@ -1453,6 +1454,7 @@ class LocalOnboardingService:
                 if attempt.state == AttemptState.SUCCEEDED:
                     reuse_source = self._recipe_attempt_store.get_attempt_reuse_source(attempt_id)
                     if reuse_source == winner_attempt.attempt_id:
+                        self._backfill_legacy_reuse_dispatch_evidence(attempt_id)
                         return attempt
                     self._raise_candidate_selection_reuse_integrity_error(
                         f"Recipe attempt '{attempt_id}' already succeeded without a matching reuse "
@@ -1492,12 +1494,10 @@ class LocalOnboardingService:
                             evidence_ref=gate.evidence_ref,
                             metrics_ref=gate.metrics_ref,
                         )
-                    finished = self._recipe_attempt_store.finish_attempt_succeeded(attempt_id)
-                    self._record_reuse_dispatch_evidence(
-                        reused_attempt_id=attempt_id,
-                        winner_attempt_id=winner_attempt.attempt_id,
+                    return self._recipe_attempt_store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+                        attempt_id,
+                        source_attempt_id=winner_attempt.attempt_id,
                     )
-                    return finished
 
                 if attempt.state != AttemptState.GENERATED:
                     raise ServiceError(
@@ -1524,46 +1524,79 @@ class LocalOnboardingService:
                         evidence_ref=gate.evidence_ref,
                         metrics_ref=gate.metrics_ref,
                     )
-                finished = self._recipe_attempt_store.finish_attempt_succeeded(attempt.attempt_id)
-                self._record_reuse_dispatch_evidence(
-                    reused_attempt_id=attempt.attempt_id,
-                    winner_attempt_id=winner_attempt.attempt_id,
+                return self._recipe_attempt_store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+                    attempt.attempt_id,
+                    source_attempt_id=winner_attempt.attempt_id,
                 )
-                return finished
         finally:
             self._release_attempt_sync_guard(attempt_id, guard)
 
-    def _record_reuse_dispatch_evidence(self, *, reused_attempt_id: str, winner_attempt_id: str) -> None:
-        """Persist durable measured-zero dispatch evidence (Slice 3B2b) for a
-        candidate-selection-reuse attempt that just finished `SUCCEEDED`
-        without ever creating, enqueuing, or invoking the build stage runner.
+    def _backfill_legacy_reuse_dispatch_evidence(self, attempt_id: str) -> None:
+        """Legacy/crash backfill (reuse success/evidence atomicity revision):
+        opportunistically heal an already-``SUCCEEDED`` candidate-selection-
+        reuse attempt that is missing its durable dispatch evidence -- only
+        reachable from the pre-fix code path that recorded success and
+        evidence in two separate transactions (or a crash between them),
+        never from current writes, which always use
+        `finish_reused_attempt_succeeded_with_dispatch_evidence`.
 
-        Called only from the exact branches of `_materialize_reused_generated_attempt`
-        and `_recover_abandoned_reuse_attempt` that return a successfully
-        finished reuse result without ever touching the build stage runner --
-        never derived merely from a generation-identity match. Looks up the
-        winner's own durable candidate-plan row for its policy/quality-profile
-        identity and lineage; a missing winner candidate row (which should
-        never happen -- reuse is only ever sourced from a previously-selected
-        candidate winner) is treated as a benign no-op, since evidence is a
-        best-effort durable record of an operation that has already fully and
-        safely completed, never a gate on its correctness. Idempotent: safe
-        to call again for an already-recorded `reused_attempt_id` (for
-        example on a resumed materialization).
+        Called opportunistically on every observed path that can see such an
+        attempt again (resubmission here, plus `get_recipe_attempt` polling
+        and fresh-startup recovery -- see `_recover_legacy_reuse_dispatch_evidence_at_startup`),
+        guarded by the same per-attempt lock used everywhere else in this
+        file so it can never race a concurrent caller into inserting
+        conflicting evidence. Never raises: if the source cannot be safely
+        revalidated, records an explicit, sanitized integrity-failure audit
+        row instead (see `RecipeAttemptStore.record_reuse_evidence_backfill_integrity_failure`)
+        so the gap stays detectable rather than silently persisting forever.
+        The already-terminal attempt row itself is never touched, no tool is
+        ever rerun, and no gate/source invocation counter is ever rewritten.
         """
-        winner_candidate = self._recipe_attempt_store.find_candidate_attempt_by_attempt_id(winner_attempt_id)
-        if winner_candidate is None:
+        if self._recipe_attempt_store.get_reuse_dispatch_evidence(attempt_id) is not None:
             return
-        self._recipe_attempt_store.record_reuse_dispatch_evidence(
-            reused_attempt_id=reused_attempt_id,
-            source_attempt_id=winner_candidate.attempt_id,
-            source_candidate_attempt_id=winner_candidate.candidate_attempt_id,
-            parent_attempt_id=winner_candidate.parent_attempt_id,
-            policy_id=winner_candidate.policy_id,
-            policy_version=winner_candidate.policy_version,
-            policy_fingerprint=winner_candidate.policy_fingerprint,
-            quality_profile_fingerprint=winner_candidate.quality_profile_fingerprint,
-        )
+        try:
+            reuse_source_attempt_id = self._recipe_attempt_store.get_attempt_reuse_source(attempt_id)
+        except KeyError:
+            return
+        if reuse_source_attempt_id is None:
+            return
+        try:
+            self._recipe_attempt_store.backfill_reused_attempt_dispatch_evidence(
+                attempt_id,
+                source_attempt_id=reuse_source_attempt_id,
+            )
+        except RecipeAttemptStoreError as exc:
+            try:
+                self._recipe_attempt_store.record_reuse_evidence_backfill_integrity_failure(
+                    attempt_id=attempt_id,
+                    reuse_source_attempt_id=reuse_source_attempt_id,
+                    reason=_sanitize_attempt_failure_message(str(exc)),
+                )
+            except RecipeAttemptStoreError:
+                # Recording the audit row itself is best-effort: even an
+                # unredactable reason must never turn this opportunistic
+                # healing call into a hard failure for an unrelated
+                # poll/resubmit/startup caller. The gap remains detectable
+                # via `find_legacy_succeeded_reuse_attempts_missing_evidence`
+                # regardless.
+                pass
+
+    def _recover_legacy_reuse_dispatch_evidence_at_startup(self) -> None:
+        """Restart-time backfill sweep (reuse success/evidence atomicity
+        revision) mirroring `_recover_abandoned_reuse_attempts_at_startup`:
+        proactively heals every already-``SUCCEEDED``, reuse-marked attempt
+        missing its durable dispatch evidence using the store's bounded,
+        indexed `find_legacy_succeeded_reuse_attempts_missing_evidence` query,
+        so a fresh service startup alone -- with no client poll or
+        resubmission at all -- is enough to resolve every such row a
+        pre-fix service instance could have left behind."""
+        for attempt_id in self._recipe_attempt_store.find_legacy_succeeded_reuse_attempts_missing_evidence():
+            guard = self._acquire_attempt_sync_guard(attempt_id)
+            try:
+                with guard.lock:
+                    self._backfill_legacy_reuse_dispatch_evidence(attempt_id)
+            finally:
+                self._release_attempt_sync_guard(attempt_id, guard)
 
     def _finalize_abandoned_reuse_attempt_failed(
         self,
@@ -1717,18 +1750,16 @@ class LocalOnboardingService:
                             evidence_ref=gate.evidence_ref,
                             metrics_ref=gate.metrics_ref,
                         )
-                    finished = self._recipe_attempt_store.finish_attempt_succeeded(attempt_id)
+                    return self._recipe_attempt_store.finish_reused_attempt_succeeded_with_dispatch_evidence(
+                        attempt_id,
+                        source_attempt_id=reuse_source_attempt_id,
+                    )
                 except RecipeAttemptStoreError as exc:
                     return self._finalize_abandoned_reuse_attempt_failed(
                         attempt_id=attempt_id,
                         reuse_source_attempt_id=reuse_source_attempt_id,
                         reason=f"failed to complete abandoned reuse attempt: {exc}",
                     )
-                self._record_reuse_dispatch_evidence(
-                    reused_attempt_id=attempt_id,
-                    winner_attempt_id=reuse_source_attempt_id,
-                )
-                return finished
         finally:
             self._release_attempt_sync_guard(attempt_id, guard)
 
@@ -2576,6 +2607,14 @@ class LocalOnboardingService:
                 recovered = self._recover_abandoned_reuse_attempt(normalized)
                 if recovered is not None:
                     attempt = recovered
+            elif mapped_job is None and attempt.state == AttemptState.SUCCEEDED:
+                # Reuse success/evidence atomicity revision: a legacy/crash
+                # attempt from before atomic finish+evidence recording may
+                # already be terminally SUCCEEDED with a reuse marker but no
+                # dispatch evidence. Opportunistically heal it on poll too,
+                # not only at startup/resubmission -- never touches the
+                # already-terminal attempt row itself.
+                self._backfill_legacy_reuse_dispatch_evidence(normalized)
         return self._serialize_recipe_attempt(attempt)
 
     def create_generated_recipe_attempt(
