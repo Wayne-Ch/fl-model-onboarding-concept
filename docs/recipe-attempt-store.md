@@ -173,6 +173,14 @@ data. A candidate counts as **verified** exactly when its linked attempt reaches
 - `CandidateInvocationCounters` fields (Mobius/Olive invocation counts, wall-clock
   seconds, estimated cost) are all `None` until a later slice actually instruments a
   real run. `None` is never coerced to or serialized as `0`.
+- Slice 3A1 instruments the real run: `ProductionBuildStageRunner` now records actual
+  per-job Mobius/Olive invocation counts/wall time (see
+  `docs/recipe-agent-trusted-candidate-compilation.md`), and
+  `production_runner.production_invocation_evidence_to_candidate_counters(...)` converts
+  that real evidence into this exact `CandidateInvocationCounters` shape. This store
+  module itself is unchanged; persisting those counters via
+  `finalize_candidate_attempt_evidence` against a real `candidate_attempt_id` is
+  orchestration wiring left to a later slice.
 
 ### Cross-module trigger-constant enforcement
 

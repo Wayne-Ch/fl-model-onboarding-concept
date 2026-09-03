@@ -20,9 +20,15 @@ from fl_model_onboarding.recipe_compiler import (
     PromotionGateEvidence,
     RecipeCompilerInput,
     RecipeCompilerToolchain,
+    TrustedCandidateCompilationError,
     compile_generated_recipe,
+    compile_trusted_candidate_recipe,
     generated_recipe_schema_path,
     promote_generated_recipe,
+)
+from fl_model_onboarding.recipe_selection_policy import (
+    DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY,
+    RecipeQuantizationOverride,
 )
 from fl_model_onboarding.recipes import RecipeStatus
 
@@ -331,3 +337,168 @@ def test_generated_recipe_schema_contract_is_present() -> None:
     schema = json.loads(generated_recipe_schema_path().read_text(encoding="utf-8"))
     assert schema["properties"]["schema_version"]["const"] == GENERATED_RECIPE_SCHEMA_VERSION
     assert "provenance" in schema["$defs"]
+
+
+# --- Slice 3A1: trusted candidate compilation -------------------------------
+
+
+def test_trusted_candidate_default_is_returned_unchanged() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+
+    result = compile_trusted_candidate_recipe(
+        default,
+        policy=policy,
+        candidate=policy.candidates[0],
+    )
+
+    assert result is default
+    assert result.fingerprint == default.fingerprint
+    assert result.recipe.olive is not None
+    assert result.recipe.olive.block_size is None
+
+
+def test_trusted_candidate_block64_applies_override_and_changes_fingerprint() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    fallback_candidate = policy.candidates[1]
+
+    result = compile_trusted_candidate_recipe(
+        default,
+        policy=policy,
+        candidate=fallback_candidate,
+    )
+
+    assert result.recipe.olive is not None
+    assert default.recipe.olive is not None
+    assert result.recipe.olive.block_size == 64
+    assert result.recipe.olive.device == default.recipe.olive.device
+    assert result.recipe.olive.precision == default.recipe.olive.precision
+    assert result.recipe.olive.task == default.recipe.olive.task
+    assert result.recipe.olive.provider == default.recipe.olive.provider
+    assert result.fingerprint != default.fingerprint
+    assert result.payload()["recipe"]["olive"]["block_size"] == 64
+
+    # Source revision/toolchain/capability/profile identity is preserved.
+    assert result.pinned_revision == default.pinned_revision
+    assert result.provenance.toolchain == default.provenance.toolchain
+    assert result.provenance.capability_id == default.provenance.capability_id
+    assert result.provenance.capability_version == default.provenance.capability_version
+    assert result.recipe.task_profile == default.recipe.task_profile
+    assert result.recipe.mobius == default.recipe.mobius
+
+    trusted = result.provenance.trusted_candidate
+    assert trusted is not None
+    assert trusted.policy_id == policy.policy_id
+    assert trusted.policy_version == policy.version
+    assert trusted.policy_fingerprint == policy.fingerprint
+    assert trusted.candidate_index == 1
+    assert trusted.candidate_id == fallback_candidate.candidate_id
+    assert trusted.resolved_block_size == 64
+    assert default.provenance.trusted_candidate is None
+
+
+def test_trusted_candidate_is_byte_deterministic() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    first = compile_trusted_candidate_recipe(default, policy=policy, candidate=policy.candidates[1])
+    second = compile_trusted_candidate_recipe(default, policy=policy, candidate=policy.candidates[1])
+
+    assert first.canonical_json == second.canonical_json
+    assert first.fingerprint == second.fingerprint
+
+
+def test_trusted_candidate_does_not_branch_on_model_identity() -> None:
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    first_default = compile_generated_recipe(_llm_input(model_id="example-org/alpha-text-model"))
+    second_default = compile_generated_recipe(_llm_input(model_id="another-org/beta-text-model"))
+
+    first = compile_trusted_candidate_recipe(first_default, policy=policy, candidate=policy.candidates[1])
+    second = compile_trusted_candidate_recipe(second_default, policy=policy, candidate=policy.candidates[1])
+
+    assert first.recipe.olive is not None
+    assert second.recipe.olive is not None
+    assert first.recipe.olive.block_size == second.recipe.olive.block_size == 64
+    assert first.provenance.trusted_candidate is not None
+    assert second.provenance.trusted_candidate is not None
+    assert first.provenance.trusted_candidate.candidate_id == second.provenance.trusted_candidate.candidate_id
+
+
+def test_trusted_candidate_rejects_unapproved_policy_version() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    altered_policy = replace(policy, version="9.9.9")
+
+    with pytest.raises(TrustedCandidateCompilationError, match="does not exactly match"):
+        compile_trusted_candidate_recipe(default, policy=altered_policy, candidate=policy.candidates[1])
+
+
+def test_trusted_candidate_rejects_unknown_policy_id() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    bogus_policy = replace(policy, policy_id="not-a-real-policy")
+
+    with pytest.raises(TrustedCandidateCompilationError, match="Unknown recipe selection policy_id"):
+        compile_trusted_candidate_recipe(default, policy=bogus_policy, candidate=policy.candidates[1])
+
+
+def test_trusted_candidate_rejects_arbitrary_block_size() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    tampered_candidate = replace(
+        policy.candidates[1],
+        quantization_override=RecipeQuantizationOverride(block_size=128),
+    )
+
+    with pytest.raises(TrustedCandidateCompilationError, match="does not exactly match"):
+        compile_trusted_candidate_recipe(default, policy=policy, candidate=tampered_candidate)
+
+
+def test_trusted_candidate_rejects_out_of_range_candidate_index() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    out_of_range = replace(policy.candidates[1], candidate_index=5)
+
+    with pytest.raises(TrustedCandidateCompilationError, match="out of range"):
+        compile_trusted_candidate_recipe(default, policy=policy, candidate=out_of_range)
+
+
+def test_trusted_candidate_rejects_device_change_attempt() -> None:
+    default = compile_generated_recipe(_llm_input())
+    assert default.recipe.olive is not None
+    tampered_default = replace(
+        default,
+        recipe=replace(default.recipe, olive=replace(default.recipe.olive, device="cuda")),
+    )
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+
+    with pytest.raises(TrustedCandidateCompilationError, match="does not match policy target device"):
+        compile_trusted_candidate_recipe(tampered_default, policy=policy, candidate=policy.candidates[1])
+
+
+def test_trusted_candidate_rejects_precision_change_attempt() -> None:
+    default = compile_generated_recipe(_llm_input())
+    assert default.recipe.olive is not None
+    tampered_default = replace(
+        default,
+        recipe=replace(default.recipe, olive=replace(default.recipe.olive, precision="fp32")),
+    )
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+
+    with pytest.raises(TrustedCandidateCompilationError, match="does not match policy quantization"):
+        compile_trusted_candidate_recipe(tampered_default, policy=policy, candidate=policy.candidates[1])
+
+
+def test_trusted_candidate_default_rejects_declared_override() -> None:
+    default = compile_generated_recipe(_llm_input())
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    tampered_default_candidate = replace(
+        policy.candidates[0],
+        quantization_override=RecipeQuantizationOverride(block_size=64),
+    )
+
+    # A tampered candidate 0 is caught by the byte-for-byte identity check
+    # against the trusted registry before the "no override on candidate 0"
+    # check is ever reached -- defense in depth, not a gap.
+    with pytest.raises(TrustedCandidateCompilationError, match="does not exactly match"):
+        compile_trusted_candidate_recipe(default, policy=policy, candidate=tampered_default_candidate)

@@ -137,6 +137,12 @@
         },
         "log_level": {
           "type": "string"
+        },
+        "block_size": {
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "additionalProperties": false
@@ -445,6 +451,44 @@
       },
       "additionalProperties": false
     },
+    "trusted_candidate": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "candidate_index",
+        "candidate_id",
+        "resolved_block_size"
+      ],
+      "properties": {
+        "policy_id": {
+          "type": "string"
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "policy_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "candidate_index": {
+          "type": "integer"
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "resolved_block_size": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "provenance": {
       "type": "object",
       "required": [
@@ -460,7 +504,8 @@
         "evidence",
         "toolchain",
         "input_metadata",
-        "promotion"
+        "promotion",
+        "trusted_candidate"
       ],
       "properties": {
         "compiler_version": {
@@ -509,6 +554,9 @@
         },
         "promotion": {
           "$ref": "#/$defs/promotion"
+        },
+        "trusted_candidate": {
+          "$ref": "#/$defs/trusted_candidate"
         }
       },
       "additionalProperties": false

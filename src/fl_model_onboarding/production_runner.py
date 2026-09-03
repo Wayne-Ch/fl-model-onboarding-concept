@@ -7,7 +7,7 @@ import shutil
 import sys
 import uuid
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
@@ -27,10 +27,18 @@ from .contracts import (
     FailureInfo,
     GeneratedRecipeAttemptBinding,
     JobState,
+    ProductionInvocationEvidence,
+    ToolInvocationEvidence,
+    ToolInvocationTerminalStage,
     ValidationResult,
     ValidationStatus,
 )
-from .recipe_attempt_store import AttemptState, RecipeAttempt, RecipeAttemptStore
+from .recipe_attempt_store import (
+    AttemptState,
+    CandidateInvocationCounters,
+    RecipeAttempt,
+    RecipeAttemptStore,
+)
 from .recipe_compiler import GeneratedRecipeCompileError, validate_generated_recipe_payload
 from .state_machine import fail_job, transition
 from .recipes import (
@@ -78,6 +86,42 @@ def _compact_failure_detail(value: str) -> str:
     if len(compact) <= _MAX_COMMAND_FAILURE_DETAIL_CHARS:
         return compact
     return "..." + compact[-(_MAX_COMMAND_FAILURE_DETAIL_CHARS - 3) :].lstrip()
+
+
+def production_invocation_evidence_to_candidate_counters(
+    evidence: ProductionInvocationEvidence,
+) -> CandidateInvocationCounters:
+    """Convert real per-job Mobius/Olive invocation evidence into the store's
+    nullable :class:`~fl_model_onboarding.recipe_attempt_store.CandidateInvocationCounters`
+    shape.
+
+    A tool's count is only ever reported once that tool's launch was actually
+    attempted for this job; an untouched (not-run) tool stays ``None``, never
+    ``0``, matching ``CandidateInvocationCounters``'s documented null
+    semantics -- a validation-time rejection that prevented a launch must
+    never be reported as if a run of zero invocations occurred. This function
+    only builds the value; persisting it via
+    ``RecipeAttemptStore.finalize_candidate_attempt_evidence`` is orchestration
+    wiring left to a later slice.
+    """
+    mobius_count = evidence.mobius.invocation_count if evidence.mobius.invocation_count > 0 else None
+    olive_count = evidence.olive.invocation_count if evidence.olive.invocation_count > 0 else None
+    total_count = None
+    if mobius_count is not None or olive_count is not None:
+        total_count = (mobius_count or 0) + (olive_count or 0)
+    wall_parts = [
+        value
+        for value in (evidence.mobius.wall_seconds, evidence.olive.wall_seconds)
+        if value is not None
+    ]
+    wall_clock_seconds = sum(wall_parts) if wall_parts else None
+    return CandidateInvocationCounters(
+        mobius_build_invocation_count=mobius_count,
+        olive_optimize_invocation_count=olive_count,
+        total_invocation_count=total_count,
+        wall_clock_seconds=wall_clock_seconds,
+        estimated_cost_usd=None,
+    )
 
 
 def _resolve_staging_relative_path(
@@ -716,6 +760,10 @@ def _recipe_from_payload(payload: dict[str, object]) -> ModelRecipe:
                     olive_payload.get("log_level"),
                     field_name="generated.recipe.olive.log_level",
                 ),
+                block_size=_optional_int(
+                    olive_payload.get("block_size"),
+                    field_name="generated.recipe.olive.block_size",
+                ),
             )
             if olive_payload is not None
             else None
@@ -767,6 +815,14 @@ def _optional_string(value: object) -> str | None:
         raise RecipeExecutionResolutionError("Optional string field must be null or a string.")
     stripped = value.strip()
     return stripped or None
+
+
+def _optional_int(value: object, *, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise RecipeExecutionResolutionError(f"{field_name} must be null or an integer.")
+    return value
 
 
 def _require_bool(value: object, *, field_name: str) -> bool:
@@ -1108,6 +1164,7 @@ class ProductionBuildStageRunner:
         cancellation_event: Event,
     ) -> None:
         request = job.request
+        job.production_invocation_evidence = ProductionInvocationEvidence()
         if recipe.choice_for_profile(request.task_profile, request.skip_olive) is None:
             supported = ", ".join(
                 f"{choice.task_profile}/skip_olive={choice.skip_olive}"
@@ -1155,14 +1212,16 @@ class ProductionBuildStageRunner:
         if recipe.mobius.dtype:
             mobius_argv.extend(["--dtype", recipe.mobius.dtype])
         mobius_argv.append(str(mobius_dir))
-        self._run_command(
-            CommandSpec(
+        self._run_instrumented_tool_command(
+            job,
+            tool="mobius",
+            spec=CommandSpec(
                 argv=tuple(mobius_argv),
                 cwd=request.workspace_root,
                 timeout_seconds=self._build_timeout_seconds,
             ),
-            cancellation_event,
-            "Mobius build",
+            cancellation_event=cancellation_event,
+            label="Mobius build",
         )
         baseline_model_name = f"{recipe.model_name_prefix}-{job.job_id[:12]}-mobius-baseline:1"
         (mobius_dir / "inference_model.json").write_text(
@@ -1195,6 +1254,8 @@ class ProductionBuildStageRunner:
         ]
         if recipe.olive.precision:
             olive_argv.extend(["--precision", recipe.olive.precision])
+        if recipe.olive.block_size is not None:
+            olive_argv.extend(["--block_size", str(recipe.olive.block_size)])
         olive_argv.extend(
             [
                 "--output_path",
@@ -1203,14 +1264,16 @@ class ProductionBuildStageRunner:
                 recipe.olive.log_level,
             ]
         )
-        self._run_command(
-            CommandSpec(
+        self._run_instrumented_tool_command(
+            job,
+            tool="olive",
+            spec=CommandSpec(
                 argv=tuple(olive_argv),
                 cwd=request.workspace_root,
                 timeout_seconds=self._olive_timeout_seconds,
             ),
-            cancellation_event,
-            "Olive optimize",
+            cancellation_event=cancellation_event,
+            label="Olive optimize",
         )
         source_dir = olive_dir
         self._ensure_required_ancillary_files(source_dir=source_dir, recipe=recipe)
@@ -1372,6 +1435,128 @@ class ProductionBuildStageRunner:
             )
             raise RuntimeError(f"{label} failed: {detail}")
         return result
+
+    def _run_instrumented_tool_command(
+        self,
+        job: BuildJob,
+        *,
+        tool: str,
+        spec: CommandSpec,
+        cancellation_event: Event,
+        label: str,
+    ) -> CommandResult:
+        """Run one real Mobius/Olive process launch with per-job invocation
+        instrumentation.
+
+        Reached only after every upstream validation check in ``_run`` has
+        already passed, so every call here is a real launch *attempt*: the
+        invocation counter increments immediately before the external process
+        is actually started, before we know whether it will succeed, fail,
+        time out, or be cancelled. That increment and the terminal
+        stage/success/timing recorded afterward live on ``job`` (a fresh,
+        job-specific ``ProductionInvocationEvidence``), never on ``self``, so
+        concurrent jobs handled by the same runner instance never share or
+        race on these counters.
+        """
+        if tool not in ("mobius", "olive"):
+            raise ValueError(f"Unknown instrumented tool '{tool}'.")
+        started = datetime.now(timezone.utc)
+        self._update_tool_evidence(
+            job,
+            tool=tool,
+            update=lambda current: replace(
+                current,
+                invocation_count=current.invocation_count + 1,
+                terminal_stage=ToolInvocationTerminalStage.NOT_RUN,
+                success=None,
+                started_utc=started,
+                finished_utc=None,
+                wall_seconds=None,
+            ),
+        )
+        try:
+            result = self._process_runner.run(spec, cancel_event=cancellation_event)
+        except TimeoutError:
+            self._finish_tool_evidence(
+                job,
+                tool=tool,
+                started=started,
+                terminal_stage=ToolInvocationTerminalStage.TIMED_OUT,
+                success=False,
+            )
+            raise
+        except Exception:
+            terminal_stage = (
+                ToolInvocationTerminalStage.CANCELLED
+                if cancellation_event.is_set()
+                else ToolInvocationTerminalStage.FAILED
+            )
+            self._finish_tool_evidence(
+                job,
+                tool=tool,
+                started=started,
+                terminal_stage=terminal_stage,
+                success=False,
+            )
+            raise
+        if not result.ok:
+            self._finish_tool_evidence(
+                job,
+                tool=tool,
+                started=started,
+                terminal_stage=ToolInvocationTerminalStage.FAILED,
+                success=False,
+            )
+            detail = _compact_failure_detail(
+                result.stderr.strip() or result.stdout.strip() or f"exit code {result.exit_code}"
+            )
+            raise RuntimeError(f"{label} failed: {detail}")
+        self._finish_tool_evidence(
+            job,
+            tool=tool,
+            started=started,
+            terminal_stage=ToolInvocationTerminalStage.COMPLETED,
+            success=True,
+        )
+        return result
+
+    @staticmethod
+    def _update_tool_evidence(
+        job: BuildJob,
+        *,
+        tool: str,
+        update: Callable[[ToolInvocationEvidence], ToolInvocationEvidence],
+    ) -> None:
+        evidence = job.production_invocation_evidence or ProductionInvocationEvidence()
+        current = evidence.mobius if tool == "mobius" else evidence.olive
+        updated = update(current)
+        job.production_invocation_evidence = (
+            replace(evidence, mobius=updated) if tool == "mobius" else replace(evidence, olive=updated)
+        )
+
+    @classmethod
+    def _finish_tool_evidence(
+        cls,
+        job: BuildJob,
+        *,
+        tool: str,
+        started: datetime,
+        terminal_stage: ToolInvocationTerminalStage,
+        success: bool,
+    ) -> None:
+        finished = datetime.now(timezone.utc)
+        wall_seconds = max((finished - started).total_seconds(), 0.0)
+        cls._update_tool_evidence(
+            job,
+            tool=tool,
+            update=lambda current: replace(
+                current,
+                terminal_stage=terminal_stage,
+                success=success,
+                finished_utc=finished,
+                wall_seconds=wall_seconds,
+            ),
+        )
 
     @staticmethod
     def _artifact_id(job: BuildJob) -> str:

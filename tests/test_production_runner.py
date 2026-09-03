@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ from fl_model_onboarding.contracts import (
     ModelCandidate,
     PreflightResult,
     ToolAvailability,
+    ToolInvocationTerminalStage,
     ValidationStatus,
 )
 from fl_model_onboarding.local_service import BuildSubmission, LocalOnboardingService
@@ -50,7 +52,9 @@ from fl_model_onboarding.recipe_compiler import (
     RecipeCompilerInput,
     RecipeCompilerToolchain,
     compile_generated_recipe,
+    compile_trusted_candidate_recipe,
 )
+from fl_model_onboarding.recipe_selection_policy import DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
 from fl_model_onboarding.recipes import (
     DEFAULT_MODEL_RECIPES,
     DISTIL_WHISPER_MODEL_ID,
@@ -414,6 +418,201 @@ def test_production_runner_uses_verified_contract_and_registers_artifact(tmp_pat
     assert all(spec.timeout_seconds <= 7200 for spec in runner.specs)
     assert runner.cancel_events[-1] is not None
 
+    evidence = job.production_invocation_evidence
+    assert evidence is not None
+    assert evidence.mobius.invocation_count == 1
+    assert evidence.mobius.terminal_stage == ToolInvocationTerminalStage.COMPLETED
+    assert evidence.mobius.success is True
+    assert evidence.mobius.wall_seconds is not None
+    assert evidence.olive.invocation_count == 1
+    assert evidence.olive.terminal_stage == ToolInvocationTerminalStage.COMPLETED
+    assert evidence.olive.success is True
+    assert evidence.olive.wall_seconds is not None
+    sanitized = evidence.sanitized_payload()
+    assert sanitized["mobius_invocation_count"] == 1
+    assert sanitized["olive_invocation_count"] == 1
+    counters = production_runner_module.production_invocation_evidence_to_candidate_counters(evidence)
+    assert counters.mobius_build_invocation_count == 1
+    assert counters.olive_optimize_invocation_count == 1
+    assert counters.total_invocation_count == 2
+
+
+def test_validation_rejection_inside_run_leaves_tool_evidence_not_run(tmp_path: Path) -> None:
+    """A validation failure reached *inside* `_run` (after the recipe/pinned
+    revision resolves, but before any process is ever launched) must leave
+    both tools' invocation evidence at their not-run defaults: no process was
+    ever attempted, so the count must stay `0`/`NOT_RUN`, never be inferred as
+    a real run of zero invocations."""
+    request = replace(_request(tmp_path), skip_olive=True)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="preflight-reject", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    runner = ContractProcessRunner()
+    production = ProductionBuildStageRunner(runner, model_acquisition=PinnedSnapshot())  # type: ignore[arg-type]
+
+    production.run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert not runner.specs
+    evidence = job.production_invocation_evidence
+    assert evidence is not None
+    assert evidence.mobius.invocation_count == 0
+    assert evidence.mobius.terminal_stage == ToolInvocationTerminalStage.NOT_RUN
+    assert evidence.mobius.success is None
+    assert evidence.olive.invocation_count == 0
+    assert evidence.olive.terminal_stage == ToolInvocationTerminalStage.NOT_RUN
+    assert evidence.olive.success is None
+    counters = production_runner_module.production_invocation_evidence_to_candidate_counters(evidence)
+    assert counters.mobius_build_invocation_count is None
+    assert counters.olive_optimize_invocation_count is None
+    assert counters.total_invocation_count is None
+
+
+def test_resolution_failure_before_run_leaves_no_invocation_evidence(tmp_path: Path) -> None:
+    """A resolution failure that never even enters `_run` (e.g. an unknown
+    task profile) must leave `production_invocation_evidence` at its job-level
+    `None` default -- not merely at not-run tool defaults."""
+    request = replace(_request(tmp_path), task_profile="not-a-real-profile")
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="resolution-reject", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    runner = ContractProcessRunner()
+    production = ProductionBuildStageRunner(runner, model_acquisition=PinnedSnapshot())  # type: ignore[arg-type]
+
+    production.run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    assert not runner.specs
+    assert job.production_invocation_evidence is None
+
+
+class _MobiusTimeoutProcessRunner(ContractProcessRunner):
+    def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+        if spec.argv[:2] == ("mobius", "build"):
+            self.specs.append(spec)
+            self.cancel_events.append(cancel_event)
+            raise TimeoutError("synthetic mobius timeout")
+        return super().run(spec, cancel_event=cancel_event)
+
+
+def test_mobius_timeout_counts_once_and_records_timed_out_stage(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="mobius-timeout", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    runner = _MobiusTimeoutProcessRunner()
+    production = ProductionBuildStageRunner(runner, model_acquisition=PinnedSnapshot())  # type: ignore[arg-type]
+
+    production.run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    evidence = job.production_invocation_evidence
+    assert evidence is not None
+    assert evidence.mobius.invocation_count == 1
+    assert evidence.mobius.terminal_stage == ToolInvocationTerminalStage.TIMED_OUT
+    assert evidence.mobius.success is False
+    assert evidence.mobius.finished_utc is not None
+    # Olive was never reached because Mobius failed first.
+    assert evidence.olive.invocation_count == 0
+    assert evidence.olive.terminal_stage == ToolInvocationTerminalStage.NOT_RUN
+
+
+class _OliveFailureProcessRunner(ContractProcessRunner):
+    def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+        if spec.argv[:2] == ("olive", "optimize"):
+            self.specs.append(spec)
+            self.cancel_events.append(cancel_event)
+            return CommandResult(spec=spec, exit_code=1, stdout="", stderr="synthetic olive failure")
+        return super().run(spec, cancel_event=cancel_event)
+
+
+def test_olive_process_failure_counts_once_and_records_failed_stage(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="olive-failure", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    runner = _OliveFailureProcessRunner()
+    production = ProductionBuildStageRunner(runner, model_acquisition=PinnedSnapshot())  # type: ignore[arg-type]
+
+    production.run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.FAILED
+    evidence = job.production_invocation_evidence
+    assert evidence is not None
+    # Mobius still ran and succeeded before Olive failed.
+    assert evidence.mobius.invocation_count == 1
+    assert evidence.mobius.terminal_stage == ToolInvocationTerminalStage.COMPLETED
+    assert evidence.olive.invocation_count == 1
+    assert evidence.olive.terminal_stage == ToolInvocationTerminalStage.FAILED
+    assert evidence.olive.success is False
+
+
+class _OliveCancelProcessRunner(ContractProcessRunner):
+    def run(self, spec: CommandSpec, cancel_event=None) -> CommandResult:  # noqa: ANN001
+        if spec.argv[:2] == ("olive", "optimize"):
+            self.specs.append(spec)
+            self.cancel_events.append(cancel_event)
+            if cancel_event is not None:
+                cancel_event.set()
+            raise RuntimeError("synthetic cancellation after launch")
+        return super().run(spec, cancel_event=cancel_event)
+
+
+def test_olive_cancellation_after_launch_counts_once_and_records_cancelled_stage(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="olive-cancel", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    runner = _OliveCancelProcessRunner()
+    production = ProductionBuildStageRunner(runner, model_acquisition=PinnedSnapshot())  # type: ignore[arg-type]
+
+    production.run(job, persist=lambda: None, cancellation_event=Event())
+
+    evidence = job.production_invocation_evidence
+    assert evidence is not None
+    assert evidence.olive.invocation_count == 1
+    assert evidence.olive.terminal_stage == ToolInvocationTerminalStage.CANCELLED
+    assert evidence.olive.success is False
+
+
+def test_concurrent_runs_have_isolated_invocation_counters(tmp_path: Path) -> None:
+    """The same `ProductionBuildStageRunner` (and the same underlying process
+    runner) handling several jobs concurrently must never leak invocation
+    counts between jobs: counters live on each `BuildJob`, not on the runner
+    instance."""
+    runner = ContractProcessRunner()
+    production = ProductionBuildStageRunner(runner, model_acquisition=PinnedSnapshot())  # type: ignore[arg-type]
+
+    jobs: list[BuildJob] = []
+    for index in range(4):
+        request = _request(tmp_path / f"job-{index}")
+        request.workspace_root.mkdir(parents=True)
+        request.model_cache_dir.mkdir(parents=True)
+        job = BuildJob(job_id=f"concurrent-{index}", request=request)
+        transition(job, JobState.PREFLIGHT, "Preflight passed.")
+        jobs.append(job)
+
+    def _run_job(job: BuildJob) -> None:
+        production.run(job, persist=lambda: None, cancellation_event=Event())
+
+    threads = [threading.Thread(target=_run_job, args=(job,)) for job in jobs]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    for job in jobs:
+        assert job.state == JobState.SUCCEEDED
+        evidence = job.production_invocation_evidence
+        assert evidence is not None
+        assert evidence.mobius.invocation_count == 1
+        assert evidence.olive.invocation_count == 1
+
 
 def test_production_runner_uses_explicit_runtime_interpreter_for_worker_commands(tmp_path: Path) -> None:
     request = _request(tmp_path)
@@ -659,6 +858,64 @@ def test_production_runner_executes_generated_attempt_from_persisted_record(tmp_
     assert Path(mobius.argv[3]).parent == request.model_cache_dir
     assert "--runtime" in mobius.argv
     assert mobius.argv[mobius.argv.index("--runtime") + 1] == "ort-genai"
+
+
+def test_production_runner_executes_trusted_block64_candidate_with_real_olive_argv(tmp_path: Path) -> None:
+    """Slice 3A1 end-to-end: a trusted candidate-1 recipe compiled by
+    `compile_trusted_candidate_recipe` (block_size=64) executes through the
+    existing generated-attempt path and actually threads `--block_size 64`
+    into the real Olive `optimize` command line, with per-job Mobius/Olive
+    invocation evidence recorded."""
+    default_candidate = _compile_generated_candidate(
+        "owner/fallback-block64-model",
+        "2234567890abcdef1234567890abcdef12345678",
+    )
+    policy = DEFAULT_CPU_INT4_RECIPE_SELECTION_POLICY
+    fallback_recipe = compile_trusted_candidate_recipe(
+        default_candidate,
+        policy=policy,
+        candidate=policy.candidates[1],
+    )
+    assert fallback_recipe.recipe.olive is not None
+    assert fallback_recipe.recipe.olive.block_size == 64
+
+    generated_record = _generated_record_for(fallback_recipe)
+    attempt_id = "22222222-2222-2222-2222-222222222222"
+    generated_attempt = _attempt_for_generated(
+        attempt_id=attempt_id,
+        record=generated_record,
+        state=AttemptState.RUNNING,
+    )
+    request = _generated_request(tmp_path, fallback_recipe, attempt_id=attempt_id)
+    request.workspace_root.mkdir(parents=True)
+    request.model_cache_dir.mkdir(parents=True)
+    job = BuildJob(job_id="generated-block64", request=request)
+    transition(job, JobState.PREFLIGHT, "Preflight passed.")
+    process_runner = ContractProcessRunner()
+    store = InMemoryAttemptStore(
+        attempt=generated_attempt,
+        generated=generated_record,
+    )
+
+    ProductionBuildStageRunner(
+        process_runner,
+        model_acquisition=GenericSnapshot(),  # type: ignore[arg-type]
+        recipe_attempt_store=store,  # type: ignore[arg-type]
+    ).run(job, persist=lambda: None, cancellation_event=Event())
+
+    assert job.state == JobState.SUCCEEDED
+    olive = next(spec for spec in process_runner.specs if spec.argv[:2] == ("olive", "optimize"))
+    assert "--block_size" in olive.argv
+    assert olive.argv[olive.argv.index("--block_size") + 1] == "64"
+
+    evidence = job.production_invocation_evidence
+    assert evidence is not None
+    assert evidence.mobius.invocation_count == 1
+    assert evidence.olive.invocation_count == 1
+    counters = production_runner_module.production_invocation_evidence_to_candidate_counters(evidence)
+    assert counters.mobius_build_invocation_count == 1
+    assert counters.olive_optimize_invocation_count == 1
+    assert counters.total_invocation_count == 2
 
 
 @pytest.mark.parametrize(("model_id", "revision_sha"), _FROZEN_FIVE_MODELS)

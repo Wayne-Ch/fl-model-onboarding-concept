@@ -35,6 +35,11 @@ class OliveRecipeArgs:
     device: str = "cpu"
     provider: str = "CPUExecutionProvider"
     log_level: str = "1"
+    # Trusted-candidate quantization override (Slice 3A1). ``None`` for every
+    # statically-registered/default recipe: it is only ever set by the trusted
+    # `recipe_compiler.compile_trusted_candidate_recipe` internal boundary, and
+    # is never a static architecture/model default.
+    block_size: int | None = None
 
 
 @dataclass(frozen=True)

@@ -16,6 +16,13 @@ from .architecture_capabilities import (
     ResolutionOutcome,
 )
 from .contracts import CandidateModality
+from .recipe_selection_policy import (
+    DEFAULT_RECIPE_SELECTION_POLICY_REGISTRY,
+    RecipeSelectionCandidate,
+    RecipeSelectionPolicy,
+    RecipeSelectionQuantization,
+    RecipeSelectionTargetDevice,
+)
 from .recipes import (
     AncillaryFileRule,
     MobiusRecipeArgs,
@@ -53,6 +60,11 @@ class GeneratedRecipeCompileError(ValueError):
 
 class GeneratedRecipePromotionError(ValueError):
     """Raised when candidate promotion requirements are not fully satisfied."""
+
+
+class TrustedCandidateCompilationError(GeneratedRecipeCompileError):
+    """Raised when a trusted internal candidate-compilation request fails
+    fail-closed policy/candidate identity or override validation."""
 
 
 @dataclass(frozen=True)
@@ -136,6 +148,26 @@ class RecipePromotionRecord:
 
 
 @dataclass(frozen=True)
+class TrustedCandidateProvenance:
+    """Identity of the trusted internal policy/candidate that produced this
+    recipe's actual resolved Olive override, if any.
+
+    Present (non-``None``) only for recipes materialized by
+    :func:`compile_trusted_candidate_recipe` for a non-default candidate. This
+    is deliberately part of the fingerprinted payload so the recipe/fingerprint
+    ties back to the exact policy version, candidate identity, and resolved
+    override that produced it -- not just the raw ``block_size`` number.
+    """
+
+    policy_id: str
+    policy_version: str
+    policy_fingerprint: str
+    candidate_index: int
+    candidate_id: str
+    resolved_block_size: int | None
+
+
+@dataclass(frozen=True)
 class RecipeGenerationProvenance:
     compiler_version: str
     generation_kind: str
@@ -150,6 +182,7 @@ class RecipeGenerationProvenance:
     toolchain: RecipeCompilerToolchain
     input_metadata: RecipeInputMetadata
     promotion: RecipePromotionRecord | None = None
+    trusted_candidate: TrustedCandidateProvenance | None = None
 
 
 @dataclass(frozen=True)
@@ -430,6 +463,163 @@ def promote_generated_recipe(
     )
 
 
+def compile_trusted_candidate_recipe(
+    default_recipe: GeneratedRecipe,
+    *,
+    policy: RecipeSelectionPolicy,
+    candidate: RecipeSelectionCandidate,
+    schema_path: Path | None = None,
+) -> GeneratedRecipe:
+    """Compile one trusted internal candidate recipe from an already-compiled
+    default :class:`GeneratedRecipe`.
+
+    This is the *only* boundary in this codebase permitted to layer a
+    quantization override onto a compiled recipe's actual Olive arguments. It
+    is intentionally narrow and takes no raw/free-form arguments: only an
+    already-compiled default recipe plus a ``policy``/``candidate`` pair that
+    must exactly identity-match (by full dataclass equality) an entry already
+    present in the trusted, schema-validated
+    :data:`~fl_model_onboarding.recipe_selection_policy.DEFAULT_RECIPE_SELECTION_POLICY_REGISTRY`.
+    Any policy or candidate that does not match byte-for-byte -- a different
+    ``block_size``, a renamed candidate, an unknown ``policy_id``, an
+    out-of-order/out-of-range ``candidate_index`` -- is rejected fail-closed.
+
+    * Candidate 0 (the default) is returned unchanged: same object, same
+      fingerprint, same payload as ``default_recipe``. Behavior/payload
+      compatibility with the existing compiler is therefore exact, not
+      approximate.
+    * Candidate 1 (or any future non-default candidate) applies exactly the
+      policy-approved Olive ``block_size`` override to the actual
+      ``OliveRecipeArgs.block_size`` field that
+      ``ProductionBuildStageRunner`` reads when building the real Olive
+      ``optimize`` command line. Device and precision are asserted unchanged
+      before and after the override is applied. No other recipe field is
+      touched, and nothing here branches on model id/name/org/shape: the same
+      policy/candidate identity check and override application applies
+      uniformly to whatever ``default_recipe`` is passed in.
+
+    The resulting recipe/fingerprint is deterministic and reflects the actual
+    resolved override plus the exact policy/candidate identity that approved
+    it (see :class:`TrustedCandidateProvenance`), while the pinned revision,
+    toolchain, capability identity, and task profile are carried over from
+    ``default_recipe`` unchanged.
+
+    Applying a supported ``block_size`` override here is a narrow, explicit
+    exception -- not a precedent for ad hoc argument overrides. Safe pre-Olive
+    reuse of already-built Mobius output across candidates is out of scope for
+    this boundary; it is planned as Slice 3A2, not implemented here.
+    """
+    _validate_trusted_policy_identity(policy)
+    _validate_trusted_candidate_identity(policy, candidate)
+
+    if candidate.candidate_index == 0:
+        if candidate.quantization_override is not None:
+            raise TrustedCandidateCompilationError(
+                "Candidate index 0 (the default) must not declare a quantization override."
+            )
+        return default_recipe
+
+    override = candidate.quantization_override
+    if override is None:
+        raise TrustedCandidateCompilationError(
+            f"Candidate '{candidate.candidate_id}' (index {candidate.candidate_index}) declares "
+            "no quantization override to apply."
+        )
+    default_olive = default_recipe.recipe.olive
+    if default_olive is None:
+        raise TrustedCandidateCompilationError(
+            "Default recipe has no Olive arguments; cannot apply a candidate quantization override."
+        )
+    if default_olive.device != policy.target_device.value:
+        raise TrustedCandidateCompilationError(
+            f"Default recipe Olive device '{default_olive.device}' does not match policy target "
+            f"device '{policy.target_device.value}'."
+        )
+    if default_olive.precision != policy.quantization.value:
+        raise TrustedCandidateCompilationError(
+            f"Default recipe Olive precision '{default_olive.precision}' does not match policy "
+            f"quantization '{policy.quantization.value}'."
+        )
+    if default_olive.block_size is not None:
+        raise TrustedCandidateCompilationError(
+            "Default recipe already declares an Olive block_size; refusing to layer another "
+            "override on top of an existing one."
+        )
+
+    resolved_olive = replace(default_olive, block_size=override.block_size)
+    if resolved_olive.device != default_olive.device or resolved_olive.precision != default_olive.precision:
+        # Defense in depth: `replace` above only ever touches `block_size`, but assert the
+        # invariant explicitly so a future edit to this function cannot silently smuggle a
+        # device/precision change through this trusted boundary.
+        raise TrustedCandidateCompilationError(
+            "Trusted candidate compilation must not change Olive device or precision."
+        )
+
+    resolved_recipe = replace(default_recipe.recipe, olive=resolved_olive)
+    trusted_candidate_provenance = TrustedCandidateProvenance(
+        policy_id=policy.policy_id,
+        policy_version=policy.version,
+        policy_fingerprint=policy.fingerprint,
+        candidate_index=candidate.candidate_index,
+        candidate_id=candidate.candidate_id,
+        resolved_block_size=override.block_size,
+    )
+    resolved_provenance = replace(
+        default_recipe.provenance,
+        trusted_candidate=trusted_candidate_provenance,
+    )
+    return _materialize_generated_recipe(
+        recipe=resolved_recipe,
+        pinned_revision=default_recipe.pinned_revision,
+        provenance=resolved_provenance,
+        schema_path=schema_path,
+    )
+
+
+def _validate_trusted_policy_identity(policy: RecipeSelectionPolicy) -> None:
+    if not isinstance(policy, RecipeSelectionPolicy):
+        raise TrustedCandidateCompilationError("policy must be a RecipeSelectionPolicy instance.")
+    if policy.target_device != RecipeSelectionTargetDevice.CPU:
+        raise TrustedCandidateCompilationError(
+            f"Unsupported policy target_device '{policy.target_device.value}'."
+        )
+    if policy.quantization != RecipeSelectionQuantization.INT4:
+        raise TrustedCandidateCompilationError(
+            f"Unsupported policy quantization '{policy.quantization.value}'."
+        )
+    try:
+        trusted_policy = DEFAULT_RECIPE_SELECTION_POLICY_REGISTRY.get(policy.policy_id)
+    except ValueError as exc:
+        raise TrustedCandidateCompilationError(
+            f"Unknown recipe selection policy_id '{policy.policy_id}'."
+        ) from exc
+    if policy != trusted_policy:
+        raise TrustedCandidateCompilationError(
+            f"Policy '{policy.policy_id}' does not exactly match the trusted registry entry; "
+            "refusing to trust an unapproved or altered policy object."
+        )
+
+
+def _validate_trusted_candidate_identity(
+    policy: RecipeSelectionPolicy,
+    candidate: RecipeSelectionCandidate,
+) -> None:
+    if not isinstance(candidate, RecipeSelectionCandidate):
+        raise TrustedCandidateCompilationError("candidate must be a RecipeSelectionCandidate instance.")
+    if candidate.candidate_index < 0 or candidate.candidate_index >= len(policy.candidates):
+        raise TrustedCandidateCompilationError(
+            f"candidate_index {candidate.candidate_index} is out of range for policy "
+            f"'{policy.policy_id}'."
+        )
+    trusted_candidate = policy.candidates[candidate.candidate_index]
+    if candidate != trusted_candidate:
+        raise TrustedCandidateCompilationError(
+            f"Candidate '{candidate.candidate_id}' (index {candidate.candidate_index}) does not "
+            "exactly match the policy's approved candidate at that index; refusing to trust an "
+            "unapproved or altered candidate object."
+        )
+
+
 def _materialize_generated_recipe(
     *,
     recipe: ModelRecipe,
@@ -485,6 +675,7 @@ def _recipe_to_payload(recipe: ModelRecipe) -> dict[str, object]:
                 "device": recipe.olive.device,
                 "provider": recipe.olive.provider,
                 "log_level": recipe.olive.log_level,
+                "block_size": recipe.olive.block_size,
             }
             if recipe.olive is not None
             else None
@@ -557,6 +748,22 @@ def _provenance_to_payload(provenance: RecipeGenerationProvenance) -> dict[str, 
             "available_files": list(provenance.input_metadata.available_files),
         },
         "promotion": _promotion_to_payload(provenance.promotion),
+        "trusted_candidate": _trusted_candidate_to_payload(provenance.trusted_candidate),
+    }
+
+
+def _trusted_candidate_to_payload(
+    trusted_candidate: TrustedCandidateProvenance | None,
+) -> dict[str, object] | None:
+    if trusted_candidate is None:
+        return None
+    return {
+        "policy_id": trusted_candidate.policy_id,
+        "policy_version": trusted_candidate.policy_version,
+        "policy_fingerprint": trusted_candidate.policy_fingerprint,
+        "candidate_index": trusted_candidate.candidate_index,
+        "candidate_id": trusted_candidate.candidate_id,
+        "resolved_block_size": trusted_candidate.resolved_block_size,
     }
 
 
@@ -1137,7 +1344,10 @@ __all__ = [
     "RecipeGenerationProvenance",
     "RecipeInputMetadata",
     "RecipePromotionRecord",
+    "TrustedCandidateCompilationError",
+    "TrustedCandidateProvenance",
     "compile_generated_recipe",
+    "compile_trusted_candidate_recipe",
     "generated_recipe_schema_path",
     "promote_generated_recipe",
     "validate_generated_recipe_payload",

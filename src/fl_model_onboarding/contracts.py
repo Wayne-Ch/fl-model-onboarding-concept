@@ -67,6 +67,71 @@ class MatchConfidence(StrEnum):
     HIGH = "high"
 
 
+class ToolInvocationTerminalStage(StrEnum):
+    """Terminal outcome of one real external tool (Mobius/Olive) launch
+    attempt within a single build/candidate execution."""
+
+    NOT_RUN = "not_run"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class ToolInvocationEvidence:
+    """Real, per-tool-launch instrumentation for one external tool boundary
+    (Mobius or Olive) within a single build/candidate execution.
+
+    ``invocation_count`` only increments when the external process launch is
+    actually attempted -- including a subsequent failure/timeout/cancel after
+    that launch -- and never when upstream validation prevents the launch
+    from happening at all. Every field stays at its not-run default
+    (``invocation_count=0``, ``terminal_stage=NOT_RUN``, other fields
+    ``None``) until this tool is actually launched for this job/candidate;
+    ``0``/``NOT_RUN`` here must never be read as "definitely zero launches
+    occurred for this recipe/candidate in general", only "not launched by
+    this specific runner invocation so far".
+    """
+
+    invocation_count: int = 0
+    terminal_stage: ToolInvocationTerminalStage = ToolInvocationTerminalStage.NOT_RUN
+    success: bool | None = None
+    started_utc: datetime | None = None
+    finished_utc: datetime | None = None
+    wall_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class ProductionInvocationEvidence:
+    """Per-build/candidate-execution real invocation evidence for the Mobius
+    and Olive external tool launch boundaries in ``ProductionBuildStageRunner``.
+
+    A fresh instance is created for every ``run()``/``BuildJob`` and stored on
+    that job, never shared as mutable state on the runner instance itself, so
+    concurrent jobs handled by the same runner never share or race on
+    counters.
+    """
+
+    mobius: ToolInvocationEvidence = field(default_factory=ToolInvocationEvidence)
+    olive: ToolInvocationEvidence = field(default_factory=ToolInvocationEvidence)
+
+    def sanitized_payload(self) -> dict[str, object]:
+        """A persistable/loggable shape: counts, terminal stage/success, and
+        wall-clock timing only. Deliberately excludes raw commands, argv,
+        secrets, and absolute filesystem paths."""
+        return {
+            "mobius_invocation_count": self.mobius.invocation_count,
+            "mobius_terminal_stage": self.mobius.terminal_stage.value,
+            "mobius_success": self.mobius.success,
+            "mobius_wall_seconds": self.mobius.wall_seconds,
+            "olive_invocation_count": self.olive.invocation_count,
+            "olive_terminal_stage": self.olive.terminal_stage.value,
+            "olive_success": self.olive.success,
+            "olive_wall_seconds": self.olive.wall_seconds,
+        }
+
+
 @dataclass(frozen=True)
 class FailureInfo:
     stage: JobState
@@ -200,6 +265,10 @@ class BuildJob:
     result_artifact_id: str | None = None
     started_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     finished_utc: datetime | None = None
+    # Real per-job Mobius/Olive invocation instrumentation (Slice 3A1). ``None``
+    # until `ProductionBuildStageRunner` starts this job's run; never shared
+    # across concurrent jobs because each `BuildJob` is its own instance.
+    production_invocation_evidence: ProductionInvocationEvidence | None = None
 
     def add_event(self, message: str) -> None:
         self.events.append(

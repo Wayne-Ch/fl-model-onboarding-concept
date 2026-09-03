@@ -62,5 +62,14 @@ directly from `QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION
 (single source, not a duplicated string), and `recipe_attempt_store.py` asserts the two
 stay equal at import time in addition to re-checking the exact value at registration
 time -- so a future rename on either side fails fast instead of silently disabling the
-fallback candidate. Actually invoking Mobius/Olive for a fallback candidate and
-populating real invocation counters/cost remains Slice 3 scope.
+fallback candidate.
+
+## Slice 3A1 follow-up: trusted compilation + real invocation counts
+
+`recipe_compiler.compile_trusted_candidate_recipe` now actually compiles candidate 1 of this
+policy into a real `OliveRecipeArgs.block_size=64` (see
+`docs/recipe-agent-trusted-candidate-compilation.md`), and `ProductionBuildStageRunner` now
+records real per-job Mobius/Olive invocation counts instead of the Slice 2 nullable
+placeholders. Wiring those real counters into `RecipeAttemptStore.finalize_candidate_attempt_evidence`
+against a specific `candidate_attempt_id`, plus safe pre-Olive reuse across candidates, remain
+Slice 3A2/3B scope.

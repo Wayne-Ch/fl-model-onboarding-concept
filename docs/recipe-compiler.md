@@ -69,3 +69,12 @@ Compiled payloads are validated against:
 - `contracts/generated-recipe.schema.json`
 
 This schema captures candidate + promoted payload structure, provenance, and mandatory gate evidence.
+
+## Slice 3A1: trusted candidate compilation
+
+`compile_trusted_candidate_recipe(default_recipe, *, policy, candidate, schema_path=None)` is the
+**only** boundary permitted to layer a quantization override onto a compiled recipe's actual Olive
+arguments. See `docs/recipe-agent-trusted-candidate-compilation.md` for the full contract: identity
+validation, the resulting `OliveRecipeArgs.block_size` field, the `TrustedCandidateProvenance`
+record, and how the recipe fingerprint reflects the resolved override.
+
