@@ -14,7 +14,7 @@ import type {
 } from "./api/types";
 
 const defaultClient = createApiClient();
-const POLL_INTERVAL_MS = 2500;
+export const POLL_INTERVAL_MS = 2500;
 
 interface LoadedModel {
   detailLoaded: boolean;
@@ -51,6 +51,32 @@ function readableStage(stage: string): string {
 
 function isTerminalStage(stage: string): boolean {
   return stage === "succeeded" || stage === "failed" || stage === "cancelled";
+}
+
+function isTerminalAttemptState(state: RecipeAttemptStatus["state"]): boolean {
+  return state === "succeeded" || state === "failed" || state === "cancelled";
+}
+
+/**
+ * Terminal predicate for the candidate-selection *workflow*, distinct from
+ * the parent build job's `stage` and from the attempt's own, never-rewritten
+ * `state`. Legacy attempts (`workflowOutcome === "not_applicable"`) are
+ * terminal exactly when the attempt's own state is terminal -- this
+ * preserves pre-3C1 behavior unchanged. Candidate-enabled attempts are
+ * terminal only once the workflow itself resolves to
+ * `selected`/`exhausted`/`reused`: a `pending` workflow must keep polling
+ * even if the parent job/attempt already reports failed/succeeded, because a
+ * fallback candidate may still be running in a separate build job.
+ */
+export function isAttemptWorkflowTerminal(attempt: RecipeAttemptStatus): boolean {
+  if (attempt.workflowOutcome === "not_applicable") {
+    return isTerminalAttemptState(attempt.state);
+  }
+  return (
+    attempt.workflowOutcome === "selected" ||
+    attempt.workflowOutcome === "exhausted" ||
+    attempt.workflowOutcome === "reused"
+  );
 }
 
 function recipeIntegrityStatusForAttempt(
@@ -412,19 +438,19 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     [client, searchQuery, testedModels]
   );
 
-  const refreshJob = useCallback(
-    async (jobId: string, attemptId?: string) => {
+  // Fetches build status + incremental events only. Kept separate from
+  // attempt refresh so the two poll independently: the parent build job can
+  // go terminal (e.g. the default attempt fails) while a candidate-selection
+  // fallback workflow is still pending on the same attempt in another job.
+  const refreshBuildStatus = useCallback(
+    async (jobId: string) => {
       const afterSequence = eventCursorRef.current[jobId] ?? 0;
-      const [status, incrementalEvents, latestAttempt] = await Promise.all([
+      const [status, incrementalEvents] = await Promise.all([
         client.getBuildStatus(jobId),
-        client.getBuildEvents(jobId, afterSequence),
-        attemptId ? client.getGeneratedRecipeAttempt(attemptId) : Promise.resolve(undefined)
+        client.getBuildEvents(jobId, afterSequence)
       ]);
 
       setCurrentJob(status);
-      if (latestAttempt) {
-        setCurrentAttempt(latestAttempt);
-      }
       if (incrementalEvents.length > 0) {
         setEvents((current) => mergeEvents(current, incrementalEvents));
         eventCursorRef.current[jobId] = incrementalEvents[incrementalEvents.length - 1].sequence;
@@ -439,21 +465,68 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
       } else {
         setAnnouncement(`Build stage: ${readableStage(status.stage)}`);
       }
+      return status;
     },
     [client]
   );
 
+  // Fetches the recipe attempt only. Polled on its own cadence against the
+  // parent attempt_id so candidate-selection fallback outcomes (selected /
+  // exhausted / reused) keep surfacing even after the default job/attempt
+  // has already gone terminal.
+  const refreshAttempt = useCallback(
+    async (attemptId: string) => {
+      const latestAttempt = await client.getGeneratedRecipeAttempt(attemptId);
+      setCurrentAttempt(latestAttempt);
+      return latestAttempt;
+    },
+    [client]
+  );
+
+  const refreshJob = useCallback(
+    async (jobId: string, attemptId?: string) => {
+      const [status] = await Promise.all([
+        refreshBuildStatus(jobId),
+        attemptId ? refreshAttempt(attemptId) : Promise.resolve(undefined)
+      ]);
+      return status;
+    },
+    [refreshAttempt, refreshBuildStatus]
+  );
+
+  // Build/event polling: stops as soon as the parent build job reaches a
+  // terminal stage, regardless of any candidate-selection workflow still
+  // pending on the attempt (that has its own effect below).
   useEffect(() => {
     if (!currentJob || isTerminalStage(currentJob.stage)) {
       return;
     }
+    const jobId = currentJob.jobId;
     const timer = window.setInterval(() => {
-      void refreshJob(currentJob.jobId, currentAttempt?.attemptId).catch((error) => {
+      void refreshBuildStatus(jobId).catch((error) => {
         setBuildError(asMessage(error));
       });
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [currentAttempt?.attemptId, currentJob, refreshJob]);
+  }, [currentJob, refreshBuildStatus]);
+
+  // Attempt polling: continues on the same attemptId while the
+  // candidate-selection workflow is pending, independent of the parent job's
+  // stage or the attempt's own (never-rewritten) state, and stops once the
+  // workflow resolves (selected/exhausted/reused) or, for legacy
+  // not_applicable attempts, once the attempt state itself is terminal.
+  useEffect(() => {
+    if (!currentAttempt || isAttemptWorkflowTerminal(currentAttempt)) {
+      return;
+    }
+    const attemptId = currentAttempt.attemptId;
+    const timer = window.setInterval(() => {
+      void refreshAttempt(attemptId).catch((error) => {
+        setBuildError(asMessage(error));
+      });
+    }, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [currentAttempt, refreshAttempt]);
 
   const onStartBuild = useCallback(async () => {
     if (!selectedModel) {
@@ -924,7 +997,9 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
                 type="button"
                 onClick={() => {
                   if (currentJob) {
-                    void refreshJob(currentJob.jobId).catch((error) => setBuildError(asMessage(error)));
+                    void refreshJob(currentJob.jobId, currentAttempt?.attemptId).catch((error) =>
+                      setBuildError(asMessage(error))
+                    );
                   }
                 }}
                 disabled={!currentJob}
