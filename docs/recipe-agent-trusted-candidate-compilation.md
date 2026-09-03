@@ -150,9 +150,11 @@ it against a specific `candidate_attempt_id` is orchestration wiring for a later
 
 ## What this slice does *not* do
 
-- No baseline/pre-Olive reuse across candidates. Safe reuse of already-built Mobius output when
-  only the Olive step differs between the default and block_size=64 candidates is **Slice 3A2**,
-  not implemented here.
+- No baseline/pre-Olive reuse across candidates in this slice's own boundary. Safe reuse of
+  already-built Mobius output when only the Olive step differs between the default and
+  block_size=64 candidates is implemented separately in **Slice 3A2**
+  (`docs/recipe-agent-pre-olive-reuse.md`), which layers on top of this slice's compiled
+  fallback recipe without modifying it.
 - No service orchestration: nothing here calls `register_candidate_attempt` /
   `finalize_candidate_attempt_evidence` on a real `candidate_attempt_id`, and `local_service.py`
   is unchanged.

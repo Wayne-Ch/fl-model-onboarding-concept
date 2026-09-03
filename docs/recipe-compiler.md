@@ -78,3 +78,12 @@ arguments. See `docs/recipe-agent-trusted-candidate-compilation.md` for the full
 validation, the resulting `OliveRecipeArgs.block_size` field, the `TrustedCandidateProvenance`
 record, and how the recipe fingerprint reflects the resolved override.
 
+## Slice 3A2: safe pre-Olive Mobius reuse for a trusted fallback candidate
+
+Because a Slice 3A1 fallback recipe only ever differs from its default recipe in
+`OliveRecipeArgs.block_size`, the fallback candidate's Mobius output is byte-for-byte reusable.
+`production_runner.py`'s `capture_pre_olive_artifact`/`validate_pre_olive_reuse`/
+`materialize_pre_olive_copy`/`ProductionBuildStageRunner.run_fallback_with_pre_olive_reuse` let a
+fallback candidate run Olive against an independent copy of that already-built Mobius output
+instead of re-running Mobius. See `docs/recipe-agent-pre-olive-reuse.md` for the full contract.
+

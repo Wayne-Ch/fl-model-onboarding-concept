@@ -36,6 +36,7 @@ from .contracts import (
 from .recipe_attempt_store import (
     AttemptState,
     CandidateInvocationCounters,
+    GeneratedRecipeRecord,
     RecipeAttempt,
     RecipeAttemptStore,
 )
@@ -122,6 +123,454 @@ def production_invocation_evidence_to_candidate_counters(
         wall_clock_seconds=wall_clock_seconds,
         estimated_cost_usd=None,
     )
+
+
+# --- Slice 3A2: safe immutable reuse of a successful pre-Olive Mobius -------
+#
+# The primitives below let an approved trusted-candidate ("fallback") build
+# skip re-running Mobius by reusing an already-captured, revalidated copy of
+# a successful default candidate's pre-Olive Mobius output. Nothing here
+# wires this into `local_service.py`, the recipe-attempt store, or any
+# API/route: `capture_pre_olive_artifact`/`validate_pre_olive_reuse`/
+# `materialize_pre_olive_copy` are standalone, runner-level functions a later
+# slice (3B) can call directly, and `ProductionBuildStageRunner
+# .run_fallback_with_pre_olive_reuse` is an additive entry point that never
+# runs unless a caller explicitly invokes it. The existing `run()`/`_run()`
+# one-shot path is untouched in behavior: it now delegates its post-Mobius
+# half to the shared `_run_from_olive` helper, but that is a pure refactor
+# with no observable difference for legacy callers.
+
+_MANIFEST_HASH_CHUNK_BYTES = 1024 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+class PreOliveReuseError(RuntimeError):
+    """Raised when Slice 3A2 pre-Olive artifact reuse must fail closed:
+    missing/tampered content, an out-of-authorized-root path, a symlink or
+    Windows reparse point, a manifest mismatch, source/destination overlap,
+    a generation-identity mismatch, or a copy failure. Every raise site sets
+    ``classification`` to the closest matching
+    :class:`~fl_model_onboarding.contracts.FailureClassification` so callers
+    (including ``ProductionBuildStageRunner``) can classify the failure the
+    same way any other pre-launch validation failure is classified."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        classification: FailureClassification = FailureClassification.PATH_CONTAINMENT,
+    ) -> None:
+        super().__init__(message)
+        self.classification = classification
+
+
+def _canonical_json(payload: dict[str, object]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+@dataclass(frozen=True)
+class PreOliveGenerationIdentity:
+    """The trusted model/revision/device/precision/compiler/capability/
+    toolchain/profile identity that must match byte-for-byte between a
+    default candidate's already-captured pre-Olive artifact and any fallback
+    candidate attempting to reuse it -- proving both were compiled for the
+    exact same generation. Field names deliberately mirror
+    :class:`~fl_model_onboarding.recipe_attempt_store.RecipeReuseQuery` /
+    ``GeneratedRecipeRecord``, but this is a separate, narrower type so this
+    runtime-only runner primitive has no coupling to recipe-attempt store
+    persistence.
+    """
+
+    model_id: str
+    revision_sha: str
+    requested_device: str
+    requested_precision: str
+    compiler_version: str
+    capability_fingerprint: str
+    toolchain_fingerprint: str
+    profile_fingerprint: str
+
+
+def pre_olive_generation_identity_from_generated_record(
+    record: GeneratedRecipeRecord,
+) -> PreOliveGenerationIdentity:
+    """Convenience constructor for the common Slice 3B shape: both the
+    default and fallback candidate are persisted ``GeneratedRecipeRecord``
+    rows, which already carry every field this identity needs."""
+    return PreOliveGenerationIdentity(
+        model_id=record.model_id,
+        revision_sha=record.revision_sha,
+        requested_device=record.requested_device,
+        requested_precision=record.requested_precision,
+        compiler_version=record.compiler_version,
+        capability_fingerprint=record.capability_fingerprint,
+        toolchain_fingerprint=record.toolchain_fingerprint,
+        profile_fingerprint=record.profile_fingerprint,
+    )
+
+
+def compute_mobius_args_fingerprint(mobius: MobiusRecipeArgs) -> str:
+    """A deterministic fingerprint of exactly the Mobius arguments
+    (`ep`/`runtime`/`dtype`/`task`) that `ProductionBuildStageRunner._run`
+    threads into the real Mobius `build` command line -- the narrow, explicit
+    "Mobius args are identical" check called for by Slice 3A2, independent of
+    (and in addition to) the broader `PreOliveGenerationIdentity` match."""
+    payload = {
+        "ep": mobius.ep,
+        "runtime": mobius.runtime,
+        "dtype": mobius.dtype,
+        "task": mobius.task,
+    }
+    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class PreOliveManifestEntry:
+    relative_path: str
+    size_bytes: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class PreOliveManifest:
+    """A deterministic relative-path/file-size/content-hash manifest of every
+    required file under a captured pre-Olive Mobius artifact directory.
+    ``entries`` is always sorted by ``relative_path`` so two independently
+    built manifests of byte-identical content always compare equal and
+    produce the same ``manifest_hash``."""
+
+    entries: tuple[PreOliveManifestEntry, ...]
+    total_bytes: int
+    file_count: int
+    manifest_hash: str
+
+
+@dataclass(frozen=True)
+class PreOliveArtifactDescriptor:
+    """Immutable evidence of one successful default candidate's pre-Olive
+    Mobius output, captured once (see `capture_pre_olive_artifact`) and
+    safe to reuse for an approved fallback candidate's Olive run.
+
+    ``mobius_source_dir`` is runtime-only: it is a real filesystem path on
+    this machine and must never be copied into persisted/sanitized evidence.
+    ``logical_ref`` (the manifest's content hash) is the stable, path-free
+    reference a caller should persist/log instead; `sanitized_payload()`
+    only ever exposes that shape.
+    """
+
+    generation_identity: PreOliveGenerationIdentity
+    mobius_args_fingerprint: str
+    manifest: PreOliveManifest
+    captured_utc: datetime
+    mobius_source_dir: Path
+    source_attempt_id: str | None = None
+    source_candidate_id: str | None = None
+
+    @property
+    def logical_ref(self) -> str:
+        return self.manifest.manifest_hash
+
+    def sanitized_payload(self) -> dict[str, object]:
+        """A persistable/loggable shape: identity fingerprints, the
+        Mobius-args fingerprint, manifest hash/size/count, and the logical
+        ref -- deliberately excluding `mobius_source_dir` (a raw absolute
+        filesystem path)."""
+        return {
+            "generation_identity": {
+                "model_id": self.generation_identity.model_id,
+                "revision_sha": self.generation_identity.revision_sha,
+                "requested_device": self.generation_identity.requested_device,
+                "requested_precision": self.generation_identity.requested_precision,
+                "compiler_version": self.generation_identity.compiler_version,
+                "capability_fingerprint": self.generation_identity.capability_fingerprint,
+                "toolchain_fingerprint": self.generation_identity.toolchain_fingerprint,
+                "profile_fingerprint": self.generation_identity.profile_fingerprint,
+            },
+            "mobius_args_fingerprint": self.mobius_args_fingerprint,
+            "manifest_hash": self.manifest.manifest_hash,
+            "manifest_total_bytes": self.manifest.total_bytes,
+            "manifest_file_count": self.manifest.file_count,
+            "logical_ref": self.logical_ref,
+            "captured_utc": self.captured_utc.isoformat(),
+            "source_attempt_id": self.source_attempt_id,
+            "source_candidate_id": self.source_candidate_id,
+        }
+
+
+def _path_is_link_or_reparse_point(path: Path) -> bool:
+    """True for a symlink (any platform) or a Windows reparse point
+    (junction) at `path`. Fails closed (returns True) if the path cannot be
+    safely `lstat`-ed at all, since we would otherwise have to guess whether
+    it is safe to traverse/copy."""
+    try:
+        if path.is_symlink():
+            return True
+    except OSError:
+        return True
+    if sys.platform == "win32":
+        try:
+            attrs = path.lstat().st_file_attributes  # type: ignore[attr-defined]
+        except (OSError, AttributeError):
+            return True
+        if attrs & _FILE_ATTRIBUTE_REPARSE_POINT:
+            return True
+    return False
+
+
+def _hash_file(path: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(_MANIFEST_HASH_CHUNK_BYTES)
+            if not chunk:
+                break
+            size += len(chunk)
+            digest.update(chunk)
+    return size, digest.hexdigest()
+
+
+def _build_directory_manifest(root: Path) -> PreOliveManifest:
+    """Walk `root` and build a deterministic manifest of every regular file
+    under it, hashing each file with a bounded-memory streaming read.
+    Fails closed (raises `PreOliveReuseError`) on a missing/non-directory
+    root, any symlink/reparse point encountered anywhere in the tree
+    (rejected rather than followed), or any non-file/non-directory entry."""
+    if _path_is_link_or_reparse_point(root):
+        raise PreOliveReuseError(
+            f"Refusing to traverse a symlink/reparse point manifest root: {root}",
+        )
+    if not root.is_dir():
+        raise PreOliveReuseError(f"Manifest root is missing or not a directory: {root}")
+    entries: list[PreOliveManifestEntry] = []
+    stack: list[Path] = [root]
+    while stack:
+        current = stack.pop()
+        for child in current.iterdir():
+            if _path_is_link_or_reparse_point(child):
+                raise PreOliveReuseError(
+                    f"Refusing to traverse a symlink/reparse point: {child}",
+                )
+            if child.is_dir():
+                stack.append(child)
+            elif child.is_file():
+                size, digest = _hash_file(child)
+                entries.append(
+                    PreOliveManifestEntry(
+                        relative_path=child.relative_to(root).as_posix(),
+                        size_bytes=size,
+                        sha256=digest,
+                    )
+                )
+            else:
+                raise PreOliveReuseError(f"Unsupported filesystem entry (not file/directory): {child}")
+    entries.sort(key=lambda entry: entry.relative_path)
+    total_bytes = sum(entry.size_bytes for entry in entries)
+    manifest_payload = [
+        {
+            "relative_path": entry.relative_path,
+            "size_bytes": entry.size_bytes,
+            "sha256": entry.sha256,
+        }
+        for entry in entries
+    ]
+    manifest_hash = hashlib.sha256(
+        _canonical_json({"entries": manifest_payload}).encode("utf-8")
+    ).hexdigest()
+    return PreOliveManifest(
+        entries=tuple(entries),
+        total_bytes=total_bytes,
+        file_count=len(entries),
+        manifest_hash=manifest_hash,
+    )
+
+
+def _assert_within_authorized_roots(path: Path, *, authorized_roots: Sequence[Path]) -> None:
+    resolved = path.resolve()
+    for root in authorized_roots:
+        try:
+            resolved.relative_to(root.resolve())
+            return
+        except ValueError:
+            continue
+    raise PreOliveReuseError(
+        f"Path '{path}' escapes every authorized root; refusing to reuse a pre-Olive artifact "
+        "outside its owning workspace.",
+    )
+
+
+def _assert_no_path_overlap(source_dir: Path, destination_dir: Path) -> None:
+    source_resolved = source_dir.resolve()
+    destination_resolved = destination_dir.resolve()
+    if source_resolved == destination_resolved:
+        raise PreOliveReuseError(
+            "Pre-Olive reuse destination is identical to the captured source; refusing to reuse in place.",
+        )
+    try:
+        destination_resolved.relative_to(source_resolved)
+        overlap = True
+    except ValueError:
+        overlap = False
+    if not overlap:
+        try:
+            source_resolved.relative_to(destination_resolved)
+            overlap = True
+        except ValueError:
+            overlap = False
+    if overlap:
+        raise PreOliveReuseError(
+            "Pre-Olive reuse destination overlaps the captured source directory; refusing to reuse "
+            "in an overlapping path.",
+        )
+
+
+def capture_pre_olive_artifact(
+    *,
+    mobius_source_dir: Path,
+    authorized_root: Path,
+    generation_identity: PreOliveGenerationIdentity,
+    mobius_args: MobiusRecipeArgs,
+    source_attempt_id: str | None = None,
+    source_candidate_id: str | None = None,
+) -> PreOliveArtifactDescriptor:
+    """Capture an immutable `PreOliveArtifactDescriptor` for one successful
+    default candidate's pre-Olive Mobius output directory.
+
+    `mobius_source_dir` must already exist, contain at least one file, and
+    resolve inside `authorized_root` (the owning job's workspace root);
+    anything else -- missing directory, empty directory, symlink/reparse
+    point anywhere in the tree, or an escape from the authorized root --
+    fails closed. Nothing here mutates `mobius_source_dir`.
+    """
+    _assert_within_authorized_roots(mobius_source_dir, authorized_roots=(authorized_root,))
+    manifest = _build_directory_manifest(mobius_source_dir)
+    if manifest.file_count == 0:
+        raise PreOliveReuseError(
+            f"Refusing to capture an empty pre-Olive Mobius artifact directory: {mobius_source_dir}",
+        )
+    return PreOliveArtifactDescriptor(
+        generation_identity=generation_identity,
+        mobius_args_fingerprint=compute_mobius_args_fingerprint(mobius_args),
+        manifest=manifest,
+        captured_utc=datetime.now(timezone.utc),
+        mobius_source_dir=mobius_source_dir,
+        source_attempt_id=source_attempt_id,
+        source_candidate_id=source_candidate_id,
+    )
+
+
+def validate_pre_olive_reuse(
+    descriptor: PreOliveArtifactDescriptor,
+    *,
+    candidate_identity: PreOliveGenerationIdentity,
+    candidate_mobius_args: MobiusRecipeArgs,
+) -> None:
+    """Fail closed unless the fallback candidate's own generation identity
+    and Mobius arguments match the captured descriptor byte-for-byte. This
+    only compares in-memory identity/arguments; it does not touch the
+    filesystem (see `revalidate_pre_olive_source` for the immediately-before-
+    reuse content check)."""
+    if candidate_identity != descriptor.generation_identity:
+        raise PreOliveReuseError(
+            "Fallback candidate generation identity does not match the captured pre-Olive "
+            "artifact; refusing to reuse Mobius output across a different model/revision/device/"
+            "precision/compiler/capability/toolchain/profile generation.",
+            classification=FailureClassification.COMPATIBILITY,
+        )
+    candidate_fingerprint = compute_mobius_args_fingerprint(candidate_mobius_args)
+    if candidate_fingerprint != descriptor.mobius_args_fingerprint:
+        raise PreOliveReuseError(
+            "Fallback candidate Mobius arguments do not match the captured pre-Olive artifact's "
+            "Mobius arguments; only an approved Olive block_size may differ for a trusted reuse.",
+            classification=FailureClassification.COMPATIBILITY,
+        )
+
+
+def revalidate_pre_olive_source(descriptor: PreOliveArtifactDescriptor) -> None:
+    """Re-walk and re-hash the descriptor's captured source directory and
+    fail closed if anything has changed since capture: missing directory,
+    missing/added/renamed files, changed content, or a symlink/reparse point
+    now present anywhere in the tree. Callers must call this immediately
+    before reuse (see `materialize_pre_olive_copy`, which always calls it
+    first)."""
+    source_dir = descriptor.mobius_source_dir
+    if not source_dir.exists():
+        raise PreOliveReuseError(
+            f"Captured pre-Olive source no longer exists: {source_dir}",
+        )
+    manifest = _build_directory_manifest(source_dir)
+    if manifest.manifest_hash != descriptor.manifest.manifest_hash:
+        raise PreOliveReuseError(
+            "Captured pre-Olive source content changed since capture (manifest hash mismatch); "
+            "refusing reuse of a tampered or drifted artifact.",
+        )
+
+
+def _stream_copy_file(source: Path, destination: Path) -> None:
+    with source.open("rb") as read_handle, destination.open("wb") as write_handle:
+        while True:
+            chunk = read_handle.read(_MANIFEST_HASH_CHUNK_BYTES)
+            if not chunk:
+                break
+            write_handle.write(chunk)
+
+
+def materialize_pre_olive_copy(
+    descriptor: PreOliveArtifactDescriptor,
+    *,
+    destination_dir: Path,
+    authorized_roots: Sequence[Path],
+    cancellation_event: Event | None = None,
+) -> Path:
+    """Revalidate the descriptor's captured source, then materialize a full,
+    independent byte-for-byte copy of it into `destination_dir`.
+
+    `destination_dir` must not already exist and must resolve inside one of
+    `authorized_roots`; it must not equal or overlap the descriptor's source
+    directory. Every copied file is streamed (never hardlinked, symlinked,
+    or junctioned) and the destination is re-manifested and compared against
+    the descriptor's manifest hash after every file is copied, so a silent
+    partial or corrupted copy can never be mistaken for a faithful one. Any
+    failure -- including an observed cancellation request -- removes exactly
+    the `destination_dir` this call created (never a broader/unresolved
+    path) before re-raising, leaving the source untouched and the failure
+    auditable.
+    """
+    revalidate_pre_olive_source(descriptor)
+    source_dir = descriptor.mobius_source_dir
+    _assert_within_authorized_roots(destination_dir, authorized_roots=authorized_roots)
+    _assert_no_path_overlap(source_dir, destination_dir)
+    if destination_dir.exists():
+        raise PreOliveReuseError(f"Pre-Olive reuse destination already exists: {destination_dir}")
+
+    created_root = False
+    try:
+        destination_dir.mkdir(parents=True, exist_ok=False)
+        created_root = True
+        for entry in descriptor.manifest.entries:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise PreOliveReuseError(
+                    "Pre-Olive artifact copy cancelled before completion.",
+                    classification=FailureClassification.CANCELLED,
+                )
+            source_file = source_dir / entry.relative_path
+            if _path_is_link_or_reparse_point(source_file):
+                raise PreOliveReuseError(
+                    f"Source file became a symlink/reparse point during copy: {entry.relative_path}",
+                )
+            destination_file = destination_dir / entry.relative_path
+            destination_file.parent.mkdir(parents=True, exist_ok=True)
+            _stream_copy_file(source_file, destination_file)
+        destination_manifest = _build_directory_manifest(destination_dir)
+        if destination_manifest.manifest_hash != descriptor.manifest.manifest_hash:
+            raise PreOliveReuseError(
+                "Destination manifest hash mismatch after copy; refusing to reuse a corrupted copy.",
+            )
+    except Exception:
+        if created_root and destination_dir.exists():
+            shutil.rmtree(destination_dir)
+        raise
+    return destination_dir
 
 
 def _resolve_staging_relative_path(
@@ -1231,6 +1680,39 @@ class ProductionBuildStageRunner:
 
         transition(job, JobState.MOBIUS_VALIDATING, "Mobius output created; ONNX validation follows Olive.")
         persist()
+        self._run_from_olive(
+            job,
+            recipe=recipe,
+            request=request,
+            mobius_dir=mobius_dir,
+            olive_dir=olive_dir,
+            persist=persist,
+            cancellation_event=cancellation_event,
+        )
+
+    def _run_from_olive(
+        self,
+        job: BuildJob,
+        *,
+        recipe: ModelRecipe,
+        request: BuildRequest,
+        mobius_dir: Path,
+        olive_dir: Path,
+        persist: Callable[[], None],
+        cancellation_event: Event,
+    ) -> None:
+        """The Olive-optimize-through-inference half of a production build,
+        shared by the legacy one-shot `_run` (Mobius just ran into
+        `mobius_dir`) and Slice 3A2's `run_fallback_with_pre_olive_reuse`
+        (`mobius_dir` is instead a freshly materialized, revalidated copy of
+        an already-captured pre-Olive artifact). Callers are responsible for
+        getting `mobius_dir`/`olive_dir` into the right state and for every
+        state transition up through `JobState.MOBIUS_VALIDATING`; this method
+        starts at `JobState.OLIVE_OPTIMIZING` and runs unchanged either way,
+        which is what keeps the two paths' Olive+downstream behavior
+        identical.
+        """
+        assert recipe.olive is not None
         transition(
             job,
             JobState.OLIVE_OPTIMIZING,
@@ -1393,6 +1875,161 @@ class ProductionBuildStageRunner:
         transition(job, JobState.SUCCEEDED, recipe.success_message)
         job.finished_utc = datetime.now(timezone.utc)
         persist()
+
+    def run_fallback_with_pre_olive_reuse(
+        self,
+        job: BuildJob,
+        *,
+        descriptor: PreOliveArtifactDescriptor,
+        fallback_generation_identity: PreOliveGenerationIdentity,
+        persist: Callable[[], None],
+        cancellation_event: Event,
+    ) -> None:
+        """Slice 3A2 runner-level primitive: execute one fallback candidate's
+        Olive+downstream path by reusing an already-captured, revalidated
+        `PreOliveArtifactDescriptor` instead of re-running Mobius.
+
+        Resolves `job.request` through the same `RecipeExecutionResolver`
+        every other execution path uses (so every existing generated-recipe/
+        attempt-identity/experimental-status check still applies unchanged),
+        then additionally requires the fallback candidate's own generation
+        identity and Mobius arguments to match the descriptor byte-for-byte
+        -- any mismatch, tamper, or containment violation fails closed before
+        any filesystem copy or Olive launch is attempted. Mirrors `run()`'s
+        existing staging/package failure cleanup exactly; the materialized
+        Mobius copy cleans up its own partial state on failure (see
+        `materialize_pre_olive_copy`) and is otherwise left in place on a
+        later failure, matching the legacy path's existing asymmetric
+        treatment of `mobius_dir`/`olive_dir` on failure.
+
+        The Mobius tool itself is never invoked on this path:
+        `job.production_invocation_evidence` keeps its default not-run
+        Mobius evidence (`invocation_count=0`, `terminal_stage=NOT_RUN`),
+        which `production_invocation_evidence_to_candidate_counters` already
+        maps to a `None` (not `0`) Mobius count -- consistent with the
+        existing null-count semantics for a tool that was never launched.
+        Olive runs exactly once through the shared `_run_from_olive` helper.
+        """
+        staging_dir: Path | None = None
+        package_dir: Path | None = None
+        staging_preexisting = False
+        package_preexisting = False
+        try:
+            execution = self._execution_resolver.resolve(job.request)
+            recipe = execution.recipe
+            pinned_revision = execution.pinned_revision
+            request = job.request
+            job.production_invocation_evidence = ProductionInvocationEvidence()
+            if recipe.choice_for_profile(request.task_profile, request.skip_olive) is None:
+                supported = ", ".join(
+                    f"{choice.task_profile}/skip_olive={choice.skip_olive}"
+                    for choice in recipe.optimization_choices
+                )
+                raise RuntimeError(
+                    f"Recipe '{recipe.id}' does not support task_profile={request.task_profile} "
+                    f"with skip_olive={request.skip_olive}. Supported: {supported or 'none'}."
+                )
+            if request.candidate.modality != CandidateModality.LLM:
+                raise RuntimeError("Production execution currently supports LLM runtime validation only.")
+            if recipe.olive is None:
+                raise RuntimeError(f"Recipe '{recipe.id}' requires Olive settings for production packaging.")
+            if pinned_revision != descriptor.generation_identity.revision_sha:
+                raise PreOliveReuseError(
+                    "Fallback candidate pinned revision does not match the captured pre-Olive "
+                    "artifact's revision; refusing reuse.",
+                    classification=FailureClassification.COMPATIBILITY,
+                )
+            if recipe.huggingface_model_id != descriptor.generation_identity.model_id:
+                raise PreOliveReuseError(
+                    "Fallback candidate model id does not match the captured pre-Olive artifact's "
+                    "model id; refusing reuse.",
+                    classification=FailureClassification.COMPATIBILITY,
+                )
+            validate_pre_olive_reuse(
+                descriptor,
+                candidate_identity=fallback_generation_identity,
+                candidate_mobius_args=recipe.mobius,
+            )
+
+            staging_dir, package_dir = production_package_paths(
+                job,
+                recipe_registry=self._recipe_registry,
+                resolved_recipe=recipe,
+            )
+            staging_preexisting = staging_dir.exists()
+            package_preexisting = package_dir.exists()
+
+            mobius_dir = request.workspace_root / "mobius"
+            olive_dir = request.workspace_root / "olive"
+            if mobius_dir.exists():
+                raise PreOliveReuseError(
+                    f"Fallback workspace Mobius destination already exists: {mobius_dir}",
+                )
+            if olive_dir.exists():
+                raise PreOliveReuseError(
+                    f"Fallback workspace Olive destination already exists: {olive_dir}",
+                )
+
+            transition(
+                job,
+                JobState.DOWNLOADING,
+                "No Hugging Face download required; reusing a captured pre-Olive Mobius artifact.",
+            )
+            persist()
+            transition(
+                job,
+                JobState.MOBIUS_BUILDING,
+                "Reusing validated pre-Olive Mobius artifact for trusted fallback candidate "
+                "(no Mobius invocation).",
+            )
+            persist()
+            materialize_pre_olive_copy(
+                descriptor,
+                destination_dir=mobius_dir,
+                authorized_roots=(request.workspace_root,),
+                cancellation_event=cancellation_event,
+            )
+
+            olive_dir.mkdir(parents=True, exist_ok=False)
+            transition(
+                job,
+                JobState.MOBIUS_VALIDATING,
+                "Reused Mobius artifact revalidated against its captured manifest; ONNX "
+                "validation follows Olive.",
+            )
+            persist()
+
+            self._run_from_olive(
+                job,
+                recipe=recipe,
+                request=request,
+                mobius_dir=mobius_dir,
+                olive_dir=olive_dir,
+                persist=persist,
+                cancellation_event=cancellation_event,
+            )
+        except Exception as exc:
+            if staging_dir is not None and not staging_preexisting and staging_dir.exists():
+                shutil.rmtree(staging_dir)
+            if package_dir is not None and not package_preexisting and package_dir.exists():
+                shutil.rmtree(package_dir)
+            if job.state == JobState.CANCELLED:
+                return
+            classification = FailureClassification.PROCESS_FAILED
+            if isinstance(exc, FileNotFoundError):
+                classification = FailureClassification.MISSING_DEPENDENCY
+            elif isinstance(exc, (RecipeExecutionResolutionError, PreOliveReuseError)):
+                classification = exc.classification
+            fail_job(
+                job,
+                FailureInfo(
+                    stage=job.state,
+                    classification=classification,
+                    message=str(exc),
+                ),
+            )
+            job.finished_utc = datetime.now(timezone.utc)
+            persist()
 
     def _resolve_pinned_source(
         self,
