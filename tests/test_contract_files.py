@@ -75,7 +75,12 @@ def test_openapi_candidate_selection_response_contract() -> None:
     assert "candidate_selection" in attempt
 
     selection = schemas["RecipeAttemptCandidateSelection"]["properties"]
-    assert selection["lineage_selection_state"]["enum"] == ["pending", "selected", "exhausted"]
+    lineage_selection_state = selection["lineage_selection_state"]
+    lineage_selection_state_variants = lineage_selection_state["oneOf"]
+    assert {"type": "null"} in lineage_selection_state_variants
+    string_variant = next(variant for variant in lineage_selection_state_variants if variant.get("type") == "string")
+    assert string_variant["enum"] == ["pending", "selected", "exhausted"]
+    assert "lineage_selection_state" in schemas["RecipeAttemptCandidateSelection"]["required"]
     assert set(selection.keys()) == {
         "policy_id",
         "policy_version",

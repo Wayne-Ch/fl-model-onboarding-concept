@@ -2500,7 +2500,14 @@ class LocalOnboardingService:
                 status_code=500,
             )
 
-        candidates = self._recipe_attempt_store.list_candidate_attempts(candidate.parent_attempt_id)
+        try:
+            candidates = self._recipe_attempt_store.list_candidate_attempts(candidate.parent_attempt_id)
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
         selected_candidate_payload: dict[str, object] | None = None
         if (
             lineage.selection_state == CandidateLineageSelectionState.SELECTED

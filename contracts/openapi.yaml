@@ -1374,9 +1374,19 @@ components:
           type: integer
           nullable: true
         lineage_selection_state:
-          type: string
-          nullable: true
-          enum: [pending, selected, exhausted]
+          description: >
+            Null exactly for a candidate-selection-reuse materialization
+            (`workflow_outcome == "reused"`), where there is no lineage of
+            its own to report a selection state for. Modeled as `oneOf`
+            enum-string / explicit `null` (rather than OpenAPI 3.0's
+            `nullable: true` sibling of `enum`) because plain JSON Schema
+            validators -- including the one this repo's runtime-response
+            contract test uses -- reject `null` against an `enum` that does
+            not itself list `null`.
+          oneOf:
+            - type: string
+              enum: [pending, selected, exhausted]
+            - type: "null"
         selected_candidate:
           oneOf:
             - $ref: "#/components/schemas/CandidateSelectedSummary"

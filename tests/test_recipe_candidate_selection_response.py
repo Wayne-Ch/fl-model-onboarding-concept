@@ -21,7 +21,9 @@ import sys
 
 from pathlib import Path
 
+import jsonschema
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_local_service_candidate_orchestration as tlco  # noqa: E402
@@ -34,6 +36,7 @@ from fl_model_onboarding.recipe_selection_policy import (  # noqa: E402
 )
 
 _JOB_REF_RE = re.compile(r"^job://[0-9a-fA-F-]+/(artifact/[0-9a-fA-F-]+|package)$")
+_OPENAPI_PATH = Path(__file__).resolve().parent.parent / "contracts" / "openapi.yaml"
 
 
 def _assert_no_path_leakage(value: str | None) -> None:
@@ -42,6 +45,49 @@ def _assert_no_path_leakage(value: str | None) -> None:
     assert re.match(r"^[A-Za-z]:[\\/]", value) is None, f"absolute path leaked: {value!r}"
     assert "\\" not in value, f"path separator leaked: {value!r}"
     assert _JOB_REF_RE.match(value), f"unexpected reference shape: {value!r}"
+
+
+def _openapi_nullable_to_json_schema(node: object) -> object:
+    """Recursively rewrite OpenAPI 3.0's `nullable: true` sibling-keyword
+    convention into the plain-JSON-Schema `oneOf: [<constraint>, {"type":
+    "null"}]` shape that a real validator (`jsonschema`) understands.
+    `nullable` is an OpenAPI-only keyword, not part of any JSON Schema
+    draft, so a strict validator otherwise rejects every genuinely-null
+    field the runtime emits (`policy_id`, `max_candidates`, ...). Doing this
+    once here -- instead of relying on a hand-parsed, schema-shaped-only
+    test -- lets a single test assert the *actual* runtime response payload
+    against the *actual* documented contract, `$ref` resolution and all,
+    so a real mismatch (like the `lineage_selection_state`/`enum` one this
+    revision fixes) cannot slip past review again.
+    """
+    if isinstance(node, dict):
+        rewritten = {key: _openapi_nullable_to_json_schema(value) for key, value in node.items()}
+        if rewritten.pop("nullable", False) is True:
+            return {"oneOf": [rewritten, {"type": "null"}]}
+        return rewritten
+    if isinstance(node, list):
+        return [_openapi_nullable_to_json_schema(item) for item in node]
+    return node
+
+
+def _candidate_selection_schema_validator() -> jsonschema.Draft7Validator:
+    spec = yaml.safe_load(_OPENAPI_PATH.read_text(encoding="utf-8"))
+    spec = _openapi_nullable_to_json_schema(spec)
+    schema = spec["components"]["schemas"]["RecipeAttemptCandidateSelection"]
+    resolver = jsonschema.RefResolver.from_schema(spec)
+    return jsonschema.Draft7Validator(schema, resolver=resolver)
+
+
+_CANDIDATE_SELECTION_VALIDATOR = _candidate_selection_schema_validator()
+
+
+def _assert_matches_candidate_selection_schema(candidate_selection: dict[str, object]) -> None:
+    """Validate an *actual* `candidate_selection` response payload against
+    the *actual* `contracts/openapi.yaml` `RecipeAttemptCandidateSelection`
+    schema (full `$ref` resolution, `oneOf`/`enum`/nullable semantics --
+    not a hand-parsed reimplementation of those rules)."""
+    errors = sorted(_CANDIDATE_SELECTION_VALIDATOR.iter_errors(candidate_selection), key=str)
+    assert not errors, "\n".join(str(error) for error in errors)
 
 
 # --- 1. Preview candidate_plan -------------------------------------------
@@ -150,6 +196,8 @@ def test_attempt_candidate_selection_default_selected_single_candidate(tmp_path:
         assert aggregate["mobius_build_invocation_count"] == 1
         assert aggregate["olive_optimize_invocation_count"] == 1
         assert aggregate["total_invocation_count"] == 2
+
+        _assert_matches_candidate_selection_schema(selection)
     finally:
         service.close()
 
@@ -219,6 +267,9 @@ def test_attempt_candidate_selection_fallback_selected_default_remains_failed(tm
         aggregate = selection["aggregate_invocation_counters"]
         assert aggregate["mobius_build_invocation_count"] == expected_mobius == 1
         assert aggregate["olive_optimize_invocation_count"] == expected_olive == 2
+
+        _assert_matches_candidate_selection_schema(selection)
+        _assert_matches_candidate_selection_schema(fallback_status["candidate_selection"])
     finally:
         service.close()
 
@@ -243,6 +294,8 @@ def test_attempt_candidate_selection_exhausted_both_regress(tmp_path: Path) -> N
         assert len(selection["candidates"]) == 2
         assert all(row["selection_status"] == "not_selected" for row in selection["candidates"])
         assert all(row["attempt_state"] == "failed" for row in selection["candidates"])
+
+        _assert_matches_candidate_selection_schema(selection)
     finally:
         service.close()
 
@@ -279,6 +332,8 @@ def test_attempt_candidate_selection_pending_mid_flight(tmp_path: Path) -> None:
             assert aggregate["mobius_build_invocation_count"] is None
             assert aggregate["olive_optimize_invocation_count"] is None
             assert aggregate["total_invocation_count"] is None
+
+            _assert_matches_candidate_selection_schema(selection)
         finally:
             runner.release.set()
         assert tlco._wait_for_job_terminal(service, job.job_id).state == JobState.SUCCEEDED
@@ -319,11 +374,20 @@ def test_attempt_candidate_selection_reused_default_winner_measured_zero_evidenc
         assert reuse["recorded_utc"] is not None
         assert reused_attempt["candidate_selection"]["candidates"] == []
         assert reused_attempt["candidate_selection"]["selected_candidate"] is None
+        # A candidate-selection-reuse materialization has no lineage of its
+        # own to report a selection state for: the *actual* runtime payload
+        # emits `lineage_selection_state: None`, which must validate as a
+        # real `null` against the OpenAPI schema (not silently rejected by
+        # an enum that never listed `null`).
+        assert reused_attempt["candidate_selection"]["lineage_selection_state"] is None
+        _assert_matches_candidate_selection_schema(reused_attempt["candidate_selection"])
 
         # Poll path (get_recipe_attempt) reports the exact same summary.
         polled = service.get_recipe_attempt(attempt_id=reused_attempt["attempt_id"])
         assert polled["workflow_outcome"] == "reused"
         assert polled["candidate_selection"]["reuse"] == reuse
+        assert polled["candidate_selection"]["lineage_selection_state"] is None
+        _assert_matches_candidate_selection_schema(polled["candidate_selection"])
     finally:
         service.close()
 
@@ -364,6 +428,10 @@ def test_attempt_candidate_selection_reused_block64_winner_measured_zero_evidenc
         assert reuse["mobius_invocation_count"] == 0
         assert reuse["olive_invocation_count"] == 0
         assert reuse["runner_dispatch_count"] == 0
+        # Same invariant as the default-winner reuse case: no lineage of
+        # its own, so the actual runtime response is `None` here too.
+        assert reused_attempt["candidate_selection"]["lineage_selection_state"] is None
+        _assert_matches_candidate_selection_schema(reused_attempt["candidate_selection"])
     finally:
         service.close()
 
@@ -426,3 +494,63 @@ def test_attempt_candidate_selection_integrity_error_surfaces_on_corrupt_lineage
         assert exc_info.value.code == "RECIPE_ATTEMPT_STORE_ERROR"
     finally:
         service.close()
+
+
+def test_attempt_candidate_selection_list_candidate_attempts_store_error_is_structured(
+    tmp_path: Path,
+) -> None:
+    """`_candidate_selection_summary_for_attempt` must wrap a corrupt
+    `list_candidate_attempts(...)` read (a candidate row whose own linked
+    attempt row has gone missing -- the store's own invariant is that every
+    registered candidate always has a live linked attempt) in the exact
+    same structured `RECIPE_ATTEMPT_STORE_ERROR` 500 `ServiceError` handling
+    as the adjacent `get_candidate_lineage(...)` call, instead of letting
+    the raw `RecipeAttemptStoreError` escape uncaught -- and without
+    exposing the on-disk sqlite path or any raw row data in the surfaced
+    message."""
+    backend = tlco.DeterministicQualityTextBackend()
+    service = tlco._service(tmp_path, text_backend=backend)
+    try:
+        default_preview = service.generated_recipe_preview(model_id=tlco._model(), task=CandidateModality.LLM)
+        default_fingerprint = str(default_preview["generated_recipe"]["fingerprint"])
+        backend.regress_recipe_fingerprints.add(default_fingerprint)
+
+        job, attempt, _fp = tlco._create_default_attempt(service, idempotency_key="resp-list-corrupt-1")
+        default_attempt_id = attempt["attempt_id"]
+        assert tlco._wait_for_job_terminal(service, job.job_id).state == JobState.SUCCEEDED
+        tlco._wait_for_lineage_finalized(service, default_attempt_id, timeout_seconds=15.0)
+
+        fallback_candidate = next(
+            row
+            for row in service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+            if row.candidate_index == 1
+        )
+
+        # Simulate on-disk corruption downstream of the lineage row itself:
+        # the fallback candidate's own linked attempt row goes missing
+        # while its `candidate_attempts` row (and the parent lineage row)
+        # survive untouched -- this only ever surfaces inside
+        # `list_candidate_attempts`, never `get_candidate_lineage`.
+        db_path = service._recipe_attempt_store.db_path
+        connection = sqlite3.connect(db_path)
+        try:
+            connection.execute("DELETE FROM attempts WHERE attempt_id = ?", (fallback_candidate.attempt_id,))
+            connection.commit()
+        finally:
+            connection.close()
+
+        # The lineage row itself is untouched, so this proves the failure
+        # is specifically from `list_candidate_attempts`, not the earlier
+        # `get_candidate_lineage` call in the same method.
+        assert service._recipe_attempt_store.get_candidate_lineage(default_attempt_id) is not None
+
+        with pytest.raises(ServiceError) as exc_info:
+            service.get_recipe_attempt(attempt_id=default_attempt_id)
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.code == "RECIPE_ATTEMPT_STORE_ERROR"
+        message = str(exc_info.value)
+        assert str(db_path) not in message
+        assert "\\" not in message
+    finally:
+        service.close()
+
