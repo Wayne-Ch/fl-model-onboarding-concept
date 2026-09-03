@@ -263,6 +263,29 @@ def _wait_for_lineage_finalized(service: LocalOnboardingService, parent_attempt_
     raise AssertionError(f"Timed out waiting for lineage '{parent_attempt_id}' to finalize")
 
 
+def _install_runner_dispatch_spy(
+    service: LocalOnboardingService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, int]:
+    runner = service._build_stage_runner
+    counters = {"run": 0, "run_fallback_with_pre_olive_reuse": 0}
+
+    def _unexpected_run(*args, **kwargs):  # noqa: ANN002, ANN003
+        counters["run"] += 1
+        raise AssertionError("build stage runner run() must not be called on selected-candidate reuse")
+
+    monkeypatch.setattr(runner, "run", _unexpected_run)
+    if isinstance(runner, ProductionBuildStageRunner):
+        def _unexpected_fallback(*args, **kwargs):  # noqa: ANN002, ANN003
+            counters["run_fallback_with_pre_olive_reuse"] += 1
+            raise AssertionError(
+                "run_fallback_with_pre_olive_reuse() must not be called on selected-candidate reuse"
+            )
+
+        monkeypatch.setattr(runner, "run_fallback_with_pre_olive_reuse", _unexpected_fallback)
+    return counters
+
+
 # --- 1. Default candidate verifies -------------------------------------------
 
 
@@ -392,6 +415,118 @@ def test_structural_regression_triggers_verified_block64_fallback(tmp_path: Path
             for spec in service._process_runner.specs  # type: ignore[attr-defined]
             if spec.cwd == fallback_job.request.workspace_root
         )
+    finally:
+        service.close()
+
+
+def test_selected_default_candidate_reuse_short_circuits_without_new_build_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    try:
+        source_job, source_attempt, source_fingerprint = _create_default_attempt(
+            service, idempotency_key="reuse-selected-default-source-1"
+        )
+        assert _wait_for_job_terminal(service, source_job.job_id).state == JobState.SUCCEEDED
+        source_attempt_id = source_attempt["attempt_id"]
+        assert service.get_recipe_attempt(attempt_id=source_attempt_id)["state"] == "succeeded"
+        _wait_for_lineage_finalized(service, source_attempt_id)
+
+        source_candidate = service._recipe_attempt_store.list_candidate_attempts(source_attempt_id)[0]
+        jobs_before = len(service._jobs)
+        source_mobius = source_candidate.invocation_counters.mobius_build_invocation_count
+        source_olive = source_candidate.invocation_counters.olive_optimize_invocation_count
+
+        dispatch_counts = _install_runner_dispatch_spy(service, monkeypatch)
+        reuse_preview = service.generated_recipe_preview(model_id=_model(), task=CandidateModality.LLM)["generated_recipe"]
+        assert reuse_preview["candidate_selection_reuse"]["available"] is True
+        assert reuse_preview["candidate_selection_reuse"]["winner_candidate_index"] == 0
+
+        reused_job, replay, reused_attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=source_fingerprint,
+            idempotency_key="reuse-selected-default-consumer-1",
+            model_id=_model(),
+        )
+        assert replay is False
+        assert reused_job.job_id == source_job.job_id
+        assert reused_attempt["state"] == "succeeded"
+        assert reused_attempt["build_job_id"] is None
+        assert reused_attempt["recipe_fingerprint"] == source_candidate.recipe_fingerprint
+        assert reused_attempt["candidate_selection_reuse"]["winner_candidate_attempt_id"] == source_candidate.candidate_attempt_id
+        assert len(service._jobs) == jobs_before
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+
+        source_attempt_after = service.get_recipe_attempt(attempt_id=source_attempt_id)
+        assert source_attempt_after["state"] == "succeeded"
+        source_candidate_after = service._recipe_attempt_store.get_candidate_attempt(source_candidate.candidate_attempt_id)
+        assert source_candidate_after.invocation_counters.mobius_build_invocation_count == source_mobius
+        assert source_candidate_after.invocation_counters.olive_optimize_invocation_count == source_olive
+    finally:
+        service.close()
+
+
+def test_selected_block64_candidate_reuse_short_circuits_to_winner_without_runner_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = DeterministicQualityTextBackend()
+    service = _service(tmp_path, text_backend=backend)
+    try:
+        default_preview = service.generated_recipe_preview(model_id=_model(), task=CandidateModality.LLM)
+        default_fingerprint = str(default_preview["generated_recipe"]["fingerprint"])
+        backend.regress_recipe_fingerprints.add(default_fingerprint)
+
+        source_job, source_attempt, _fingerprint = _create_default_attempt(
+            service, idempotency_key="reuse-selected-block64-source-1"
+        )
+        assert _wait_for_job_terminal(service, source_job.job_id).state == JobState.SUCCEEDED
+        default_attempt_id = source_attempt["attempt_id"]
+        _wait_for_lineage_finalized(service, default_attempt_id, timeout_seconds=15.0)
+
+        candidates = service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+        default_candidate = next(row for row in candidates if row.candidate_index == 0)
+        fallback_candidate = next(row for row in candidates if row.candidate_index == 1)
+        fallback_job_id = _fallback_job_id_for(service, fallback_candidate.attempt_id)
+        assert fallback_job_id is not None
+        default_attempt_before = service.get_recipe_attempt(attempt_id=default_attempt_id)
+        assert default_attempt_before["state"] == "failed"
+        default_mobius = default_candidate.invocation_counters.mobius_build_invocation_count
+        default_olive = default_candidate.invocation_counters.olive_optimize_invocation_count
+        jobs_before = len(service._jobs)
+
+        dispatch_counts = _install_runner_dispatch_spy(service, monkeypatch)
+        reuse_preview = service.generated_recipe_preview(model_id=_model(), task=CandidateModality.LLM)["generated_recipe"]
+        assert reuse_preview["candidate_selection_reuse"]["available"] is True
+        assert reuse_preview["candidate_selection_reuse"]["winner_candidate_index"] == 1
+        assert (
+            reuse_preview["candidate_selection_reuse"]["winner_recipe_fingerprint"]
+            == fallback_candidate.recipe_fingerprint
+        )
+
+        reused_job, replay, reused_attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=default_fingerprint,
+            idempotency_key="reuse-selected-block64-consumer-1",
+            model_id=_model(),
+        )
+        assert replay is False
+        assert reused_job.job_id == fallback_job_id
+        assert reused_attempt["state"] == "succeeded"
+        assert reused_attempt["build_job_id"] is None
+        assert reused_attempt["candidate_selection_reuse"]["winner_candidate_id"] == "int4-block-size-64"
+        assert reused_attempt["candidate_selection_reuse"]["winner_candidate_index"] == 1
+        assert reused_attempt["recipe_fingerprint"] == fallback_candidate.recipe_fingerprint
+        assert reused_attempt["recipe_fingerprint"] != default_candidate.recipe_fingerprint
+        assert len(service._jobs) == jobs_before
+        assert dispatch_counts["run"] == 0
+        assert dispatch_counts["run_fallback_with_pre_olive_reuse"] == 0
+
+        default_attempt_after = service.get_recipe_attempt(attempt_id=default_attempt_id)
+        assert default_attempt_after["state"] == "failed"
+        default_candidate_after = service._recipe_attempt_store.get_candidate_attempt(default_candidate.candidate_attempt_id)
+        assert default_candidate_after.invocation_counters.mobius_build_invocation_count == default_mobius
+        assert default_candidate_after.invocation_counters.olive_optimize_invocation_count == default_olive
     finally:
         service.close()
 
@@ -1117,4 +1252,3 @@ def test_recovery_transaction_failure_leaves_lineage_pending_and_is_retried_late
         assert lineage_final.selection_state == CandidateLineageSelectionState.EXHAUSTED
     finally:
         healthy_restart.close()
-

@@ -85,13 +85,15 @@ from .recipe_attempt_store import (
     AttemptGateSequenceError,
     AttemptGateStatus,
     AttemptIdempotencyConflictError,
+    CandidateReuseIntegrityError,
+    CandidateSelectionReuseQuery,
     AttemptState,
     AttemptStateTransitionError,
     CandidateAttemptRecord,
     CandidateInvocationCounters,
     CandidateLineageSelectionState,
     CandidatePlanValidationError,
-    RecipeAttemptRequest,
+    CandidateWinnerStatus,
     RecipeAttemptStore,
     RecipeAttemptStoreError,
     TERMINAL_ATTEMPT_STATES,
@@ -363,6 +365,15 @@ class GeneratedRecipePreviewContext:
     catalog_matches: tuple[object, ...]
     eligible_for_automatic_attempt: bool
     verified_reuse: dict[str, object] | None
+    candidate_selection_reuse: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class CandidateSelectionReuseResolution:
+    winner_candidate: CandidateAttemptRecord
+    winner_attempt: Any
+    winner_generated_record: Any
+    winner_job_id: str
 
 
 @dataclass(frozen=True)
@@ -1108,6 +1119,315 @@ class LocalOnboardingService:
             "recipe": record.payload(),
         }
 
+    @staticmethod
+    def _candidate_selection_reuse_payload(
+        resolution: CandidateSelectionReuseResolution,
+    ) -> dict[str, object]:
+        winner = resolution.winner_candidate
+        return {
+            "available": True,
+            "source_parent_attempt_id": winner.parent_attempt_id,
+            "winner_candidate_attempt_id": winner.candidate_attempt_id,
+            "winner_attempt_id": winner.attempt_id,
+            "winner_candidate_index": winner.candidate_index,
+            "winner_candidate_id": winner.candidate_id,
+            "winner_recipe_fingerprint": winner.recipe_fingerprint,
+            "selection_reason": winner.selection_reason,
+            "policy_fingerprint": winner.policy_fingerprint,
+            "quality_profile_fingerprint": winner.quality_profile_fingerprint,
+            "winner_job_id": resolution.winner_job_id,
+        }
+
+    @staticmethod
+    def _selection_scope_identity_from_generated_record(
+        record: Any,
+    ) -> tuple[str, str, str, str] | None:
+        payload = record.payload()
+        recipe_payload = payload.get("recipe") if isinstance(payload, dict) else None
+        if not isinstance(recipe_payload, dict):
+            return None
+        olive_payload = recipe_payload.get("olive")
+        mobius_payload = recipe_payload.get("mobius")
+        if not isinstance(olive_payload, dict) or not isinstance(mobius_payload, dict):
+            return None
+        target_device = olive_payload.get("device")
+        target_ep = mobius_payload.get("ep")
+        if not isinstance(target_device, str) or not target_device.strip():
+            return None
+        if not isinstance(target_ep, str) or not target_ep.strip():
+            return None
+        toolchain = record.toolchain_fingerprint
+        if not isinstance(toolchain, str) or not toolchain.strip():
+            return None
+        provider = olive_payload.get("provider")
+        environment_scope = (
+            f"foundry-local-onboarding:{provider}"
+            if isinstance(provider, str) and provider.strip()
+            else "foundry-local-onboarding"
+        )
+        return (target_device.strip().lower(), target_ep.strip(), toolchain.strip().lower(), environment_scope)
+
+    def _build_candidate_selection_reuse_query(
+        self,
+        *,
+        record: Any,
+    ) -> CandidateSelectionReuseQuery | None:
+        quality_fingerprint = self._quality_profile.fingerprint.strip().lower()
+        policy_fingerprint = self._recipe_selection_policy.fingerprint.strip().lower()
+        identities = (
+            record.model_id,
+            record.revision_sha,
+            record.requested_device,
+            record.requested_precision,
+            record.compiler_version,
+            record.capability_fingerprint,
+            record.toolchain_fingerprint,
+            record.profile_fingerprint,
+            quality_fingerprint,
+            policy_fingerprint,
+        )
+        if any(not isinstance(value, str) or not value.strip() for value in identities):
+            # Missing identity is always a safe miss: never wildcard any field.
+            return None
+        return CandidateSelectionReuseQuery(
+            model_id=record.model_id,
+            revision_sha=record.revision_sha,
+            requested_device=record.requested_device,
+            requested_precision=record.requested_precision,
+            compiler_version=record.compiler_version,
+            capability_fingerprint=record.capability_fingerprint,
+            toolchain_fingerprint=record.toolchain_fingerprint,
+            profile_fingerprint=record.profile_fingerprint,
+            quality_profile_fingerprint=quality_fingerprint,
+            policy_fingerprint=policy_fingerprint,
+        )
+
+    def _raise_candidate_selection_reuse_integrity_error(self, message: str) -> None:
+        raise ServiceError(
+            code="CANDIDATE_SELECTION_REUSE_INTEGRITY_ERROR",
+            message=_sanitize_text(message),
+            status_code=500,
+        )
+
+    def _resolve_reusable_candidate_selection(
+        self,
+        *,
+        record: Any,
+    ) -> CandidateSelectionReuseResolution | None:
+        query = self._build_candidate_selection_reuse_query(record=record)
+        if query is None:
+            return None
+        expected_scope = self._selection_scope_identity_from_generated_record(record)
+        if expected_scope is None:
+            return None
+        expected_device, expected_ep, expected_toolchain, expected_environment = expected_scope
+        try:
+            winner = self._recipe_attempt_store.find_reusable_candidate_selection(query)
+        except CandidateReuseIntegrityError as exc:
+            self._raise_candidate_selection_reuse_integrity_error(str(exc))
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+        if winner is None:
+            return None
+        if winner.selection_status != CandidateWinnerStatus.SELECTED:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Candidate winner '{winner.candidate_attempt_id}' is not marked selected."
+            )
+        if winner.attempt_state != AttemptState.SUCCEEDED:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Candidate winner '{winner.candidate_attempt_id}' references non-succeeded attempt "
+                f"'{winner.attempt_id}' ({winner.attempt_state.value})."
+            )
+        if not winner.has_fully_validated_selection_scope:
+            return None
+        if (
+            (winner.validated_target_device or "").strip().lower() != expected_device
+            or (winner.validated_target_ep or "").strip() != expected_ep
+            or (winner.validated_toolchain_fingerprint or "").strip().lower() != expected_toolchain
+            or (winner.validated_environment_scope or "").strip() != expected_environment
+        ):
+            return None
+
+        try:
+            lineage = self._recipe_attempt_store.get_candidate_lineage(winner.parent_attempt_id)
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+        if lineage is None:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Selected winner '{winner.candidate_attempt_id}' has no parent lineage "
+                f"'{winner.parent_attempt_id}'."
+            )
+        if lineage.selection_state != CandidateLineageSelectionState.SELECTED:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner '{winner.candidate_attempt_id}' parent lineage '{winner.parent_attempt_id}' "
+                f"is '{lineage.selection_state.value}', expected 'selected'."
+            )
+        if lineage.selected_candidate_attempt_id != winner.candidate_attempt_id:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Lineage '{winner.parent_attempt_id}' selected candidate id mismatch."
+            )
+        if lineage.policy_fingerprint != self._recipe_selection_policy.fingerprint:
+            return None
+        if lineage.quality_profile_fingerprint != self._quality_profile.fingerprint:
+            return None
+
+        try:
+            winner_attempt = self._recipe_attempt_store.get_attempt(winner.attempt_id)
+        except KeyError:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner attempt '{winner.attempt_id}' does not exist."
+            )
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+        if winner_attempt.state != AttemptState.SUCCEEDED:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner attempt '{winner.attempt_id}' is '{winner_attempt.state.value}', expected 'succeeded'."
+            )
+        try:
+            parent_attempt = self._recipe_attempt_store.get_attempt(winner.parent_attempt_id)
+        except KeyError:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner parent attempt '{winner.parent_attempt_id}' does not exist."
+            )
+        except RecipeAttemptStoreError as exc:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_STORE_ERROR",
+                message=_sanitize_text(str(exc)),
+                status_code=500,
+            ) from exc
+        parent_record = self._recipe_attempt_store.get_generated_recipe(parent_attempt.recipe_fingerprint)
+        if parent_record is None:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner parent generated recipe '{parent_attempt.recipe_fingerprint}' is missing."
+            )
+        winner_record = self._recipe_attempt_store.get_generated_recipe(winner.recipe_fingerprint)
+        if winner_record is None:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner generated recipe '{winner.recipe_fingerprint}' is missing."
+            )
+
+        try:
+            trusted_policy_candidate = self._recipe_selection_policy.candidates[winner.candidate_index]
+        except IndexError:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner candidate index '{winner.candidate_index}' is out of range for current policy "
+                f"'{self._recipe_selection_policy.policy_id}'."
+            )
+        if trusted_policy_candidate.candidate_id != winner.candidate_id:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner candidate id '{winner.candidate_id}' does not match trusted policy candidate "
+                f"'{trusted_policy_candidate.candidate_id}' at index {winner.candidate_index}."
+            )
+
+        try:
+            default_recipe = self._recompile_generated_recipe_record(record=parent_record)
+        except ServiceError as exc:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner parent recipe '{parent_record.recipe_fingerprint}' failed trusted recompile: "
+                f"{exc.message}"
+            )
+        if winner.candidate_index == 0:
+            expected_winner = default_recipe
+        else:
+            try:
+                expected_winner = compile_trusted_candidate_recipe(
+                    default_recipe,
+                    policy=self._recipe_selection_policy,
+                    candidate=trusted_policy_candidate,
+                )
+            except TrustedCandidateCompilationError as exc:
+                self._raise_candidate_selection_reuse_integrity_error(
+                    f"Unable to re-derive trusted candidate {winner.candidate_index} under policy "
+                    f"'{self._recipe_selection_policy.policy_id}': {exc}"
+                )
+        if winner.recipe_fingerprint != expected_winner.fingerprint:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner recipe fingerprint '{winner.recipe_fingerprint}' does not match re-derived trusted "
+                f"candidate fingerprint '{expected_winner.fingerprint}'."
+            )
+        if winner_record.recipe_fingerprint != expected_winner.fingerprint:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner generated recipe '{winner_record.recipe_fingerprint}' does not match re-derived trusted "
+                f"candidate fingerprint '{expected_winner.fingerprint}'."
+            )
+        try:
+            self._recompile_generated_recipe_record(record=winner_record)
+        except ServiceError as exc:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner generated recipe '{winner_record.recipe_fingerprint}' failed trusted recompile: "
+                f"{exc.message}"
+            )
+
+        with self._lock:
+            winner_job_id = self._attempt_to_build_job.get(winner.attempt_id)
+            winner_job = self._jobs.get(winner_job_id) if winner_job_id is not None else None
+        if winner_job_id is None or winner_job is None:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner attempt '{winner.attempt_id}' has no corresponding build job."
+            )
+        if winner_job.result_artifact_id is None:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner job '{winner_job_id}' has no result artifact id."
+            )
+        expected_artifact_ref = f"job://{winner_job_id}/artifact/{winner_job.result_artifact_id}"
+        expected_package_ref = f"job://{winner_job_id}/package"
+        if winner.artifact_ref != expected_artifact_ref or winner.package_ref != expected_package_ref:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Winner '{winner.candidate_attempt_id}' artifact/package refs do not match job '{winner_job_id}'."
+            )
+
+        return CandidateSelectionReuseResolution(
+            winner_candidate=winner,
+            winner_attempt=winner_attempt,
+            winner_generated_record=winner_record,
+            winner_job_id=winner_job_id,
+        )
+
+    def _materialize_reused_generated_attempt(
+        self,
+        *,
+        attempt_id: str,
+        winner_attempt: Any,
+    ) -> Any:
+        attempt = self._recipe_attempt_store.get_attempt(attempt_id)
+        if attempt.state == AttemptState.SUCCEEDED:
+            return attempt
+        if attempt.state != AttemptState.GENERATED:
+            raise ServiceError(
+                code="RECIPE_ATTEMPT_ALREADY_STARTED",
+                message=(
+                    f"Recipe attempt '{attempt.attempt_id}' is already in state '{attempt.state.value}' "
+                    "without a recoverable build job mapping."
+                ),
+                status_code=409,
+            )
+        if winner_attempt.state != AttemptState.SUCCEEDED:
+            self._raise_candidate_selection_reuse_integrity_error(
+                f"Cannot materialize reuse from non-succeeded winner attempt '{winner_attempt.attempt_id}'."
+            )
+        self._recipe_attempt_store.start_attempt(attempt.attempt_id)
+        for gate in winner_attempt.gate_results:
+            self._recipe_attempt_store.record_attempt_gate(
+                attempt_id=attempt.attempt_id,
+                gate=gate.gate,
+                status=gate.status,
+                evidence_ref=gate.evidence_ref,
+                metrics_ref=gate.metrics_ref,
+            )
+        return self._recipe_attempt_store.finish_attempt_succeeded(attempt.attempt_id)
+
     def _resolve_generated_recipe_preview(
         self,
         *,
@@ -1135,6 +1455,7 @@ class LocalOnboardingService:
         compile_error: str | None = None
         generated_recipe: GeneratedRecipe | None = None
         verified_reuse: dict[str, object] | None = None
+        candidate_selection_reuse: dict[str, object] | None = None
         eligible = False
 
         if task != CandidateModality.LLM:
@@ -1171,12 +1492,17 @@ class LocalOnboardingService:
                 compile_error = _sanitize_text(str(exc) or "Generated recipe compilation failed.")
             if generated_recipe is not None:
                 generated_record = self._recipe_attempt_store.upsert_generated_recipe(generated_recipe)
+                reusable_candidate_selection = self._resolve_reusable_candidate_selection(record=generated_record)
+                if reusable_candidate_selection is not None:
+                    candidate_selection_reuse = self._candidate_selection_reuse_payload(
+                        reusable_candidate_selection
+                    )
                 reusable = self._recipe_attempt_store.find_reusable_verified_recipe(
                     build_reuse_query_from_generated(generated_record)
                 )
                 if reusable is not None:
                     verified_reuse = self._verified_reuse_payload(reusable)
-                else:
+                elif reusable_candidate_selection is None:
                     eligible = True
 
         return GeneratedRecipePreviewContext(
@@ -1194,6 +1520,7 @@ class LocalOnboardingService:
             catalog_matches=catalog_matches,
             eligible_for_automatic_attempt=eligible,
             verified_reuse=verified_reuse,
+            candidate_selection_reuse=candidate_selection_reuse,
         )
 
     def _generated_recipe_payload(self, context: GeneratedRecipePreviewContext) -> dict[str, object]:
@@ -1212,6 +1539,7 @@ class LocalOnboardingService:
                 "toolchain": to_jsonable(_RECIPE_TOOLCHAIN),
                 "validation_gates": validation_gates,
                 "verified_reuse": context.verified_reuse,
+                "candidate_selection_reuse": context.candidate_selection_reuse,
             }
         provenance = candidate.provenance
         return {
@@ -1230,6 +1558,7 @@ class LocalOnboardingService:
             "toolchain": to_jsonable(provenance.toolchain),
             "validation_gates": validation_gates,
             "verified_reuse": context.verified_reuse,
+            "candidate_selection_reuse": context.candidate_selection_reuse,
         }
 
     def model_detail(self, *, model_id: str) -> dict[str, object]:
@@ -1944,17 +2273,13 @@ class LocalOnboardingService:
                 ),
                 status_code=409,
             )
-        attempt_request = RecipeAttemptRequest(
-            recipe_fingerprint=generated_record.recipe_fingerprint,
-            model_id=generated_record.model_id,
-            revision_sha=generated_record.revision_sha,
-            requested_device=generated_record.requested_device,
-            requested_precision=generated_record.requested_precision,
-            compiler_version=generated_record.compiler_version,
-            capability_fingerprint=generated_record.capability_fingerprint,
-            toolchain_fingerprint=generated_record.toolchain_fingerprint,
-            profile_fingerprint=generated_record.profile_fingerprint,
+        reusable_candidate_selection = self._resolve_reusable_candidate_selection(record=generated_record)
+        attempt_request_record = (
+            reusable_candidate_selection.winner_generated_record
+            if reusable_candidate_selection is not None
+            else generated_record
         )
+        attempt_request = build_attempt_request_from_generated(attempt_request_record)
         request_fingerprint = build_attempt_request_fingerprint(attempt_request)
         try:
             attempt, replay = self._recipe_attempt_store.create_attempt(
@@ -1980,6 +2305,31 @@ class LocalOnboardingService:
             if mapped_job_id is not None and mapped_job_id in self._jobs:
                 return self._jobs[mapped_job_id], True, self._serialize_recipe_attempt(attempt)
 
+        if reusable_candidate_selection is not None:
+            try:
+                materialized_attempt = self._materialize_reused_generated_attempt(
+                    attempt_id=attempt.attempt_id,
+                    winner_attempt=reusable_candidate_selection.winner_attempt,
+                )
+            except RecipeAttemptStoreError as exc:
+                raise ServiceError(
+                    code="RECIPE_ATTEMPT_STORE_ERROR",
+                    message=_sanitize_text(str(exc)),
+                    status_code=500,
+                ) from exc
+            with self._lock:
+                winner_job = self._jobs.get(reusable_candidate_selection.winner_job_id)
+            if winner_job is None:
+                self._raise_candidate_selection_reuse_integrity_error(
+                    f"Winner job '{reusable_candidate_selection.winner_job_id}' no longer exists."
+                )
+            attempt_payload = self._serialize_recipe_attempt(materialized_attempt)
+            attempt_payload["candidate_selection_reuse"] = self._candidate_selection_reuse_payload(
+                reusable_candidate_selection
+            )
+            return winner_job, replay, attempt_payload
+
+        with self._lock:
             if attempt.state != AttemptState.GENERATED:
                 raise ServiceError(
                     code="RECIPE_ATTEMPT_ALREADY_STARTED",

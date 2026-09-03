@@ -262,28 +262,26 @@ nothing hardcoded or inferred.
    the other on a case-insensitive destination filesystem (the default on
    Windows/NTFS). Post-copy hash verification remains mandatory and unchanged.
 
-## What this slice explicitly does *not* do (exact Slice 3B2 handoff)
+## Slice 3B2a delivered and 3B2b handoff
 
-- **No selected-candidate reuse short-circuit for a *new* user request.** Slice 2's
-  `find_reusable_candidate_selection(CandidateSelectionReuseQuery)` — a read-only
-  lookup of a previously-selected verified candidate winner by full
-  policy-aware/quality-profile-aware identity — is never called anywhere in
-  `local_service.py`. Every generated-attempt request in this slice still always
-  executes candidate 0 (and, when triggered, candidate 1) for real; there is no
-  zero-build path. (Note: the pre-existing, policy-unaware `find_reusable_verified_recipe`
-  / `generated_recipe_preview` "verified recipe" reuse cache is untouched and
-  continues to work exactly as it did before 3B1 — including for a recipe promoted
-  via the fallback candidate, since `build_profile_fingerprint` does not encode
-  `block_size`. That is pre-existing Slice 1 behavior, not new "candidate selection
-  reuse", and is unrelated to the scope excluded here.)
-- **Exact 3B2 handoff**: wire `find_reusable_candidate_selection` into
-  `create_generated_recipe_attempt` (or an earlier preview/routing step), keyed by
-  `CandidateSelectionReuseQuery` (model/revision/device/precision/compiler/
-  capability/toolchain/profile fingerprints **plus** `quality_profile_fingerprint`
-  and `policy_fingerprint`). On a hit, serve the already-selected winner's
-  artifact/package directly — no `BuildJob`, no candidate 0/1 execution at all —
-  while still respecting `CandidateReuseIntegrityError`'s fail-closed
-  cross-identity guard. This slice deliberately stops one call short of that wiring.
+- **Selected-candidate reuse is now wired into preview + generated-attempt dispatch.**
+  `local_service.py` now builds an exact `CandidateSelectionReuseQuery` from the
+  current request identity (model/revision/device/precision/compiler/capability/
+  toolchain/profile) plus current quality-profile and policy fingerprints, calls
+  `find_reusable_candidate_selection`, and short-circuits to the already-selected
+  winner when every identity/scope/integrity check passes.
+- **No new build dispatch on reuse hit.** A reuse hit now returns without queuing a
+  new runner job; the original selected winner's artifact/package lineage remains the
+  source of truth. Candidate-selection reuse metadata is carried in preview and the
+  returned attempt payload (`source_parent_attempt_id`, winner candidate/attempt ids,
+  winner recipe fingerprint, and selection reason).
+- **Fail-closed boundaries.** `CandidateReuseIntegrityError` and winner-provenance
+  mismatches (lineage state drift, missing winner recipe/job refs, policy candidate
+  re-derivation mismatch) surface explicitly as integrity errors; ordinary identity or
+  validated-scope mismatches remain safe misses and proceed down the normal build path.
+- **Exact 3B2b handoff.** Remaining scope is the broader matrix: invalidation/idempotency
+  edge cases, stale/corrupt data recovery hardening, concurrency races around reuse
+  materialization, and measured evidence coverage beyond the two core no-runner cases.
 - **No API/OpenAPI/route/UI changes.** Candidate lineage/evidence/selection state is
   only ever visible through direct `RecipeAttemptStore` access (as these tests do);
   `_serialize_recipe_attempt`'s response shape is unchanged.
