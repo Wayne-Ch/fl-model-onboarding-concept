@@ -163,17 +163,75 @@ The fallback candidate then flows through the exact same
   attempted afterward.
 - **Fallback process failure** (Olive itself fails for candidate 1) finalizes
   candidate 1 failed and the lineage exhausted; never a third candidate.
-- **Restart fail-closed**: the pre-Olive descriptor cache is process-memory only and
+- **Restart recovery**: the pre-Olive descriptor cache is process-memory only and
   never survives a restart. `LocalOnboardingService._recover_orphaned_candidate_lineages`
-  runs once at startup (after the existing interrupted-job recovery pass) and
-  finalizes exhausted — with an explicit `restart_fail_closed` reason — any lineage
-  whose default candidate is already terminal/non-verified but for which a fallback
-  candidate was never registered. It deliberately never tries to rebuild Mobius to
-  resume. A lineage that is still genuinely in flight is left untouched; the
-  ordinary lazy-sync path (a `get_recipe_attempt` poll, or the same interrupted-job
-  recovery pass) finalizes it normally once safe, including launching the fallback
-  candidate if that candidate's own gates were simply never reached before the
-  restart.
+  runs once at startup (after the existing interrupted-job recovery pass) and, for
+  every still-`PENDING` lineage whose registered candidates are *all* terminal:
+  - if none is verified, finalizes the lineage exhausted -- with an explicit
+    `restart_fail_closed` reason when a fallback candidate was never registered
+    (never rebuilding Mobius to resume it), or a `restart_recovery` reason when
+    every candidate slot the policy allows (`policy_max_candidates`) already ran
+    and failed/cancelled. Candidate count being exactly at the policy max is
+    never treated differently from being below it -- a crash between committing
+    the last candidate's terminal state and finalizing the lineage must not
+    orphan it forever, since the parent attempt is itself already terminal and
+    the ordinary lazy-sync path never revisits it again.
+  - if exactly one candidate is verified but was never selected (a crash between
+    the candidate's own attempt reaching `succeeded` and
+    `select_verified_candidate_attempt` committing), selects it using the same
+    trusted `_select_verified_candidate` logic the live sync path uses, instead
+    of ever exhausting the lineage around it. If the generated recipe backing it
+    can no longer be located, the lineage is left `PENDING` (explicit and still
+    actionable) rather than risk discarding a verified winner.
+
+  A lineage that is still genuinely in flight (any candidate not yet terminal) is
+  left completely untouched; the ordinary lazy-sync path (a `get_recipe_attempt`
+  poll, or the same interrupted-job recovery pass) finalizes it normally once
+  safe, including launching the fallback candidate if that candidate's own gates
+  were simply never reached before the restart. An already-finalized
+  (`selected`/`exhausted`) lineage is always a no-op, making repeated restart
+  recovery idempotent.
+
+## Locking: a per-attempt guard, never the global lock, across unbounded I/O
+
+`_sync_generated_attempt_with_job` (the method that runs quality validation,
+evaluates the fallback trigger, and -- when triggered -- revalidates the
+captured pre-Olive artifact and compiles/registers/launches the fallback
+candidate) always executes through `_safe_sync_generated_attempt`, which no
+longer serializes it under `LocalOnboardingService._lock` (the service-wide
+lock guarding `self._jobs`/`self._attempt_to_build_job`/`self._cancel_events`/
+`self._queue`/etc.). Instead:
+
+1. A brief `self._lock` critical section looks up or creates a per-attempt
+   `_AttemptSyncGuard` (a plain `threading.Lock`, refcounted so the guard map
+   never grows without bound across the service's lifetime), then releases
+   `self._lock`.
+2. The (potentially slow, unbounded) sync body itself runs holding only that
+   per-attempt guard -- serializing a duplicate sync of the *same* attempt
+   (e.g. the worker finishing a job racing a `get_recipe_attempt` poll's own
+   lazy re-sync) without ever holding `self._lock` across manifest hashing
+   (`revalidate_pre_olive_source`), process execution, or quality validation.
+3. `_sync_generated_attempt_with_job`'s callees still take `self._lock`
+   themselves, but only briefly, around actual shared in-memory map/queue
+   mutations (see `_launch_fallback_candidate_attempt`) -- always nested
+   *inside* an already-held per-attempt guard, never the reverse. No call
+   site ever holds `self._lock` while blocking to acquire a per-attempt guard
+   (`cancel_build` and every `_run_job` call site release `self._lock` before
+   calling `_safe_sync_generated_attempt`), so there is no lock-order
+   inversion between the two.
+4. Immediately before committing to launch the fallback candidate --
+   after `revalidate_pre_olive_source` returns, which can take an unbounded
+   amount of wall-clock time -- `_maybe_launch_fallback_candidate` re-checks
+   the job's cancellation signal, the candidate's own terminal/non-verified
+   state, and the lineage's still-`PENDING` selection state, so a
+   cancellation or any other concurrent mutation that landed during the
+   revalidation can never be silently raced past.
+
+This keeps unrelated `get_build`/`get_recipe_attempt`/`cancel_build`/new-
+submission calls -- which only ever need brief `self._lock` sections --
+responsive while one attempt's sync revalidates a potentially many-GB
+pre-Olive artifact. See `tests/test_local_service_lock_narrowing.py` for the
+concurrency regression coverage.
 
 ## Aggregate counters: always real, never inferred
 

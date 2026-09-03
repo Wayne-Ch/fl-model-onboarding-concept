@@ -797,6 +797,31 @@ class SQLiteStateStore:
             )
 
 
+class _AttemptSyncGuard:
+    """Per-attempt serialization primitive for `_safe_sync_generated_attempt`.
+
+    `lock` serializes duplicate concurrent syncs of the *same* generated
+    attempt (e.g. the background worker finishing a job racing a
+    `get_recipe_attempt` poll's own lazy re-sync) without ever holding the
+    service-wide `LocalOnboardingService._lock` across the expensive work a
+    sync performs (manifest hashing, process execution, quality validation).
+
+    `waiters` is a refcount of callers currently holding a reference to this
+    exact guard object, always mutated only while the service-wide lock is
+    held (see `_acquire_attempt_sync_guard`/`_release_attempt_sync_guard`).
+    It lets a finished caller reclaim the map entry once nobody references it
+    any more, so the guard map stays bounded by the number of generated
+    attempts *currently* syncing rather than growing for the lifetime of the
+    service.
+    """
+
+    __slots__ = ("lock", "waiters")
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.waiters = 0
+
+
 class LocalOnboardingService:
     def __init__(
         self,
@@ -871,6 +896,12 @@ class LocalOnboardingService:
         # calls `ProductionBuildStageRunner.run_fallback_with_pre_olive_reuse`
         # instead of the ordinary `run()` for that job only.
         self._fallback_launch_context: dict[str, tuple[PreOliveArtifactDescriptor, PreOliveGenerationIdentity]] = {}
+        # Slice 3B1 revision: per-attempt serialization guards for
+        # `_safe_sync_generated_attempt` (see `_AttemptSyncGuard` and
+        # `_acquire_attempt_sync_guard`/`_release_attempt_sync_guard`).
+        # Refcounted and torn down once unused, so this never grows without
+        # bound across the service's lifetime.
+        self._attempt_sync_guards: dict[str, _AttemptSyncGuard] = {}
 
         self._process_runner = process_runner or SafeSubprocessRunner()
         self._hf_metadata = hf_metadata or HuggingFaceMetadataAdapter()
@@ -3273,9 +3304,51 @@ class LocalOnboardingService:
             default_candidate_recipe = self._recompile_generated_recipe_record(record=generated_record)
         except ServiceError:
             return False
-        # Every precondition holds; consume the descriptor only now that we are
-        # committed to actually launching the fallback candidate.
+
+        # `revalidate_pre_olive_source` above can take an unbounded amount of
+        # wall-clock time hashing a potentially many-GB Mobius artifact, and
+        # deliberately runs without holding `self._lock` (see
+        # `_safe_sync_generated_attempt`). Re-check every precondition that
+        # could have changed while we were outside the lock -- the job's own
+        # cancellation signal, the candidate's linked attempt, and the
+        # lineage's selection state -- immediately before committing to
+        # consume the descriptor and launch the fallback candidate, so a
+        # cancellation or any other concurrent mutation that landed during
+        # the revalidation can never be silently raced past.
+        cancellation_event = self._cancel_events.get(job.job_id)
+        if cancellation_event is not None and cancellation_event.is_set():
+            return False
+        try:
+            refreshed_candidate = self._recipe_attempt_store.get_candidate_attempt(candidate.candidate_attempt_id)
+        except (KeyError, RecipeAttemptStoreError):
+            return False
+        if refreshed_candidate.attempt_state not in TERMINAL_ATTEMPT_STATES or refreshed_candidate.is_verified:
+            # The default candidate's own terminal, non-verified quality-gate
+            # failure -- the precondition that got us here in the first
+            # place -- must still hold unchanged.
+            return False
+        try:
+            refreshed_lineage = self._recipe_attempt_store.get_candidate_lineage(candidate.parent_attempt_id)
+        except RecipeAttemptStoreError:
+            return False
+        if refreshed_lineage is None or refreshed_lineage.selection_state != CandidateLineageSelectionState.PENDING:
+            return False
+
+        # Every precondition holds; consume the descriptor only now that we
+        # are committed to actually launching the fallback candidate. The
+        # final cancellation re-check and descriptor consumption happen
+        # together under `self._lock` so a cancellation landing in the
+        # narrow window above cannot race past this commit point either.
         with self._lock:
+            cancellation_event = self._cancel_events.get(job.job_id)
+            if cancellation_event is not None and cancellation_event.is_set():
+                return False
+            current_descriptor = self._pre_olive_descriptors.get(candidate.parent_attempt_id)
+            if current_descriptor is not descriptor:
+                # Consumed, replaced, or evicted by another actor while this
+                # revalidation was outstanding; never launch against a stale
+                # descriptor reference.
+                return False
             self._pre_olive_descriptors.pop(candidate.parent_attempt_id, None)
         try:
             self._launch_fallback_candidate_attempt(
@@ -3389,19 +3462,40 @@ class LocalOnboardingService:
     def _recover_orphaned_candidate_lineages(self) -> None:
         """Restart-time fail-closed recovery.
 
-        Finalizes as exhausted any candidate lineage whose default candidate
-        already reached a terminal, non-verified state before this restart,
-        but for which a fallback candidate was never registered. The
-        in-memory pre-Olive descriptor required to resume it safely (see
+        Finalizes as exhausted any PENDING candidate lineage whose every
+        registered candidate has already reached a terminal, non-verified
+        state before this restart -- regardless of whether that candidate
+        count is below or exactly at the policy's `policy_max_candidates`
+        (a crash between committing the last candidate's terminal state and
+        this exact call finalizing the lineage must not orphan it forever:
+        the parent attempt is itself already terminal by then, so the
+        ordinary lazy-sync path -- a `get_recipe_attempt` poll -- never
+        revisits it again to heal it). The in-memory pre-Olive descriptor
+        required to safely resume a fallback candidate (see
         `self._pre_olive_descriptors`) never survives a restart, so resuming
-        by silently rebuilding Mobius is never attempted; the lineage is
-        instead closed here with an actionable reason. A lineage that is
-        still genuinely in flight (any candidate not yet terminal) is left
-        completely untouched -- the ordinary lazy-sync path (a
-        `get_recipe_attempt` poll, or the interrupted-job recovery pass
-        immediately above this call) finalizes it exactly once doing so is
-        safe, and may still launch the fallback candidate normally if that
-        candidate's own gates were never reached.
+        by silently rebuilding Mobius is never attempted here regardless of
+        candidate count; the lineage is instead closed with an actionable
+        reason.
+
+        A verified-but-unselected candidate (its linked attempt reached
+        `AttemptState.SUCCEEDED` but a crash landed between that commit and
+        `select_verified_candidate_attempt`) is never exhausted/discarded:
+        recovery instead selects it here using the exact same trusted
+        selection logic (`_select_verified_candidate`) the live sync path
+        uses. If the generated recipe backing it cannot be located, the
+        lineage is left PENDING -- an explicit, still-actionable state --
+        rather than ever exhausting a verified winner out from under it (the
+        store itself also independently fails closed against this: see
+        `RecipeAttemptStore.finalize_exhausted_candidate_lineage`).
+
+        A lineage that is still genuinely in flight (any candidate not yet
+        terminal) is left completely untouched -- the ordinary lazy-sync
+        path (a `get_recipe_attempt` poll, or the interrupted-job recovery
+        pass immediately above this call) finalizes it exactly once doing so
+        is safe, and may still launch the fallback candidate normally if that
+        candidate's own gates were never reached. An already-finalized
+        lineage (`SELECTED`/`EXHAUSTED`) is always a no-op, making repeated
+        restart recovery idempotent.
         """
         seen_parents: set[str] = set()
         for job in self._jobs.values():
@@ -3412,35 +3506,71 @@ class LocalOnboardingService:
             if not parent_attempt_id or parent_attempt_id in seen_parents:
                 continue
             seen_parents.add(parent_attempt_id)
-            try:
-                lineage = self._recipe_attempt_store.get_candidate_lineage(parent_attempt_id)
-            except RecipeAttemptStoreError:
-                continue
-            if lineage is None or lineage.selection_state != CandidateLineageSelectionState.PENDING:
-                continue
-            try:
-                candidates = self._recipe_attempt_store.list_candidate_attempts(parent_attempt_id)
-            except RecipeAttemptStoreError:
-                continue
-            if not candidates:
-                continue
-            if any(row.attempt_state not in TERMINAL_ATTEMPT_STATES for row in candidates):
-                continue
-            if any(row.is_verified for row in candidates):
-                continue
-            if len(candidates) >= lineage.policy_max_candidates:
-                continue
-            try:
-                self._recipe_attempt_store.finalize_exhausted_candidate_lineage(
-                    parent_attempt_id,
-                    reason=(
-                        "restart_fail_closed: a fallback candidate was never registered before a service "
-                        "restart, and the in-memory pre-Olive artifact descriptor required to resume it "
-                        "safely does not survive a restart; refusing to silently rebuild Mobius to resume."
-                    ),
-                )
-            except RecipeAttemptStoreError:
-                continue
+            self._recover_one_orphaned_candidate_lineage(parent_attempt_id)
+
+    def _recover_one_orphaned_candidate_lineage(self, parent_attempt_id: str) -> None:
+        try:
+            lineage = self._recipe_attempt_store.get_candidate_lineage(parent_attempt_id)
+        except RecipeAttemptStoreError:
+            return
+        if lineage is None or lineage.selection_state != CandidateLineageSelectionState.PENDING:
+            # No lineage at all, or already finalized (selected/exhausted):
+            # always a no-op, which is exactly what makes repeated restart
+            # recovery idempotent.
+            return
+        try:
+            candidates = self._recipe_attempt_store.list_candidate_attempts(parent_attempt_id)
+        except RecipeAttemptStoreError:
+            return
+        if not candidates:
+            return
+        if any(row.attempt_state not in TERMINAL_ATTEMPT_STATES for row in candidates):
+            # Still genuinely in flight; leave it completely untouched.
+            return
+
+        verified = [row for row in candidates if row.is_verified]
+        if verified:
+            # Never discard a verified candidate by exhausting the lineage
+            # around it. Recover it using the exact same trusted selection
+            # logic the live sync path uses; at most one candidate in a
+            # lineage can ever be verified (a candidate's own attempt only
+            # ever runs after every earlier candidate has already reached a
+            # terminal, non-verified state), so selecting the first (only)
+            # verified row is unambiguous.
+            candidate = verified[0]
+            generated_record = self._recipe_attempt_store.get_generated_recipe(candidate.recipe_fingerprint)
+            if generated_record is None:
+                # Cannot safely re-derive the validated selection scope
+                # without the generated recipe; leave the lineage PENDING
+                # (explicit and still actionable via lazy sync) rather than
+                # ever exhausting a verified winner.
+                return
+            self._select_verified_candidate(candidate=candidate, generated_record=generated_record)
+            return
+
+        if len(candidates) < lineage.policy_max_candidates:
+            reason = (
+                "restart_fail_closed: a fallback candidate was never registered before a service "
+                "restart, and the in-memory pre-Olive artifact descriptor required to resume it "
+                "safely does not survive a restart; refusing to silently rebuild Mobius to resume."
+            )
+        else:
+            reason = (
+                "restart_recovery: every registered candidate in this lineage reached a terminal, "
+                "non-verified state before a service restart interrupted lineage finalization; "
+                "finalizing exhausted now that recovery has confirmed no candidate can be verified."
+            )
+        try:
+            self._recipe_attempt_store.finalize_exhausted_candidate_lineage(
+                parent_attempt_id,
+                reason=reason,
+            )
+        except RecipeAttemptStoreError:
+            # Leaves the lineage exactly as it was (still PENDING): a
+            # transient store/transaction failure here never partially
+            # commits, and the next restart's recovery pass (or a future
+            # lazy-sync heal) simply retries from the same consistent state.
+            return
 
     def _sync_generated_attempt_with_job(self, *, job: BuildJob) -> None:
         attempt_id = self._attempt_id_for_job(job.job_id)
@@ -3638,23 +3768,77 @@ class LocalOnboardingService:
                 task_profile=job.request.task_profile,
             )
 
-    def _safe_sync_generated_attempt(self, *, job: BuildJob) -> None:
-        # Slice 3B1 note: serialized under `self._lock` (reentrant, so the
-        # existing `cancel_build` call site -- which already holds the lock --
-        # keeps working unchanged). Without this, two threads (the background
-        # worker finishing a job, and a concurrent `get_recipe_attempt` poll's
-        # own race-recovery re-sync) could both enter
-        # `_sync_generated_attempt_with_job` for the same attempt at once and
-        # interleave writes to the same quality-validation evidence file,
-        # occasionally producing a torn/partial read. Candidate lineage
-        # orchestration adds real work to this path, which widens that
-        # pre-existing race window enough to make it worth closing here.
+    def _acquire_attempt_sync_guard(self, attempt_id: str) -> _AttemptSyncGuard:
+        """Return the shared per-attempt guard for `attempt_id`, creating it
+        under a brief `self._lock` critical section if this is the first
+        concurrent caller. Every caller must pair this with exactly one
+        `_release_attempt_sync_guard` call (in a `finally` block) once it is
+        done using the returned guard's `.lock`."""
         with self._lock:
+            guard = self._attempt_sync_guards.get(attempt_id)
+            if guard is None:
+                guard = _AttemptSyncGuard()
+                self._attempt_sync_guards[attempt_id] = guard
+            guard.waiters += 1
+            return guard
+
+    def _release_attempt_sync_guard(self, attempt_id: str, guard: _AttemptSyncGuard) -> None:
+        """Drop this caller's reference to `guard` and, if it was the last
+        live reference, remove it from `self._attempt_sync_guards` so that
+        map never grows without bound across a long-running service's
+        lifetime. Safe even if another caller concurrently created a *new*
+        guard for the same `attempt_id` in between: the identity check below
+        only ever deletes the exact guard object this caller released."""
+        with self._lock:
+            guard.waiters -= 1
+            if guard.waiters == 0 and self._attempt_sync_guards.get(attempt_id) is guard:
+                del self._attempt_sync_guards[attempt_id]
+
+    def _safe_sync_generated_attempt(self, *, job: BuildJob) -> None:
+        # Locking order/design (Slice 3B1 revision): a brief `self._lock`
+        # critical section only ever creates/looks up/tears down the
+        # per-attempt guard below; the (potentially slow) sync body itself
+        # runs holding only that per-attempt `threading.Lock`, never the
+        # service-wide `self._lock`. `_sync_generated_attempt_with_job` and
+        # its callees (candidate lineage bookkeeping,
+        # `_launch_fallback_candidate_attempt`) take `self._lock` themselves,
+        # briefly, only around actual shared in-memory map/queue mutations --
+        # always nested *inside* an already-held per-attempt guard, never the
+        # reverse. No call site ever holds `self._lock` while blocking to
+        # acquire a per-attempt guard (every caller of this method releases
+        # `self._lock` first -- see `cancel_build` and `_run_job`), so there
+        # is no lock-order inversion between the two: a thread can never be
+        # holding `self._lock` and waiting on a per-attempt guard while a
+        # second thread holds that guard and waits on `self._lock`. This
+        # keeps unrelated `get_build`/`get_recipe_attempt`/`cancel_build`/new-
+        # submission calls -- which only ever need brief `self._lock`
+        # sections -- responsive while one attempt's sync revalidates a
+        # potentially many-GB pre-Olive artifact or otherwise performs
+        # unbounded I/O (manifest hashing, copying, process execution,
+        # quality validation).
+        #
+        # A job with no generated-attempt mapping (a static/legacy recipe)
+        # needs no serialization at all: `_sync_generated_attempt_with_job`
+        # itself no-ops immediately for it, so skip the guard entirely.
+        attempt_id = self._attempt_id_for_job(job.job_id)
+        if attempt_id is None:
             try:
                 self._sync_generated_attempt_with_job(job=job)
             except ServiceError as exc:
                 job.add_event(f"Recipe attempt synchronization error: {_sanitize_text(str(exc))}")
                 self._store.save_job(job)
+            return
+
+        guard = self._acquire_attempt_sync_guard(attempt_id)
+        try:
+            with guard.lock:
+                try:
+                    self._sync_generated_attempt_with_job(job=job)
+                except ServiceError as exc:
+                    job.add_event(f"Recipe attempt synchronization error: {_sanitize_text(str(exc))}")
+                    self._store.save_job(job)
+        finally:
+            self._release_attempt_sync_guard(attempt_id, guard)
 
     def record_artifact(self, job_id: str, artifact: BuildArtifact) -> None:
         with self._lock:
@@ -3711,8 +3895,13 @@ class LocalOnboardingService:
             quarantine = self._process_registry.cancel(job, reason=reason)
             job.finished_utc = datetime.now(timezone.utc)
             self._store.save_job(job)
-            self._safe_sync_generated_attempt(job=job)
-            return job, quarantine
+        # Outside `self._lock`: see `_safe_sync_generated_attempt` for why it
+        # must never be called while holding the service-wide lock -- a
+        # concurrent per-attempt sync already in flight for a *different*
+        # attempt (e.g. revalidating a pre-Olive artifact) must never stall
+        # this or any other `self._lock` user until it finishes.
+        self._safe_sync_generated_attempt(job=job)
+        return job, quarantine
 
     def infer_text(self, *, artifact_id: str, prompt: str, max_tokens: int) -> dict[str, object]:
         artifact, job = self._resolve_inference_target(
@@ -3850,6 +4039,7 @@ class LocalOnboardingService:
                 try:
                     self._run_job(job_id)
                 except Exception as exc:
+                    failed_job: BuildJob | None = None
                     with self._lock:
                         job = self._jobs.get(job_id)
                         if job is not None and job.state not in {
@@ -3867,7 +4057,10 @@ class LocalOnboardingService:
                             job.finished_utc = datetime.now(timezone.utc)
                             job.add_event("Unexpected worker failure.")
                             self._store.save_job(job)
-                            self._safe_sync_generated_attempt(job=job)
+                            failed_job = job
+                    if failed_job is not None:
+                        # Outside `self._lock`: see `_safe_sync_generated_attempt`.
+                        self._safe_sync_generated_attempt(job=failed_job)
             finally:
                 self._queue.task_done()
 
@@ -3897,9 +4090,11 @@ class LocalOnboardingService:
                 fail_job(live, classified)
                 live.finished_utc = datetime.now(timezone.utc)
                 self._store.save_job(live)
-                self._safe_sync_generated_attempt(job=live)
+            # Outside `self._lock`: see `_safe_sync_generated_attempt`.
+            self._safe_sync_generated_attempt(job=live)
             return
 
+        needs_terminal_sync = False
         with self._lock:
             live = self._jobs.get(job_id)
             if live is None or live.state == JobState.CANCELLED:
@@ -3920,22 +4115,26 @@ class LocalOnboardingService:
                 fail_job(live, _sanitize_failure(preflight.blockers[0]))
                 live.finished_utc = datetime.now(timezone.utc)
                 self._store.save_job(live)
-                self._safe_sync_generated_attempt(job=live)
-                return
-            pinned_revision = preflight.huggingface_sha or preflight.huggingface_revision
-            if pinned_revision:
-                live.request = replace(live.request, hf_revision=pinned_revision)
-                self._store.save_job(live)
-            cancellation_event = self._cancel_events.setdefault(job_id, Event())
-            if cancellation_event.is_set() or live.state == JobState.CANCELLED:
-                self._safe_sync_generated_attempt(job=live)
-                return
-
-            def persist() -> None:
-                with self._lock:
-                    for artifact in live.artifacts:
-                        self._artifact_to_job[artifact.artifact_id] = live.job_id
+                needs_terminal_sync = True
+            else:
+                pinned_revision = preflight.huggingface_sha or preflight.huggingface_revision
+                if pinned_revision:
+                    live.request = replace(live.request, hf_revision=pinned_revision)
                     self._store.save_job(live)
+                cancellation_event = self._cancel_events.setdefault(job_id, Event())
+                if cancellation_event.is_set() or live.state == JobState.CANCELLED:
+                    needs_terminal_sync = True
+
+        if needs_terminal_sync:
+            # Outside `self._lock`: see `_safe_sync_generated_attempt`.
+            self._safe_sync_generated_attempt(job=live)
+            return
+
+        def persist() -> None:
+            with self._lock:
+                for artifact in live.artifacts:
+                    self._artifact_to_job[artifact.artifact_id] = live.job_id
+                self._store.save_job(live)
 
         # Slice 3B1: a fallback candidate job dispatches through
         # `run_fallback_with_pre_olive_reuse` instead of the ordinary `run()`,

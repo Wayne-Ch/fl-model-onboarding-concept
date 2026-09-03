@@ -32,6 +32,7 @@ from fl_model_onboarding.recipe_attempt_store import (  # noqa: E402
     AttemptState,
     CandidateLineageSelectionState,
     CandidateWinnerStatus,
+    RecipeAttemptStoreError,
 )
 
 _JSON_PROMPT = "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm."
@@ -813,4 +814,307 @@ def test_restart_fail_closed_when_fallback_never_registered(tmp_path: Path, monk
         assert len(candidates_after_restart) == 1
     finally:
         restarted.close()
+
+
+def test_restart_exhausts_lineage_when_both_candidates_terminal_at_policy_max(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exact reviewer crash reproduction for Issue 2: both candidates (the
+    default and its trusted block64 fallback) reach a terminal, non-verified
+    state -- candidate count == `policy_max_candidates` -- and each
+    candidate's own terminal evidence/state is durably committed, but the
+    process "dies" before `finalize_exhausted_candidate_lineage` itself ever
+    commits (simulated by patching that exact store call to a no-op after the
+    child terminal write, rather than by actually crashing). A fresh service
+    instance pointed at the same on-disk store/workspace must finalize the
+    lineage exhausted on restart, and this must remain stable (idempotent)
+    across further restarts/polls.
+    """
+    backend = AlwaysRegressedTextBackend()
+    service = _service(tmp_path, text_backend=backend)
+    default_attempt_id: str
+    try:
+        # Patch only the final lineage-finalization store call to a no-op:
+        # every other write (candidate terminal evidence, attempt state
+        # transitions) commits normally, exactly matching "candidate 1
+        # terminal is committed, then the process dies before
+        # `finalize_exhausted_candidate_lineage`".
+        monkeypatch.setattr(
+            service._recipe_attempt_store,
+            "finalize_exhausted_candidate_lineage",
+            lambda *args, **kwargs: None,
+        )
+
+        job, attempt, _fp = _create_default_attempt(service, idempotency_key="restart-max-candidates-1")
+        default_attempt_id = attempt["attempt_id"]
+        completed = _wait_for_job_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        # Give the fallback candidate's own job time to reach its terminal
+        # state too (it is launched synchronously by the same sync call, but
+        # runs on the worker thread).
+        deadline = time.time() + 10.0
+        candidates: tuple = ()
+        while time.time() < deadline:
+            candidates = service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+            if len(candidates) == 2 and all(row.attempt_state in {AttemptState.FAILED} for row in candidates):
+                break
+            time.sleep(0.02)
+        assert len(candidates) == 2
+        assert all(row.attempt_state == AttemptState.FAILED for row in candidates)
+        assert not any(row.is_verified for row in candidates)
+
+        # The crash window: candidate count == policy max, both terminal, but
+        # the lineage itself was never finalized because the store call was
+        # patched to a no-op.
+        lineage = service._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage is not None
+        assert lineage.selection_state == CandidateLineageSelectionState.PENDING
+        assert len(candidates) == lineage.policy_max_candidates
+    finally:
+        service.close()
+
+    # "Restart" #1: a fresh service (no patched store method) must heal this
+    # via `_recover_orphaned_candidate_lineages` during `__init__`.
+    restarted = _service(tmp_path, text_backend=DeterministicQualityTextBackend())
+    try:
+        lineage_after_restart = restarted._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage_after_restart is not None
+        assert lineage_after_restart.selection_state == CandidateLineageSelectionState.EXHAUSTED
+        assert lineage_after_restart.selected_candidate_attempt_id is None
+        candidates_after_restart = restarted._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+        assert len(candidates_after_restart) == 2
+
+        # A poll of either candidate's own attempt status must not resurrect
+        # or mutate the now-exhausted lineage.
+        for row in candidates_after_restart:
+            restarted.get_recipe_attempt(attempt_id=row.attempt_id)
+        lineage_after_poll = restarted._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage_after_poll is not None
+        assert lineage_after_poll.selection_state == CandidateLineageSelectionState.EXHAUSTED
+    finally:
+        restarted.close()
+
+    # "Restart" #2: repeated restart recovery must be idempotent -- no error,
+    # same terminal outcome, unchanged candidate rows.
+    restarted_again = _service(tmp_path, text_backend=DeterministicQualityTextBackend())
+    try:
+        lineage_final = restarted_again._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage_final is not None
+        assert lineage_final.selection_state == CandidateLineageSelectionState.EXHAUSTED
+        candidates_final = restarted_again._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+        assert len(candidates_final) == 2
+    finally:
+        restarted_again.close()
+
+
+def test_recovery_leaves_pending_lineage_untouched_when_candidate_still_running(tmp_path: Path) -> None:
+    """A candidate that is still genuinely in flight (its linked attempt has
+    not reached a terminal state) must be left completely untouched by
+    restart recovery, regardless of candidate count vs. policy max."""
+    runner = BlockingNthOccurrenceProcessRunner(match=lambda argv: argv[:2] == ("mobius", "build"), occurrence=1)
+    service = _service(tmp_path, process_runner=runner)
+    try:
+        job, attempt, _fp = _create_default_attempt(service, idempotency_key="recover-running-1")
+        default_attempt_id = attempt["attempt_id"]
+        assert runner.started.wait(timeout=5.0), "Mobius build never reached the blocking point"
+
+        candidates = service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+        assert len(candidates) == 1
+        assert candidates[0].attempt_state == AttemptState.RUNNING
+
+        # Directly re-run the exact same restart-recovery pass `__init__`
+        # performs, while the candidate is still genuinely in flight.
+        service._recover_orphaned_candidate_lineages()
+
+        lineage = service._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage is not None
+        assert lineage.selection_state == CandidateLineageSelectionState.PENDING
+    finally:
+        runner.release.set()
+        service.close()
+
+
+def test_recovery_selects_verified_unselected_candidate_instead_of_exhausting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Crash window: the default candidate's own attempt reaches
+    `AttemptState.SUCCEEDED` (verified) and its terminal evidence is
+    committed, but the process dies before `select_verified_candidate_attempt`
+    itself commits. Restart recovery must select the verified candidate --
+    never exhaust the lineage around it -- using the same trusted selection
+    logic the live sync path uses."""
+    backend = DeterministicQualityTextBackend()
+    service = _service(tmp_path, text_backend=backend)
+    default_attempt_id: str
+    try:
+        monkeypatch.setattr(service, "_select_verified_candidate", lambda **kwargs: None)  # noqa: ARG005
+
+        job, attempt, _fp = _create_default_attempt(service, idempotency_key="restart-verified-unselected-1")
+        default_attempt_id = attempt["attempt_id"]
+        completed = _wait_for_job_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+        # Force the lazy sync so the store reflects the attempt's final
+        # (verified) state, even though selection itself was short-circuited.
+        service.get_recipe_attempt(attempt_id=default_attempt_id)
+
+        candidates = service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+        assert len(candidates) == 1
+        assert candidates[0].is_verified is True
+        assert candidates[0].selection_status == CandidateWinnerStatus.NOT_SELECTED
+
+        lineage = service._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage is not None
+        assert lineage.selection_state == CandidateLineageSelectionState.PENDING
+    finally:
+        service.close()
+
+    restarted = _service(tmp_path, text_backend=DeterministicQualityTextBackend())
+    try:
+        lineage_after_restart = restarted._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage_after_restart is not None
+        assert lineage_after_restart.selection_state == CandidateLineageSelectionState.SELECTED
+        candidates_after_restart = restarted._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+        assert len(candidates_after_restart) == 1
+        winner = candidates_after_restart[0]
+        assert winner.selection_status == CandidateWinnerStatus.SELECTED
+        assert lineage_after_restart.selected_candidate_attempt_id == winner.candidate_attempt_id
+    finally:
+        restarted.close()
+
+    # Idempotent across a second restart.
+    restarted_again = _service(tmp_path, text_backend=DeterministicQualityTextBackend())
+    try:
+        lineage_final = restarted_again._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage_final is not None
+        assert lineage_final.selection_state == CandidateLineageSelectionState.SELECTED
+    finally:
+        restarted_again.close()
+
+
+def test_recovery_noop_for_already_selected_lineage(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    default_attempt_id: str
+    try:
+        job, attempt, _fp = _create_default_attempt(service, idempotency_key="recovery-noop-selected-1")
+        default_attempt_id = attempt["attempt_id"]
+        completed = _wait_for_job_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+        service.get_recipe_attempt(attempt_id=default_attempt_id)
+        lineage = _wait_for_lineage_finalized(service, default_attempt_id)
+        assert lineage.selection_state == CandidateLineageSelectionState.SELECTED
+        selected_candidate_attempt_id = lineage.selected_candidate_attempt_id
+
+        service._recover_orphaned_candidate_lineages()
+
+        lineage_after = service._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage_after is not None
+        assert lineage_after.selection_state == CandidateLineageSelectionState.SELECTED
+        assert lineage_after.selected_candidate_attempt_id == selected_candidate_attempt_id
+    finally:
+        service.close()
+
+
+def test_recovery_noop_for_already_exhausted_lineage(tmp_path: Path) -> None:
+    backend = AlwaysRegressedTextBackend()
+    service = _service(tmp_path, text_backend=backend)
+    default_attempt_id: str
+    try:
+        job, attempt, _fp = _create_default_attempt(service, idempotency_key="recovery-noop-exhausted-1")
+        default_attempt_id = attempt["attempt_id"]
+        completed = _wait_for_job_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+        lineage = _wait_for_lineage_finalized(service, default_attempt_id, timeout_seconds=15.0)
+        assert lineage.selection_state == CandidateLineageSelectionState.EXHAUSTED
+        candidates_before = service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+
+        service._recover_orphaned_candidate_lineages()
+
+        lineage_after = service._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage_after is not None
+        assert lineage_after.selection_state == CandidateLineageSelectionState.EXHAUSTED
+        candidates_after = service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+        assert len(candidates_after) == len(candidates_before)
+    finally:
+        service.close()
+
+
+def test_recovery_transaction_failure_leaves_lineage_pending_and_is_retried_later(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A store-level failure while exhausting a lineage during restart
+    recovery must leave the lineage exactly as it was (still `PENDING`,
+    candidate rows unchanged) rather than partially committing, and a later
+    recovery pass (once the transient failure clears) must still be able to
+    finalize it."""
+    backend = AlwaysRegressedTextBackend()
+    service = _service(tmp_path, text_backend=backend)
+    default_attempt_id: str
+    try:
+        monkeypatch.setattr(
+            service._recipe_attempt_store,
+            "finalize_exhausted_candidate_lineage",
+            lambda *args, **kwargs: None,
+        )
+        job, attempt, _fp = _create_default_attempt(service, idempotency_key="recovery-txn-failure-1")
+        default_attempt_id = attempt["attempt_id"]
+        completed = _wait_for_job_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        deadline = time.time() + 10.0
+        candidates: tuple = ()
+        while time.time() < deadline:
+            candidates = service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+            if len(candidates) == 2 and all(row.attempt_state == AttemptState.FAILED for row in candidates):
+                break
+            time.sleep(0.02)
+        assert len(candidates) == 2
+        candidates_before = candidates
+    finally:
+        service.close()
+
+    def _raise_transaction_failure(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise RecipeAttemptStoreError("simulated transaction failure")
+
+    import fl_model_onboarding.recipe_attempt_store as recipe_attempt_store_module
+
+    # Patch the *class* method before construction so the service's own
+    # `__init__`-triggered recovery pass (not a later manual call) is the one
+    # that hits the simulated failure -- otherwise `__init__`'s own recovery
+    # would already have healed the lineage before we get a chance to patch
+    # anything on the instance.
+    with monkeypatch.context() as failure_context:
+        failure_context.setattr(
+            recipe_attempt_store_module.RecipeAttemptStore,
+            "finalize_exhausted_candidate_lineage",
+            _raise_transaction_failure,
+        )
+        failing_restart = _service(tmp_path, text_backend=DeterministicQualityTextBackend())
+        try:
+            lineage_after_failure = failing_restart._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+            assert lineage_after_failure is not None
+            assert lineage_after_failure.selection_state == CandidateLineageSelectionState.PENDING
+            candidates_after_failure = failing_restart._recipe_attempt_store.list_candidate_attempts(
+                default_attempt_id
+            )
+            assert len(candidates_after_failure) == len(candidates_before)
+            assert all(row.attempt_state == AttemptState.FAILED for row in candidates_after_failure)
+
+            # Re-running recovery again, still under the simulated failure,
+            # must remain a safe, consistent no-op (never partially commit).
+            failing_restart._recover_orphaned_candidate_lineages()
+            lineage_still_pending = failing_restart._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+            assert lineage_still_pending is not None
+            assert lineage_still_pending.selection_state == CandidateLineageSelectionState.PENDING
+        finally:
+            failing_restart.close()
+
+    # A later recovery pass (no store failure this time) must still heal it.
+    healthy_restart = _service(tmp_path, text_backend=DeterministicQualityTextBackend())
+    try:
+        lineage_final = healthy_restart._recipe_attempt_store.get_candidate_lineage(default_attempt_id)
+        assert lineage_final is not None
+        assert lineage_final.selection_state == CandidateLineageSelectionState.EXHAUSTED
+    finally:
+        healthy_restart.close()
 
