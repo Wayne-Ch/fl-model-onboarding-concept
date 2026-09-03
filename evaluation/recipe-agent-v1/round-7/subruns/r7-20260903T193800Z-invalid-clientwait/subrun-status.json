@@ -22,8 +22,8 @@
   },
   "corrective_commits": [
     {
-      "sha": "PENDING",
-      "title": "Fix round harness workflow-outcome pending wait lifecycle"
+      "sha": "18288f4",
+      "title": "Fix harness wait for candidate lineage"
     }
   ],
   "superseded_by_subrun_id": null
