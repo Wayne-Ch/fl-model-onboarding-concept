@@ -617,22 +617,30 @@ def test_retry_disposition_is_not_retryable_when_baseline_unavailable() -> None:
     assert evaluation.reasons == ("baseline_unavailable",)
 
 
-def test_retry_disposition_is_not_retryable_when_both_baseline_and_optimized_fail() -> None:
+def test_retry_disposition_ignores_capability_advisory_failures_when_recipe_regression_is_retryable() -> None:
     profile = _profile()
-    # arithmetic prompt is a matched failure (both baseline and optimized are wrong),
-    # while format-json-answer-unit is a genuine allowlisted structural regression. The
-    # matched failure must disqualify the whole recipe from retry -- it is ambiguous,
-    # not a proven optimized-only structural regression.
+    # Arithmetic is a shared capability failure and instruction-following is a
+    # divergent capability failure in both baseline/optimized runs; these remain
+    # advisory only and must not block the retry trigger once recipe-integrity
+    # evidence proves an optimized-only allowlisted structural regression.
     baseline = _replace_output(
-        _passing_outputs(profile),
-        "arithmetic-addition-17-plus-28",
-        output_text="44",
-    )
-    optimized = _replace_output(
         _replace_output(
             _passing_outputs(profile),
             "arithmetic-addition-17-plus-28",
             output_text="44",
+        ),
+        "instruction-two-words-blue-river",
+        output_text="blue",
+    )
+    optimized = _replace_output(
+        _replace_output(
+            _replace_output(
+                _passing_outputs(profile),
+                "arithmetic-addition-17-plus-28",
+                output_text="44",
+            ),
+            "instruction-two-words-blue-river",
+            output_text="river stream",
         ),
         "format-json-answer-unit",
         output_text='```json\n{"answer":12,"unit":"cm"}\n```',
@@ -647,8 +655,36 @@ def test_retry_disposition_is_not_retryable_when_both_baseline_and_optimized_fai
     assert result.recipe_verification.can_promote is False
     evaluation = result.quality_retry_evaluation
     assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION
+    assert any(reason.startswith("optimized_structural_regression:format-json-answer-unit:") for reason in evaluation.reasons)
+    assert not any("arithmetic-addition-17-plus-28" in reason for reason in evaluation.reasons)
+    assert not any("instruction-two-words-blue-river" in reason for reason in evaluation.reasons)
+
+
+def test_retry_disposition_is_not_retryable_when_structural_prompt_fails_in_baseline_and_optimized() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='{"answer":12}',
+    )
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='```json\n{"answer":12,"unit":"cm"}\n```',
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is False
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
     assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
-    assert evaluation.reasons == ("baseline_and_optimized_failed:arithmetic-addition-17-plus-28",)
+    assert evaluation.reasons == ("baseline_and_optimized_failed:format-json-answer-unit",)
 
 
 def test_retry_disposition_is_not_retryable_for_capability_only_wrong_answer() -> None:

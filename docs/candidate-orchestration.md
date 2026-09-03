@@ -102,13 +102,14 @@ finalizes the lineage exhausted instead:
    allowlisted disposition, derived deterministically by
    `quality_validation._derive_quality_retry_disposition` from existing gate
    evidence only (baseline passes the affected structural constraint, optimized is
-   runtime-functional, the *only* failures are the narrow structural allowlist
+   runtime-functional, the recipe-integrity blocking failures are the narrow structural allowlist
    (`json_format_invalid` / an output-format `forbidden_token_present`), and the
    recipe is blocked *solely* because of that regression). Unknown/malformed/
-   partial evidence, baseline unavailable, both baseline and optimized failing,
-   capability-only mismatches, pathological/runtime failures, and plain
-   non-structural regressions are all `NOT_RETRYABLE` by construction — never by
-   free-text matching.
+   partial evidence, baseline unavailable, the affected recipe-integrity prompt
+   failing in both baseline and optimized runs, pathological/runtime failures, and
+   plain non-structural regressions are all `NOT_RETRYABLE` by construction — never
+   by free-text matching. Model-capability advisories on unrelated prompts remain
+   advisory-only and do not suppress this retry trigger.
 4. `job.state == JobState.SUCCEEDED` — defense in depth: Mobius, Olive, and every
    ONNX/ORT/OGA/FL runtime gate must have actually succeeded for *this specific
    job*, independent of the disposition check above.
@@ -645,4 +646,3 @@ already present on internal records today:
 - **No product claims beyond tests**: everything documented above is proven
   by the specific tests named inline; nothing here describes behavior beyond
   what those tests exercise.
-

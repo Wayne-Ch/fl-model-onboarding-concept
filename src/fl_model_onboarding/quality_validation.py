@@ -879,47 +879,98 @@ def _derive_quality_retry_disposition(result: QualityValidationResult) -> Qualit
             disposition=QualityRetryDisposition.NOT_RETRYABLE,
             reasons=("no_blocking_regression",),
         )
+    category_by_prompt = {
+        row.prompt_id: row.category for row in result.optimized_functional.prompt_results
+    }
+    baseline_passed_optimized_failed_prompts: list[str] = []
+    baseline_passed_optimized_failed_set: set[str] = set()
+    structural_regressions: list[tuple[str, str]] = []
 
-    # baseline_functional is guaranteed non-None here because baseline_available is True.
-    baseline_functional = result.baseline_functional
-    assert baseline_functional is not None
-    optimized_by_prompt = {row.prompt_id: row for row in result.optimized_functional.prompt_results}
-
-    blocking_reasons: list[str] = []
-    for baseline_row in baseline_functional.prompt_results:
-        optimized_row = optimized_by_prompt[baseline_row.prompt_id]
-        if optimized_row.passed:
+    for entry in verification.integrity_failures:
+        if entry.startswith("baseline_passed_optimized_failed:"):
+            prompt_id = entry.split(":", 1)[1].strip()
+            if not prompt_id:
+                return QualityRetryEvaluation(
+                    disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                    reasons=("unattributed_block",),
+                )
+            if prompt_id not in baseline_passed_optimized_failed_set:
+                baseline_passed_optimized_failed_prompts.append(prompt_id)
+                baseline_passed_optimized_failed_set.add(prompt_id)
             continue
-        if not baseline_row.passed:
-            # Both baseline and optimized fail (matched or divergent) -- never retryable.
-            return QualityRetryEvaluation(
-                disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                reasons=(f"baseline_and_optimized_failed:{baseline_row.prompt_id}",),
-            )
-        allowlisted_codes = _allowlisted_structural_only_failures(
-            category=optimized_row.category,
-            failures=optimized_row.failures,
-        )
-        if allowlisted_codes is None:
-            return QualityRetryEvaluation(
-                disposition=QualityRetryDisposition.NOT_RETRYABLE,
-                reasons=(f"non_structural_regression:{baseline_row.prompt_id}",),
-            )
-        blocking_reasons.append(
-            f"optimized_structural_regression:{baseline_row.prompt_id}:{','.join(allowlisted_codes)}"
-        )
-
-    if not blocking_reasons:
-        # Defensive: recipe is blocked, but not by a baseline-passed/optimized-failed
-        # prompt we could attribute. Do not guess; stay non-retryable.
+        if entry.startswith("optimized_structural_regression:"):
+            try:
+                _, prompt_id, failure_code = entry.split(":", 2)
+            except ValueError:
+                return QualityRetryEvaluation(
+                    disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                    reasons=("unattributed_block",),
+                )
+            prompt_id = prompt_id.strip()
+            failure_code = failure_code.strip()
+            if not prompt_id or not failure_code:
+                return QualityRetryEvaluation(
+                    disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                    reasons=("unattributed_block",),
+                )
+            structural_regressions.append((prompt_id, failure_code))
+            continue
         return QualityRetryEvaluation(
             disposition=QualityRetryDisposition.NOT_RETRYABLE,
             reasons=("unattributed_block",),
         )
 
+    if not structural_regressions:
+        if baseline_passed_optimized_failed_prompts:
+            return QualityRetryEvaluation(
+                disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                reasons=(f"non_structural_regression:{baseline_passed_optimized_failed_prompts[0]}",),
+            )
+        return QualityRetryEvaluation(
+            disposition=QualityRetryDisposition.NOT_RETRYABLE,
+            reasons=("unattributed_block",),
+        )
+
+    structural_by_prompt: dict[str, list[str]] = {}
+    for prompt_id, failure_code in structural_regressions:
+        structural_by_prompt.setdefault(prompt_id, []).append(failure_code)
+
+    for prompt_id in baseline_passed_optimized_failed_prompts:
+        if prompt_id not in structural_by_prompt:
+            return QualityRetryEvaluation(
+                disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                reasons=(f"non_structural_regression:{prompt_id}",),
+            )
+
+    for prompt_id, failures in structural_by_prompt.items():
+        if prompt_id not in baseline_passed_optimized_failed_set:
+            return QualityRetryEvaluation(
+                disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                reasons=(f"baseline_and_optimized_failed:{prompt_id}",),
+            )
+        category = category_by_prompt.get(prompt_id)
+        if category is None:
+            return QualityRetryEvaluation(
+                disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                reasons=("unattributed_block",),
+            )
+        allowlisted_codes = _allowlisted_structural_only_failures(
+            category=category,
+            failures=tuple(failures),
+        )
+        if allowlisted_codes is None:
+            return QualityRetryEvaluation(
+                disposition=QualityRetryDisposition.NOT_RETRYABLE,
+                reasons=(f"non_structural_regression:{prompt_id}",),
+            )
+
+    blocking_reasons = tuple(
+        f"optimized_structural_regression:{prompt_id}:{failure_code}"
+        for prompt_id, failure_code in structural_regressions
+    )
     return QualityRetryEvaluation(
         disposition=QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION,
-        reasons=tuple(blocking_reasons),
+        reasons=blocking_reasons,
     )
 
 

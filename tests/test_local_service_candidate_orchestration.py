@@ -194,6 +194,29 @@ class BothBaselineAndOptimizedFailTextBackend(DeterministicQualityTextBackend):
         return super().infer(artifact=artifact, job=job, prompt=prompt, max_tokens=max_tokens)
 
 
+class SmolShapedCapabilityAdvisoryRegressionBackend(DeterministicQualityTextBackend):
+    """Reproduces the real Smol shape from Round 7 sub-run 1:
+    capability-advisory failures on arithmetic/instruction in both baseline and
+    optimized runs, plus an optimized-only JSON structural regression on the
+    default candidate. This must still trigger candidate1 fallback."""
+
+    def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        is_baseline = str(artifact.artifact_id).startswith("baseline-")
+        self.calls.append((artifact.artifact_id, prompt))
+        generated_attempt = job.request.generated_recipe_attempt
+        is_regressed_recipe = (
+            generated_attempt is not None
+            and generated_attempt.recipe_fingerprint in self.regress_recipe_fingerprints
+        )
+        if prompt == "What is 17 + 28? Reply using only digits.":
+            return "17 + 28 = 45"
+        if prompt == "Output exactly two words: blue river":
+            return "blue" if is_baseline else "river stream"
+        if is_regressed_recipe and not is_baseline and prompt == _JSON_PROMPT:
+            return '```json\n{"answer":12,"unit":"cm"}\n```'
+        return _QUALITY_PASS_RESPONSES.get(prompt, f"{artifact.artifact_id}:{prompt}:{max_tokens}")
+
+
 class GenericSnapshot:
     """Fake `HuggingFaceAcquisitionClient`: no network access, just a local
     directory with the minimal files the recipe compiler/preflight expect."""
@@ -420,6 +443,54 @@ def test_structural_regression_triggers_verified_block64_fallback(tmp_path: Path
             for spec in service._process_runner.specs  # type: ignore[attr-defined]
             if spec.cwd == fallback_job.request.workspace_root
         )
+    finally:
+        service.close()
+
+
+def test_smollm_shaped_capability_advisory_failures_still_trigger_fallback(tmp_path: Path) -> None:
+    backend = SmolShapedCapabilityAdvisoryRegressionBackend()
+    service = _service(tmp_path, text_backend=backend)
+    try:
+        preview = service.generated_recipe_preview(model_id=_model(), task=CandidateModality.LLM)
+        default_fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        backend.regress_recipe_fingerprints.add(default_fingerprint)
+
+        job, attempt, _fingerprint = _create_default_attempt(
+            service, idempotency_key="smol-shaped-capability-advisory-1"
+        )
+        default_attempt_id = attempt["attempt_id"]
+        completed = _wait_for_job_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        default_status = service.get_recipe_attempt(attempt_id=default_attempt_id)
+        assert default_status["state"] == "failed"
+        quality_gate = next(row for row in default_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "failed"
+
+        lineage = _wait_for_lineage_finalized(service, default_attempt_id, timeout_seconds=15.0)
+        assert lineage.selection_state == CandidateLineageSelectionState.SELECTED
+
+        candidates = service._recipe_attempt_store.list_candidate_attempts(default_attempt_id)
+        assert len(candidates) == 2
+        default_candidate = next(row for row in candidates if row.candidate_index == 0)
+        fallback_candidate = next(row for row in candidates if row.candidate_index == 1)
+
+        assert default_candidate.attempt_state == AttemptState.FAILED
+        assert default_candidate.selection_status == CandidateWinnerStatus.NOT_SELECTED
+        assert fallback_candidate.attempt_state == AttemptState.SUCCEEDED
+        assert fallback_candidate.selection_status == CandidateWinnerStatus.SELECTED
+        assert fallback_candidate.disposition == "retryable_optimized_structural_regression"
+        assert fallback_candidate.invocation_counters.mobius_build_invocation_count is None
+        assert fallback_candidate.invocation_counters.olive_optimize_invocation_count == 1
+
+        aggregate_mobius = (default_candidate.invocation_counters.mobius_build_invocation_count or 0) + (
+            fallback_candidate.invocation_counters.mobius_build_invocation_count or 0
+        )
+        aggregate_olive = (default_candidate.invocation_counters.olive_optimize_invocation_count or 0) + (
+            fallback_candidate.invocation_counters.olive_optimize_invocation_count or 0
+        )
+        assert aggregate_mobius == 1
+        assert aggregate_olive == 2
     finally:
         service.close()
 
