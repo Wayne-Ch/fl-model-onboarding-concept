@@ -101,15 +101,17 @@ finalizes the lineage exhausted instead:
 3. `quality_outcome.quality_retry_evaluation.is_retryable` is `True` — the sole
    allowlisted disposition, derived deterministically by
    `quality_validation._derive_quality_retry_disposition` from existing gate
-   evidence only (baseline passes the affected structural constraint, optimized is
-   runtime-functional, the recipe-integrity blocking failures are the narrow structural allowlist
-   (`json_format_invalid` / an output-format `forbidden_token_present`), and the
-   recipe is blocked *solely* because of that regression). Unknown/malformed/
-   partial evidence, baseline unavailable, the affected recipe-integrity prompt
-   failing in both baseline and optimized runs, pathological/runtime failures, and
-   plain non-structural regressions are all `NOT_RETRYABLE` by construction — never
-   by free-text matching. Model-capability advisories on unrelated prompts remain
-   advisory-only and do not suppress this retry trigger.
+   evidence only. Integrity evidence identifies the blocking prompt IDs and their
+   structural correspondence; eligibility then requires the *full optimized
+   failure tuple* for each blocking prompt to be entirely allowlisted structural
+   codes (`json_format_invalid` / output-format `forbidden_token_present:*`) with
+   exact structural-entry correspondence. Unknown/malformed/partial/duplicate or
+   mismatched integrity evidence, missing prompt coverage, baseline unavailable,
+   pathological/runtime failures, baseline+optimized failures on the same prompt,
+   and any mixed same-prompt non-structural failure all resolve to
+   `NOT_RETRYABLE` (fail closed), never by free-text matching. Model-capability
+   advisories on unrelated prompts remain advisory-only and do not suppress this
+   retry trigger.
 4. `job.state == JobState.SUCCEEDED` — defense in depth: Mobius, Olive, and every
    ONNX/ORT/OGA/FL runtime gate must have actually succeeded for *this specific
    job*, independent of the disposition check above.
