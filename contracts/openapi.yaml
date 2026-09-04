@@ -108,6 +108,99 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/recipes/generated/preview:
+    get:
+      summary: Compile and persist deterministic generated recipe preview for a model
+      operationId: getGeneratedRecipePreview
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - in: query
+          name: task
+          required: false
+          schema:
+            type: string
+            enum: [llm, asr]
+            default: llm
+      responses:
+        "200":
+          description: Generated recipe preview and eligibility details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedRecipePreviewResponse"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/recipes/generated/attempts:
+    post:
+      summary: Create or replay a generated recipe attempt with explicit confirmation
+      operationId: createGeneratedRecipeAttempt
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratedRecipeAttemptCreateRequest"
+      responses:
+        "200":
+          description: New generated attempt or idempotent replay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedRecipeAttemptCreateResponse"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Request conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/recipes/generated/attempts/{attempt_id}:
+    get:
+      summary: Get generated recipe attempt state and gate evidence
+      operationId: getGeneratedRecipeAttempt
+      parameters:
+        - in: path
+          name: attempt_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generated attempt state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeAttempt"
+        "404":
+          description: Attempt not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/builds:
     post:
       summary: Create or replay a build job by idempotency key
@@ -551,6 +644,21 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SupportedOptimization"
+        foundry_catalog_status:
+          type: string
+        foundry_catalog_matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogMatchAssessment"
+        warnings:
+          type: array
+          items:
+            type: string
+        model_detail:
+          type: object
+          additionalProperties: true
+        generated_recipe:
+          $ref: "#/components/schemas/GeneratedRecipePreview"
         requires_experimental_opt_in:
           type: boolean
 
@@ -595,6 +703,16 @@ components:
         recipe_reason:
           type: string
           nullable: true
+        generated_recipe_attempt:
+          oneOf:
+            - $ref: "#/components/schemas/GeneratedRecipeAttemptBinding"
+            - type: "null"
+        recipe_artifact_cache_prefix:
+          type: string
+          nullable: true
+        recipe_model_name_prefix:
+          type: string
+          nullable: true
         allow_experimental:
           type: boolean
         optimization_strategy:
@@ -603,6 +721,19 @@ components:
         optimization_precision:
           type: string
           nullable: true
+
+    GeneratedRecipeAttemptBinding:
+      type: object
+      required: [attempt_id, recipe_fingerprint, confirmed, confirmation_provenance]
+      properties:
+        attempt_id:
+          type: string
+        recipe_fingerprint:
+          type: string
+        confirmed:
+          type: boolean
+        confirmation_provenance:
+          type: string
 
     BuildJob:
       type: object
@@ -682,6 +813,679 @@ components:
           type: boolean
         job:
           $ref: "#/components/schemas/BuildJob"
+
+    GeneratedRecipeCapability:
+      type: object
+      required: [outcome, reason_code, reason, matched_aliases]
+      properties:
+        outcome:
+          type: string
+        reason_code:
+          type: string
+        reason:
+          type: string
+        matched_aliases:
+          type: array
+          items:
+            type: string
+        capability:
+          type: object
+          nullable: true
+          additionalProperties: true
+        evidence:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    GeneratedRecipePreview:
+      type: object
+      required:
+        - eligible_for_automatic_recipe_attempt
+        - requires_explicit_attempt_confirmation
+        - experimental_until_verified
+        - capability
+        - validation_gates
+      properties:
+        eligible_for_automatic_recipe_attempt:
+          type: boolean
+        requires_explicit_attempt_confirmation:
+          type: boolean
+        experimental_until_verified:
+          type: boolean
+        fingerprint:
+          type: string
+          nullable: true
+        compile_error:
+          type: string
+          nullable: true
+        capability:
+          $ref: "#/components/schemas/GeneratedRecipeCapability"
+        recipe:
+          type: object
+          nullable: true
+          additionalProperties: true
+        argument_confidence:
+          type: object
+          nullable: true
+          additionalProperties: true
+        toolchain:
+          type: object
+          additionalProperties: true
+        validation_gates:
+          type: array
+          items:
+            type: string
+        verified_reuse:
+          type: object
+          nullable: true
+          additionalProperties: true
+        candidate_selection_reuse:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateSelectionReusePreview"
+            - type: "null"
+        candidate_plan:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateSelectionPlan"
+            - type: "null"
+
+    CandidateRole:
+      type: string
+      description: >
+        Stable, user-understandable role code for a candidate in the CPU
+        INT4 retry policy. Frontend clients should translate these into
+        plain language (for example "First recipe" / "Automatic quality
+        retry") rather than surfacing the code directly.
+      enum: [default, quality_retry]
+
+    CandidateQuantizationOverride:
+      type: object
+      required: [block_size]
+      properties:
+        block_size:
+          type: integer
+          description: Olive INT4 quantization block_size override (only block_size=64 is currently trusted).
+
+    CandidatePlanEntry:
+      type: object
+      required: [candidate_index, candidate_id, role, eligibility_trigger]
+      properties:
+        candidate_index:
+          type: integer
+          minimum: 0
+        candidate_id:
+          type: string
+        role:
+          $ref: "#/components/schemas/CandidateRole"
+        quantization_override:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateQuantizationOverride"
+            - type: "null"
+        eligibility_trigger:
+          type: string
+          nullable: true
+          description: >
+            Allowlisted, machine-readable trigger code required to make this
+            candidate eligible; always null for the always-eligible default
+            candidate (index 0).
+
+    CandidateSelectionPlan:
+      type: object
+      required: [policy_id, policy_version, policy_fingerprint, max_candidates, candidates]
+      description: >
+        Additive candidate-plan summary (Slice 3C1), present only when the
+        generated recipe is CPU INT4-eligible under the approved selection
+        policy; null for noneligible/static/legacy generated recipes.
+      properties:
+        policy_id:
+          type: string
+        policy_version:
+          type: string
+        policy_fingerprint:
+          type: string
+        max_candidates:
+          type: integer
+          minimum: 1
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidatePlanEntry"
+
+    CandidateSelectionReusePreview:
+      type: object
+      required:
+        - available
+        - source_parent_attempt_id
+        - winner_candidate_attempt_id
+        - winner_attempt_id
+        - winner_candidate_index
+        - winner_candidate_id
+        - winner_recipe_fingerprint
+        - selection_reason
+        - policy_fingerprint
+        - quality_profile_fingerprint
+        - winner_job_id
+      properties:
+        available:
+          type: boolean
+        source_parent_attempt_id:
+          type: string
+        winner_candidate_attempt_id:
+          type: string
+        winner_attempt_id:
+          type: string
+        winner_candidate_index:
+          type: integer
+          minimum: 0
+        winner_candidate_id:
+          type: string
+        winner_recipe_fingerprint:
+          type: string
+        selection_reason:
+          type: string
+        policy_fingerprint:
+          type: string
+        quality_profile_fingerprint:
+          type: string
+        winner_job_id:
+          type: string
+
+    GeneratedRecipePreviewResponse:
+      type: object
+      required:
+        - model_id
+        - task
+        - generated_recipe
+      properties:
+        model_id:
+          type: string
+        revision:
+          type: string
+          nullable: true
+        sha:
+          type: string
+          nullable: true
+        gated:
+          type: boolean
+          nullable: true
+        private:
+          type: boolean
+          nullable: true
+        requires_remote_code:
+          type: boolean
+        task:
+          $ref: "#/components/schemas/CandidateModality"
+        config:
+          type: object
+          nullable: true
+          additionalProperties: true
+        model_type:
+          type: string
+          nullable: true
+        files:
+          type: array
+          items:
+            type: string
+        config_files:
+          type: array
+          items:
+            type: string
+        tokenizer_files:
+          type: array
+          items:
+            type: string
+        foundry_catalog_status:
+          type: string
+        foundry_catalog_matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogMatchAssessment"
+        warnings:
+          type: array
+          items:
+            type: string
+        generated_recipe:
+          $ref: "#/components/schemas/GeneratedRecipePreview"
+
+    GeneratedRecipeAttemptCreateRequest:
+      type: object
+      required:
+        - recipe_fingerprint
+        - confirm_automatic_recipe_attempt
+      properties:
+        recipe_fingerprint:
+          type: string
+          minLength: 64
+          maxLength: 64
+        model_id:
+          type: string
+          nullable: true
+        confirm_automatic_recipe_attempt:
+          type: boolean
+
+    RecipeAttemptGate:
+      type: object
+      required: [sequence, gate, status, evidence_ref, started_utc, finished_utc]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        gate:
+          type: string
+        status:
+          type: string
+          enum: [passed, failed, not_run, unavailable]
+        evidence_ref:
+          type: string
+        metrics_ref:
+          type: string
+          nullable: true
+        started_utc:
+          type: string
+          format: date-time
+        finished_utc:
+          type: string
+          format: date-time
+
+    RecipeAttemptFailure:
+      type: object
+      required: [classification, stage, message, evidence_refs, source_owner, next_action]
+      properties:
+        classification:
+          type: string
+        stage:
+          type: string
+        message:
+          type: string
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        source_owner:
+          type: string
+        next_action:
+          type: string
+
+    RecipeIntegritySummary:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [verified, blocked, inconclusive]
+        gate_status:
+          type: string
+          enum: [passed, failed, missing, unavailable]
+        runtime_functional:
+          type: boolean
+        baseline_available:
+          type: boolean
+        regression_free:
+          type: boolean
+        can_promote:
+          type: boolean
+        integrity_failures:
+          type: array
+          items:
+            type: string
+
+    ModelCapabilityConfidenceSummary:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [high, low]
+        determinism_supported:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+
+    ModelCapabilitySummary:
+      type: object
+      required: [checks_passed, total_checks, warnings]
+      properties:
+        checks_passed:
+          type: integer
+          minimum: 0
+        total_checks:
+          type: integer
+          minimum: 0
+        warnings:
+          type: array
+          items:
+            type: string
+        confidence:
+          $ref: "#/components/schemas/ModelCapabilityConfidenceSummary"
+
+    RecipeAttemptQualityValidation:
+      type: object
+      required: [recipe_integrity]
+      properties:
+        recipe_integrity:
+          $ref: "#/components/schemas/RecipeIntegritySummary"
+        model_capability:
+          oneOf:
+            - $ref: "#/components/schemas/ModelCapabilitySummary"
+            - type: "null"
+
+    CandidateInvocationCounters:
+      type: object
+      description: >
+        Nullable, typed invocation/cost evidence. A field is null exactly
+        when it has never been measured/instrumented -- never coerced to or
+        confused with a real zero count.
+      properties:
+        mobius_build_invocation_count:
+          type: integer
+          nullable: true
+        olive_optimize_invocation_count:
+          type: integer
+          nullable: true
+        total_invocation_count:
+          type: integer
+          nullable: true
+        wall_clock_seconds:
+          type: number
+          nullable: true
+        estimated_cost_usd:
+          type: number
+          nullable: true
+
+    CandidateValidatedScope:
+      type: object
+      description: >
+        Nullable-until-verified selection-scope provenance for a candidate.
+        Absence of any single field must never be read as an implicit match
+        for that scope.
+      properties:
+        target_device:
+          type: string
+          nullable: true
+        target_ep:
+          type: string
+          nullable: true
+        toolchain_fingerprint:
+          type: string
+          nullable: true
+        environment_scope:
+          type: string
+          nullable: true
+
+    CandidateTimelineEntry:
+      type: object
+      required:
+        - candidate_attempt_id
+        - attempt_id
+        - candidate_index
+        - candidate_id
+        - role
+        - attempt_state
+        - recipe_fingerprint
+        - eligibility_trigger
+        - disposition
+        - disposition_reasons
+        - selection_status
+        - artifact_ref
+        - package_ref
+        - invocation_counters
+        - validated_scope
+      properties:
+        candidate_attempt_id:
+          type: string
+        attempt_id:
+          type: string
+        candidate_index:
+          type: integer
+          minimum: 0
+        candidate_id:
+          type: string
+        role:
+          $ref: "#/components/schemas/CandidateRole"
+        attempt_state:
+          type: string
+          description: >
+            The candidate's own linked attempt's real, persisted lifecycle
+            state -- never rewritten or relabeled once a different candidate
+            in the same lineage is later selected.
+          enum: [generated, running, succeeded, failed, cancelled]
+        recipe_fingerprint:
+          type: string
+        quantization_override:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateQuantizationOverride"
+            - type: "null"
+        eligibility_trigger:
+          type: string
+          nullable: true
+        disposition:
+          type: string
+          nullable: true
+        disposition_reasons:
+          type: array
+          items:
+            type: string
+        selection_status:
+          type: string
+          enum: [not_selected, selected]
+        artifact_ref:
+          type: string
+          nullable: true
+        package_ref:
+          type: string
+          nullable: true
+        invocation_counters:
+          $ref: "#/components/schemas/CandidateInvocationCounters"
+        validated_scope:
+          $ref: "#/components/schemas/CandidateValidatedScope"
+
+    CandidateSelectedSummary:
+      type: object
+      required: [candidate_attempt_id, attempt_id, candidate_index, candidate_id]
+      properties:
+        candidate_attempt_id:
+          type: string
+        attempt_id:
+          type: string
+        candidate_index:
+          type: integer
+          minimum: 0
+        candidate_id:
+          type: string
+        selected_by:
+          type: string
+          nullable: true
+        selection_reason:
+          type: string
+          nullable: true
+        selected_utc:
+          type: string
+          format: date-time
+          nullable: true
+
+    CandidateReuseEvidence:
+      type: object
+      description: >
+        Durable, measured-zero candidate-selection-reuse dispatch evidence:
+        the returned job/artifact aliases a previously selected winner's own
+        build -- it never implies a new build completed for this attempt.
+      required:
+        - reused_without_build
+        - source_attempt_id
+        - source_candidate_attempt_id
+        - source_parent_attempt_id
+        - policy_id
+        - policy_version
+        - policy_fingerprint
+        - quality_profile_fingerprint
+        - runner_dispatch_count
+        - mobius_invocation_count
+        - olive_invocation_count
+        - recorded_utc
+      properties:
+        reused_without_build:
+          type: boolean
+        source_attempt_id:
+          type: string
+        source_candidate_attempt_id:
+          type: string
+        source_parent_attempt_id:
+          type: string
+        policy_id:
+          type: string
+        policy_version:
+          type: string
+        policy_fingerprint:
+          type: string
+        quality_profile_fingerprint:
+          type: string
+        runner_dispatch_count:
+          type: integer
+          minimum: 0
+        mobius_invocation_count:
+          type: integer
+          minimum: 0
+        olive_invocation_count:
+          type: integer
+          minimum: 0
+        recorded_utc:
+          type: string
+          format: date-time
+
+    RecipeAttemptCandidateSelection:
+      type: object
+      description: >
+        Additive candidate-selection/timeline/reuse summary (Slice 3C1).
+        Null on the parent `RecipeAttempt` exactly when `workflow_outcome`
+        is `not_applicable`.
+      required: [policy_id, policy_version, policy_fingerprint, max_candidates, lineage_selection_state, candidates, aggregate_invocation_counters]
+      properties:
+        policy_id:
+          type: string
+          nullable: true
+        policy_version:
+          type: string
+          nullable: true
+        policy_fingerprint:
+          type: string
+          nullable: true
+        max_candidates:
+          type: integer
+          nullable: true
+        lineage_selection_state:
+          description: >
+            Null exactly for a candidate-selection-reuse materialization
+            (`workflow_outcome == "reused"`), where there is no lineage of
+            its own to report a selection state for. Modeled as `oneOf`
+            enum-string / explicit `null` (rather than OpenAPI 3.0's
+            `nullable: true` sibling of `enum`) because plain JSON Schema
+            validators -- including the one this repo's runtime-response
+            contract test uses -- reject `null` against an `enum` that does
+            not itself list `null`.
+          oneOf:
+            - type: string
+              enum: [pending, selected, exhausted]
+            - type: "null"
+        selected_candidate:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateSelectedSummary"
+            - type: "null"
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidateTimelineEntry"
+        aggregate_invocation_counters:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateInvocationCounters"
+            - type: "null"
+        reuse:
+          oneOf:
+            - $ref: "#/components/schemas/CandidateReuseEvidence"
+            - type: "null"
+
+    RecipeAttempt:
+      type: object
+      required:
+        - attempt_id
+        - recipe_fingerprint
+        - state
+        - gates
+      properties:
+        attempt_id:
+          type: string
+        idempotency_key:
+          type: string
+        request_fingerprint:
+          type: string
+        recipe_fingerprint:
+          type: string
+        model_id:
+          type: string
+        revision_sha:
+          type: string
+        requested_device:
+          type: string
+        requested_precision:
+          type: string
+        compiler_version:
+          type: string
+        capability_fingerprint:
+          type: string
+        toolchain_fingerprint:
+          type: string
+        profile_fingerprint:
+          type: string
+        state:
+          type: string
+          enum: [generated, running, succeeded, failed, cancelled]
+        created_utc:
+          type: string
+          format: date-time
+        finished_utc:
+          type: string
+          format: date-time
+          nullable: true
+        build_job_id:
+          type: string
+          nullable: true
+        gates:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeAttemptGate"
+        failure:
+          oneOf:
+            - $ref: "#/components/schemas/RecipeAttemptFailure"
+            - type: "null"
+        quality_validation:
+          oneOf:
+            - $ref: "#/components/schemas/RecipeAttemptQualityValidation"
+            - type: "null"
+        workflow_outcome:
+          type: string
+          description: >
+            Overall candidate-selection workflow outcome for this attempt.
+            Always one of the five stable codes below; distinguishes the
+            *workflow's* outcome (e.g. `selected` once a fallback candidate
+            is verified) from this attempt's own, never-rewritten
+            `state` (which stays `failed` for a regressed default even when
+            `workflow_outcome` is `selected` via its fallback sibling).
+          enum: [not_applicable, pending, selected, exhausted, reused]
+        candidate_selection:
+          oneOf:
+            - $ref: "#/components/schemas/RecipeAttemptCandidateSelection"
+            - type: "null"
+
+    GeneratedRecipeAttemptCreateResponse:
+      type: object
+      required: [idempotent_replay, job, attempt]
+      properties:
+        idempotent_replay:
+          type: boolean
+        job:
+          $ref: "#/components/schemas/BuildJob"
+        attempt:
+          $ref: "#/components/schemas/RecipeAttempt"
 
     BuildEventsResponse:
       type: object
@@ -802,6 +1606,15 @@ components:
           nullable: true
         requires_remote_code:
           type: boolean
+        config:
+          type: object
+          nullable: true
+          additionalProperties: true
+        model_type:
+          type: string
+          nullable: true
+        task:
+          $ref: "#/components/schemas/CandidateModality"
         buildable:
           type: boolean
         build_blockers:
@@ -825,6 +1638,20 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+        files:
+          type: array
+          items:
+            type: string
+        config_files:
+          type: array
+          items:
+            type: string
+        tokenizer_files:
+          type: array
+          items:
+            type: string
+        foundry_catalog_status:
+          type: string
         foundry_catalog_matches:
           type: array
           items:
@@ -855,6 +1682,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SupportedOptimization"
+        generated_recipe:
+          $ref: "#/components/schemas/GeneratedRecipePreview"
 
     CancelBuildRequest:
       type: object

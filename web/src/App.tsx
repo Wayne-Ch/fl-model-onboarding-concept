@@ -1,17 +1,20 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, createApiClient } from "./api/client";
+import { BuildPlanPreview, CandidateSelectionSummary } from "./components/CandidateSelection";
 import type {
   ApiClient,
   BuildRequest,
   BuildStatus,
   CandidateOutcome,
+  GeneratedRecipePreview,
   JobEvent,
   ModelPreflight,
+  RecipeAttemptStatus,
   ModelSummary
 } from "./api/types";
 
 const defaultClient = createApiClient();
-const POLL_INTERVAL_MS = 2500;
+export const POLL_INTERVAL_MS = 2500;
 
 interface LoadedModel {
   detailLoaded: boolean;
@@ -34,6 +37,7 @@ interface LoadedModel {
     requiresExperimentalOptIn: boolean;
     buildableWithExperimentalOptIn: boolean;
     candidateOutcome?: CandidateOutcome;
+    generatedRecipe?: GeneratedRecipePreview;
   };
 }
 
@@ -47,6 +51,70 @@ function readableStage(stage: string): string {
 
 function isTerminalStage(stage: string): boolean {
   return stage === "succeeded" || stage === "failed" || stage === "cancelled";
+}
+
+function isTerminalAttemptState(state: RecipeAttemptStatus["state"]): boolean {
+  return state === "succeeded" || state === "failed" || state === "cancelled";
+}
+
+/**
+ * Terminal predicate for the candidate-selection *workflow*, distinct from
+ * the parent build job's `stage` and from the attempt's own, never-rewritten
+ * `state`. Legacy attempts (`workflowOutcome === "not_applicable"`) are
+ * terminal exactly when the attempt's own state is terminal -- this
+ * preserves pre-3C1 behavior unchanged. Candidate-enabled attempts are
+ * terminal only once the workflow itself resolves to
+ * `selected`/`exhausted`/`reused`: a `pending` workflow must keep polling
+ * even if the parent job/attempt already reports failed/succeeded, because a
+ * fallback candidate may still be running in a separate build job.
+ */
+export function isAttemptWorkflowTerminal(attempt: RecipeAttemptStatus): boolean {
+  if (attempt.workflowOutcome === "not_applicable") {
+    return isTerminalAttemptState(attempt.state);
+  }
+  return (
+    attempt.workflowOutcome === "selected" ||
+    attempt.workflowOutcome === "exhausted" ||
+    attempt.workflowOutcome === "reused"
+  );
+}
+
+function recipeIntegrityStatusForAttempt(
+  attempt: RecipeAttemptStatus
+): "verified" | "blocked" | "inconclusive" {
+  const explicit = attempt.qualityValidation?.recipeIntegrity.status;
+  if (explicit) {
+    return explicit;
+  }
+  const qualityGate = attempt.gates.find((gate) => gate.gate === "quality_validation");
+  if (qualityGate?.status === "passed") {
+    return "verified";
+  }
+  if (qualityGate?.status === "failed") {
+    return "blocked";
+  }
+  return "inconclusive";
+}
+
+function recipeIntegrityLabel(status: "verified" | "blocked" | "inconclusive"): string {
+  if (status === "verified") {
+    return "Verified";
+  }
+  if (status === "blocked") {
+    return "Blocked";
+  }
+  return "Inconclusive";
+}
+
+function modelCapabilityHeadline(
+  modelCapability: { checksPassed: number; totalChecks: number; warnings: string[] } | undefined
+): string {
+  if (!modelCapability) {
+    return "Not recorded";
+  }
+  const warningCount = modelCapability.warnings.length;
+  const warningSuffix = warningCount > 0 ? ` + ${warningCount} warning${warningCount === 1 ? "" : "s"}` : "";
+  return `${modelCapability.checksPassed}/${modelCapability.totalChecks} checks passed${warningSuffix}`;
 }
 
 function createIdempotencyKey(): string {
@@ -161,10 +229,12 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
   const [precision, setPrecision] = useState<string>("");
   const [audioFormat, setAudioFormat] = useState<string>("");
   const [allowExperimentalOptIn, setAllowExperimentalOptIn] = useState<boolean>(false);
+  const [confirmAutomaticRecipeAttempt, setConfirmAutomaticRecipeAttempt] = useState<boolean>(false);
 
   const [startingBuild, setStartingBuild] = useState<boolean>(false);
   const [buildError, setBuildError] = useState<string | undefined>();
   const [currentJob, setCurrentJob] = useState<BuildStatus | undefined>();
+  const [currentAttempt, setCurrentAttempt] = useState<RecipeAttemptStatus | undefined>();
   const [events, setEvents] = useState<JobEvent[]>([]);
 
   const [textPrompt, setTextPrompt] = useState<string>("Write a concise product value statement.");
@@ -185,6 +255,11 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     return modelCache[selectedModelId];
   }, [modelCache, selectedModelId]);
 
+  const generatedRecipe = useMemo(
+    () => selectedModel?.metadata.generatedRecipe ?? selectedModel?.preflight.generatedRecipe,
+    [selectedModel]
+  );
+
   const blockedReason = useMemo(() => {
     if (!selectedModel) {
       return undefined;
@@ -192,14 +267,27 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     if (selectedModel.summary.gated) {
       return "Gated model access is rejected in this POC.";
     }
+    if (generatedRecipe?.verifiedReuse?.available) {
+      return undefined;
+    }
+    if (generatedRecipe?.eligibleForAutomaticRecipeAttempt) {
+      if (!confirmAutomaticRecipeAttempt) {
+        return "Automatic recipe attempts require explicit confirmation.";
+      }
+      return undefined;
+    }
     if (selectedModel.preflight.requiresExperimentalOptIn && !selectedModel.experimentalOptedIn) {
       return selectedModel.preflight.recipeReason;
     }
     if (!selectedModel.preflight.buildable) {
-      return selectedModel.preflight.blockedReason ?? "Backend marked this model as not buildable.";
+      return (
+        selectedModel.preflight.blockedReason ??
+        generatedRecipe?.compileError ??
+        "Backend marked this model as not buildable."
+      );
     }
     return undefined;
-  }, [selectedModel]);
+  }, [confirmAutomaticRecipeAttempt, generatedRecipe, selectedModel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,12 +347,16 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
 
       try {
         const detail = await client.getModelDetail(model.id);
-        const preflight = await client.preflightModel({
-          modelId: model.id,
-          task: detail.task === "asr" ? "asr" : "llm",
-          target: "cpu",
-          allowExperimental: experimentalOptIn
-        });
+        const task = detail.task === "asr" ? "asr" : "llm";
+        const [preflight, generatedPreview] = await Promise.all([
+          client.preflightModel({
+            modelId: model.id,
+            task,
+            target: "cpu",
+            allowExperimental: experimentalOptIn
+          }),
+          client.getGeneratedRecipePreview(model.id, task)
+        ]);
         if (selectionTokenRef.current !== token) {
           return;
         }
@@ -303,11 +395,16 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             recipeVersion: preflight.recipeVersion || detail.recipeVersion,
             requiresExperimentalOptIn: preflight.requiresExperimentalOptIn,
             buildableWithExperimentalOptIn: detail.buildableWithExperimentalOptIn,
-            candidateOutcome: detail.candidateOutcome ?? preflight.candidateOutcome
+            candidateOutcome: detail.candidateOutcome ?? preflight.candidateOutcome,
+            generatedRecipe:
+              generatedPreview ??
+              preflight.generatedRecipe ??
+              detail.generatedRecipe
           }
         };
 
         setModelCache((current) => ({ ...current, [model.id]: loaded }));
+        setConfirmAutomaticRecipeAttempt(false);
         applyPreflightDefaults(resolvedPreflight);
       } catch (error) {
         if (selectionTokenRef.current !== token) {
@@ -341,7 +438,11 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     [client, searchQuery, testedModels]
   );
 
-  const refreshJob = useCallback(
+  // Fetches build status + incremental events only. Kept separate from
+  // attempt refresh so the two poll independently: the parent build job can
+  // go terminal (e.g. the default attempt fails) while a candidate-selection
+  // fallback workflow is still pending on the same attempt in another job.
+  const refreshBuildStatus = useCallback(
     async (jobId: string) => {
       const afterSequence = eventCursorRef.current[jobId] ?? 0;
       const [status, incrementalEvents] = await Promise.all([
@@ -364,21 +465,68 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
       } else {
         setAnnouncement(`Build stage: ${readableStage(status.stage)}`);
       }
+      return status;
     },
     [client]
   );
 
+  // Fetches the recipe attempt only. Polled on its own cadence against the
+  // parent attempt_id so candidate-selection fallback outcomes (selected /
+  // exhausted / reused) keep surfacing even after the default job/attempt
+  // has already gone terminal.
+  const refreshAttempt = useCallback(
+    async (attemptId: string) => {
+      const latestAttempt = await client.getGeneratedRecipeAttempt(attemptId);
+      setCurrentAttempt(latestAttempt);
+      return latestAttempt;
+    },
+    [client]
+  );
+
+  const refreshJob = useCallback(
+    async (jobId: string, attemptId?: string) => {
+      const [status] = await Promise.all([
+        refreshBuildStatus(jobId),
+        attemptId ? refreshAttempt(attemptId) : Promise.resolve(undefined)
+      ]);
+      return status;
+    },
+    [refreshAttempt, refreshBuildStatus]
+  );
+
+  // Build/event polling: stops as soon as the parent build job reaches a
+  // terminal stage, regardless of any candidate-selection workflow still
+  // pending on the attempt (that has its own effect below).
   useEffect(() => {
     if (!currentJob || isTerminalStage(currentJob.stage)) {
       return;
     }
+    const jobId = currentJob.jobId;
     const timer = window.setInterval(() => {
-      void refreshJob(currentJob.jobId).catch((error) => {
+      void refreshBuildStatus(jobId).catch((error) => {
         setBuildError(asMessage(error));
       });
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [currentJob, refreshJob]);
+  }, [currentJob, refreshBuildStatus]);
+
+  // Attempt polling: continues on the same attemptId while the
+  // candidate-selection workflow is pending, independent of the parent job's
+  // stage or the attempt's own (never-rewritten) state, and stops once the
+  // workflow resolves (selected/exhausted/reused) or, for legacy
+  // not_applicable attempts, once the attempt state itself is terminal.
+  useEffect(() => {
+    if (!currentAttempt || isAttemptWorkflowTerminal(currentAttempt)) {
+      return;
+    }
+    const attemptId = currentAttempt.attemptId;
+    const timer = window.setInterval(() => {
+      void refreshAttempt(attemptId).catch((error) => {
+        setBuildError(asMessage(error));
+      });
+    }, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [currentAttempt, refreshAttempt]);
 
   const onStartBuild = useCallback(async () => {
     if (!selectedModel) {
@@ -387,7 +535,18 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     if (blockedReason) {
       return;
     }
-    if (!strategy || !precision) {
+    const generatedEligible = Boolean(
+      generatedRecipe?.eligibleForAutomaticRecipeAttempt && generatedRecipe.fingerprint
+    );
+    if (
+      generatedEligible &&
+      generatedRecipe?.requiresExplicitAttemptConfirmation &&
+      !confirmAutomaticRecipeAttempt
+    ) {
+      setBuildError("Confirm the automatic recipe attempt before continuing.");
+      return;
+    }
+    if (!generatedEligible && (!strategy || !precision)) {
       setBuildError("Select strategy and precision before starting build.");
       return;
     }
@@ -412,18 +571,46 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     setTextOutput("");
     setAsrOutput("");
     try {
-      const started = await client.startBuild(request, key);
+      if (generatedEligible && generatedRecipe?.fingerprint) {
+        const started = await client.startGeneratedRecipeAttempt(
+          {
+            modelId: selectedModel.summary.id,
+            recipeFingerprint: generatedRecipe.fingerprint,
+            confirmAutomaticRecipeAttempt: true
+          },
+          key
+        );
+        setCurrentAttempt(started.attempt);
+        eventCursorRef.current[started.build.jobId] = 0;
+        setEvents([]);
+        setCurrentJob(started.build);
+        await refreshJob(started.build.jobId, started.attempt.attemptId);
+      } else {
+        const started = await client.startBuild(request, key);
+        setCurrentAttempt(undefined);
+        eventCursorRef.current[started.jobId] = 0;
+        setEvents([]);
+        setCurrentJob(started);
+        await refreshJob(started.jobId);
+      }
       idempotencyRef.current = undefined;
-      eventCursorRef.current[started.jobId] = 0;
-      setEvents([]);
-      setCurrentJob(started);
-      await refreshJob(started.jobId);
     } catch (error) {
       setBuildError(asMessage(error));
     } finally {
       setStartingBuild(false);
     }
-  }, [allowExperimentalOptIn, audioFormat, blockedReason, client, refreshJob, selectedModel, strategy, precision]);
+  }, [
+    allowExperimentalOptIn,
+    audioFormat,
+    blockedReason,
+    client,
+    confirmAutomaticRecipeAttempt,
+    generatedRecipe,
+    precision,
+    refreshJob,
+    selectedModel,
+    strategy
+  ]);
 
   const onCancelBuild = useCallback(async () => {
     if (!currentJob || isTerminalStage(currentJob.stage) || !currentJob.cancellable) {
@@ -433,11 +620,11 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     try {
       const cancelled = await client.cancelBuild(currentJob.jobId);
       setCurrentJob(cancelled);
-      await refreshJob(currentJob.jobId);
+      await refreshJob(currentJob.jobId, currentAttempt?.attemptId);
     } catch (error) {
       setBuildError(asMessage(error));
     }
-  }, [client, currentJob, refreshJob]);
+  }, [client, currentAttempt?.attemptId, currentJob, refreshJob]);
 
   const onRunTextInference = useCallback(async () => {
     if (!currentJob?.artifactId) {
@@ -476,7 +663,15 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
     return byId;
   }, [searchResults, testedModels]);
 
-  const canStartBuild = healthState === "ready" && Boolean(selectedModel) && !blockedReason && !startingBuild;
+  const canStartBuild =
+    healthState === "ready" &&
+    Boolean(selectedModel) &&
+    !blockedReason &&
+    !startingBuild &&
+    !generatedRecipe?.verifiedReuse?.available;
+  const buildActionLabel = generatedRecipe?.eligibleForAutomaticRecipeAttempt
+    ? "Run automatic recipe attempt"
+    : "Build for CPU";
 
   return (
     <div className="app-shell">
@@ -538,7 +733,9 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
               const nextId = event.target.value;
               setSelectedModelId(nextId);
               setAllowExperimentalOptIn(false);
+              setConfirmAutomaticRecipeAttempt(false);
               setCurrentJob(undefined);
+              setCurrentAttempt(undefined);
               setEvents([]);
               setBuildError(undefined);
               setTextOutput("");
@@ -649,10 +846,42 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
                 <dt>Recipe reason</dt>
                 <dd>{selectedModel.metadata.recipeReason}</dd>
               </div>
+              <div>
+                <dt>Automatic recipe attempt</dt>
+                <dd>
+                  {generatedRecipe?.eligibleForAutomaticRecipeAttempt
+                    ? "Eligible for automatic recipe attempt"
+                    : "Not currently eligible"}
+                </dd>
+              </div>
+              <div>
+                <dt>Generated fingerprint</dt>
+                <dd>{generatedRecipe?.fingerprint ?? "Unavailable"}</dd>
+              </div>
+              <div>
+                <dt>Generated status</dt>
+                <dd>{generatedRecipe ? "Experimental until verified" : "Not generated"}</dd>
+              </div>
             </dl>
             {selectedModel.metadata.candidateOutcome ? (
               <CandidateOutcomeDetails outcome={selectedModel.metadata.candidateOutcome} />
             ) : null}
+            {generatedRecipe?.compileError ? (
+              <p className="warning" role="alert">
+                {generatedRecipe.compileError}
+              </p>
+            ) : null}
+            {generatedRecipe?.verifiedReuse?.available ? (
+              <p className="muted">
+                Verified recipe reuse is available for this exact identity ({generatedRecipe.verifiedReuse.verifiedFingerprint}).
+              </p>
+            ) : null}
+            {generatedRecipe?.validationGates?.length ? (
+              <p className="muted">
+                Gate sequence: {generatedRecipe.validationGates.join(" -> ")}
+              </p>
+            ) : null}
+            {generatedRecipe?.candidatePlan ? <BuildPlanPreview plan={generatedRecipe.candidatePlan} /> : null}
             {selectedModel.metadata.recipeStatus === "experimental" ? (
               <div>
                 <label htmlFor="experimental-opt-in">
@@ -670,6 +899,19 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
                     }}
                   />{" "}
                   Enable experimental recipe opt-in for this model
+                </label>
+              </div>
+            ) : null}
+            {generatedRecipe?.eligibleForAutomaticRecipeAttempt ? (
+              <div>
+                <label htmlFor="automatic-recipe-confirmation">
+                  <input
+                    id="automatic-recipe-confirmation"
+                    type="checkbox"
+                    checked={confirmAutomaticRecipeAttempt}
+                    onChange={(event) => setConfirmAutomaticRecipeAttempt(event.target.checked)}
+                  />{" "}
+                  Confirm automatic recipe attempt for fingerprint {generatedRecipe.fingerprint}
                 </label>
               </div>
             ) : null}
@@ -742,7 +984,7 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             <h2>4. Build execution</h2>
             <div className="button-row">
               <button type="button" onClick={() => void onStartBuild()} disabled={!canStartBuild}>
-                {startingBuild ? "Submitting..." : "Build for CPU"}
+                {startingBuild ? "Submitting..." : buildActionLabel}
               </button>
               <button
                 type="button"
@@ -755,7 +997,9 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
                 type="button"
                 onClick={() => {
                   if (currentJob) {
-                    void refreshJob(currentJob.jobId).catch((error) => setBuildError(asMessage(error)));
+                    void refreshJob(currentJob.jobId, currentAttempt?.attemptId).catch((error) =>
+                      setBuildError(asMessage(error))
+                    );
                   }
                 }}
                 disabled={!currentJob}
@@ -814,6 +1058,82 @@ export function OnboardingShell({ client }: { client: ApiClient }): JSX.Element 
             ) : (
               <p className="muted">No events received yet.</p>
             )}
+          </section>
+        ) : null}
+
+        {currentAttempt ? <CandidateSelectionSummary attempt={currentAttempt} /> : null}
+
+        {currentAttempt ? (
+          <section className="panel">
+            <h2>Recipe attempt gates</h2>
+            <p>
+              <strong>Attempt:</strong> {currentAttempt.attemptId}
+            </p>
+            <p>
+              <strong>State:</strong> {currentAttempt.state}
+            </p>
+            <p>
+              <strong>Recipe fingerprint:</strong> {currentAttempt.recipeFingerprint}
+            </p>
+            <p>
+              <strong>Recipe integrity:</strong>{" "}
+              {recipeIntegrityLabel(recipeIntegrityStatusForAttempt(currentAttempt))}
+            </p>
+            <p>
+              <strong>Model capability:</strong>{" "}
+              {modelCapabilityHeadline(currentAttempt.qualityValidation?.modelCapability)}
+            </p>
+            {currentAttempt.qualityValidation?.modelCapability?.warnings.length ? (
+              <p className="muted">
+                <strong>Capability warnings:</strong>{" "}
+                {currentAttempt.qualityValidation.modelCapability.warnings.join(", ")}
+              </p>
+            ) : null}
+            {currentAttempt.qualityValidation?.modelCapability?.confidence?.level === "low" ? (
+              <p className="muted">
+                <strong>Capability confidence:</strong> low
+              </p>
+            ) : null}
+            {currentAttempt.gates.length > 0 ? (
+              <table className="event-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Seq</th>
+                    <th scope="col">Gate</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Evidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentAttempt.gates.map((gate) => (
+                    <tr key={`${gate.sequence}-${gate.gate}`}>
+                      <td>{gate.sequence}</td>
+                      <td>{gate.gate}</td>
+                      <td>{gate.status}</td>
+                      <td>{gate.evidenceRef}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="muted">No gate evidence recorded yet.</p>
+            )}
+            {currentAttempt.failure ? (
+              <>
+                <p>
+                  <strong>Failure:</strong> {currentAttempt.failure.classification} ({currentAttempt.failure.stage})
+                </p>
+                <p>
+                  <strong>Source owner:</strong> {currentAttempt.failure.sourceOwner}
+                </p>
+                <p>
+                  <strong>Message:</strong> {currentAttempt.failure.message}
+                </p>
+                <p>
+                  <strong>Next action:</strong> {currentAttempt.failure.nextAction}
+                </p>
+              </>
+            ) : null}
           </section>
         ) : null}
 

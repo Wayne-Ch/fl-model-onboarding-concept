@@ -1,0 +1,701 @@
+{
+  "attempt": {
+    "attempt_id": "5a1ff700-40c8-4e61-81c7-e7d2293ec773",
+    "build_job_id": "40064d6c-b183-4e3a-b231-42ae92467c1b",
+    "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-02T08:45:51.153170+00:00",
+    "failure": {
+      "classification": "gate_failed",
+      "evidence_refs": [
+        "job://40064d6c-b183-4e3a-b231-42ae92467c1b"
+      ],
+      "message": "Runtime validation failed: {\"ok\": false, \"error\": \"[ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for GatherBlockQuantized(1) node with name 'model/embed_tokens/Gather_node_0_Q4'\"}",
+      "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+      "source_owner": "fl-onboarding",
+      "stage": "runtime_validating"
+    },
+    "finished_utc": "2026-09-02T08:47:54.651624+00:00",
+    "gates": [
+      {
+        "evidence_ref": "job://40064d6c-b183-4e3a-b231-42ae92467c1b/mobius_build/passed",
+        "finished_utc": "2026-09-02T08:47:54.607992+00:00",
+        "gate": "mobius_build",
+        "metrics_ref": null,
+        "sequence": 1,
+        "started_utc": "2026-09-02T08:47:54.607992+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://40064d6c-b183-4e3a-b231-42ae92467c1b/olive_optimize/passed",
+        "finished_utc": "2026-09-02T08:47:54.619182+00:00",
+        "gate": "olive_optimize",
+        "metrics_ref": null,
+        "sequence": 2,
+        "started_utc": "2026-09-02T08:47:54.619182+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://40064d6c-b183-4e3a-b231-42ae92467c1b/onnx_validation/failed",
+        "finished_utc": "2026-09-02T08:47:54.639391+00:00",
+        "gate": "onnx_validation",
+        "metrics_ref": null,
+        "sequence": 3,
+        "started_utc": "2026-09-02T08:47:54.639391+00:00",
+        "status": "failed"
+      }
+    ],
+    "idempotency_key": "r4-20260902T083935Z-03",
+    "model_id": "Qwen/Qwen2-1.5B-Instruct",
+    "profile_fingerprint": "264dff405d4ad4493de5306103d659511ede8df54b41023314f7b4dc86143192",
+    "recipe_fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229",
+    "request_fingerprint": "4ac4a0f8cc82d89ba243c15eefe5883f2d1c28daf100c06f1c94c5db6e5595c3",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+    "state": "failed",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "attempt_create": {
+    "payload": {
+      "attempt": {
+        "attempt_id": "5a1ff700-40c8-4e61-81c7-e7d2293ec773",
+        "build_job_id": "40064d6c-b183-4e3a-b231-42ae92467c1b",
+        "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+        "compiler_version": "1.0.0",
+        "created_utc": "2026-09-02T08:45:51.153170+00:00",
+        "failure": null,
+        "finished_utc": null,
+        "gates": [],
+        "idempotency_key": "r4-20260902T083935Z-03",
+        "model_id": "Qwen/Qwen2-1.5B-Instruct",
+        "profile_fingerprint": "264dff405d4ad4493de5306103d659511ede8df54b41023314f7b4dc86143192",
+        "recipe_fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229",
+        "request_fingerprint": "4ac4a0f8cc82d89ba243c15eefe5883f2d1c28daf100c06f1c94c5db6e5595c3",
+        "requested_device": "cpu",
+        "requested_precision": "auto",
+        "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+        "state": "running",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+      },
+      "idempotent_replay": false,
+      "job": {
+        "artifacts": [],
+        "events": [
+          {
+            "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+            "sequence": 1,
+            "state": "queued",
+            "timestamp_utc": "2026-09-02T08:45:51.181530+00:00"
+          }
+        ],
+        "failure": null,
+        "finished_utc": null,
+        "job_id": "40064d6c-b183-4e3a-b231-42ae92467c1b",
+        "request": {
+          "allow_experimental": true,
+          "candidate": {
+            "huggingface_model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "key": "llm-qwen-qwen2-1.5b-instruct",
+            "modality": "llm",
+            "notes": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+            "recommended_mobius_dtype": null,
+            "recommended_olive_precision": "int4"
+          },
+          "dry_run": false,
+          "enforce_cpu_target": true,
+          "external_data_format": "safetensors",
+          "generated_recipe_attempt": {
+            "attempt_id": "5a1ff700-40c8-4e61-81c7-e7d2293ec773",
+            "confirmation_provenance": "api.confirm_automatic_recipe_attempt",
+            "confirmed": true,
+            "recipe_fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229"
+          },
+          "hf_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+          "max_shard_size": "5GB",
+          "model_cache_dir": "scratch://round-4/r4-20260902T083935Z\\cache",
+          "optimization_precision": "int4",
+          "optimization_strategy": "mobius-olive",
+          "output_dir": "scratch://round-4/r4-20260902T083935Z\\workspace\\40064d6c-b183-4e3a-b231-42ae92467c1b\\output",
+          "recipe_artifact_cache_prefix": "qwen2-1-5b-instruct",
+          "recipe_id": "qwen-qwen2-1-5b-instruct-llm-cpu-int4",
+          "recipe_model_name_prefix": "qwen2-1-5b-instruct-onboarding",
+          "recipe_reason": "Generated recipe attempt execution confirmed via explicit confirm_automatic_recipe_attempt signal.",
+          "recipe_status": "experimental",
+          "recipe_version": "0.1.0",
+          "runtime": "ort-genai",
+          "skip_olive": false,
+          "task_profile": "llm-cpu-int4",
+          "workspace_root": "scratch://round-4/r4-20260902T083935Z\\workspace\\40064d6c-b183-4e3a-b231-42ae92467c1b"
+        },
+        "result_artifact_id": null,
+        "started_utc": "2026-09-02T08:45:51.181530+00:00",
+        "state": "queued",
+        "validations": []
+      }
+    },
+    "status_code": 200
+  },
+  "attempt_http_status": 200,
+  "event_count": 9,
+  "events_http_status": 200,
+  "failure_summary": {
+    "attempt_state": "failed",
+    "error_signature": "Runtime validation failed: {\"ok\": false, \"error\": \"[ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for GatherBlockQuantized(1) node with name 'model/embed_tokens/Gather_node_0_Q4'\"}",
+    "evidence_refs": [
+      "job://40064d6c-b183-4e3a-b231-42ae92467c1b"
+    ],
+    "first_failed_classification": "gate_failed",
+    "first_failed_gate": {
+      "evidence_ref": "job://40064d6c-b183-4e3a-b231-42ae92467c1b/onnx_validation/failed",
+      "finished_utc": "2026-09-02T08:47:54.639391+00:00",
+      "gate": "onnx_validation",
+      "metrics_ref": null,
+      "sequence": 3,
+      "started_utc": "2026-09-02T08:47:54.639391+00:00",
+      "status": "failed"
+    },
+    "first_failed_stage": "runtime_validating",
+    "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+    "preflight_recipe_status": "unregistered",
+    "preflight_recipe_unregistered_expected": true,
+    "prior_successful_gates": [
+      "mobius_build",
+      "olive_optimize"
+    ],
+    "source_owner": "fl-onboarding"
+  },
+  "finished_utc": "2026-09-02T08:48:01.920426+00:00",
+  "generated_preview": {
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "argument_confidence": {
+        "contains_unverified_arguments": true,
+        "mobius_dtype_confidence": "candidate-unverified",
+        "olive_precision_confidence": "candidate-unverified"
+      },
+      "capability": {
+        "capability": {
+          "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+          "family": "qwen",
+          "known_blockers": [
+            {
+              "blocker_id": "qwen-fl-verification-missing",
+              "classification": "missing-fl-verification",
+              "message": "No deterministic FL runtime validation artifact has been recorded yet.",
+              "owner": "fl-onboarding"
+            }
+          ],
+          "modality": "llm",
+          "status": "tool-supported-unverified",
+          "supported_devices": [
+            "cpu"
+          ],
+          "supported_request_precisions": [
+            "auto",
+            "int4"
+          ],
+          "supported_tasks": [
+            "llm"
+          ],
+          "version": "1.0.0"
+        },
+        "evidence": [
+          {
+            "evidence_id": "mobius-doc-qwen-support",
+            "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+            "source_type": "upstream-doc",
+            "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+          },
+          {
+            "evidence_id": "oga-config-qwen-type",
+            "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+            "source_type": "upstream-doc",
+            "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+          }
+        ],
+        "matched_aliases": [
+          "qwen2",
+          "qwen2forcausallm"
+        ],
+        "outcome": "exact",
+        "reason": "Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.",
+        "reason_code": "resolved"
+      },
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "experimental_until_verified": true,
+      "fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229",
+      "recipe": {
+        "fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229",
+        "pinned_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+        "provenance": {
+          "argument_provenance": {
+            "contains_unverified_arguments": true,
+            "mobius_dtype_confidence": "candidate-unverified",
+            "mobius_dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value.",
+            "olive_precision_confidence": "candidate-unverified",
+            "olive_precision_rule": "Candidate path only; not yet FL verified."
+          },
+          "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+          "capability_status": "tool-supported-unverified",
+          "capability_version": "1.0.0",
+          "compiler_version": "1.0.0",
+          "evidence": [
+            {
+              "evidence_id": "mobius-doc-qwen-support",
+              "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+              "source_type": "upstream-doc",
+              "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+            },
+            {
+              "evidence_id": "oga-config-qwen-type",
+              "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+              "source_type": "upstream-doc",
+              "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+            }
+          ],
+          "generation_kind": "deterministic-recipe-agent-v1",
+          "input_metadata": {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "available_files": [
+              ".gitattributes",
+              "config.json",
+              "generation_config.json",
+              "LICENSE",
+              "merges.txt",
+              "model.safetensors",
+              "README.md",
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "vocab.json"
+            ],
+            "config_files": [
+              "config.json"
+            ],
+            "is_gated": false,
+            "model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "model_type": "qwen2",
+            "requested_device": "cpu",
+            "requested_precision": "auto",
+            "requires_remote_code": false,
+            "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+            "task": "llm",
+            "tokenizer_files": [
+              "tokenizer.json",
+              "tokenizer_config.json"
+            ]
+          },
+          "matched_aliases": [
+            "qwen2",
+            "qwen2forcausallm"
+          ],
+          "promotion": null,
+          "resolution_outcome": "exact",
+          "resolution_reason_code": "resolved",
+          "toolchain": {
+            "foundry_cli_version": "0.11.0",
+            "foundry_sdk_version": "1.2.4",
+            "mobius_version": "0.1.0",
+            "oga_version": "0.15.2",
+            "olive_version": "0.13.0",
+            "onnx_version": "1.22.0",
+            "ort_version": "1.29.0"
+          }
+        },
+        "recipe": {
+          "ancillary_files": [
+            {
+              "relative_path": "genai_config.json",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "tokenizer.json",
+              "required": true,
+              "source": "olive-output-dir"
+            }
+          ],
+          "artifact_cache_prefix": "qwen2-1-5b-instruct",
+          "huggingface_model_id": "Qwen/Qwen2-1.5B-Instruct",
+          "id": "qwen-qwen2-1-5b-instruct-llm-cpu-int4",
+          "inference_modality": "llm",
+          "mobius": {
+            "dtype": null,
+            "ep": "cpu",
+            "runtime": "ort-genai",
+            "task": "text-generation"
+          },
+          "modality": "llm",
+          "model_name_prefix": "qwen2-1-5b-instruct-onboarding",
+          "olive": {
+            "device": "cpu",
+            "input_source": "mobius-output-dir",
+            "log_level": "1",
+            "precision": "int4",
+            "provider": "CPUExecutionProvider",
+            "task": "text-generation-with-past"
+          },
+          "optimization_choices": [
+            {
+              "default": true,
+              "precision": "int4",
+              "skip_olive": false,
+              "strategy": "mobius-olive",
+              "task_profile": "llm-cpu-int4"
+            }
+          ],
+          "preferred_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+          "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+          "status": "experimental",
+          "status_reason": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+          "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+          "task_profile": "llm-cpu-int4",
+          "verified_revision": null,
+          "version": "0.1.0"
+        },
+        "schema_version": "1.0.0"
+      },
+      "requires_explicit_attempt_confirmation": true,
+      "toolchain": {
+        "foundry_cli_version": "0.11.0",
+        "foundry_sdk_version": "1.2.4",
+        "mobius_version": "0.1.0",
+        "oga_version": "0.15.2",
+        "olive_version": "0.13.0",
+        "onnx_version": "1.22.0",
+        "ort_version": "1.29.0"
+      },
+      "validation_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "verified_reuse": null
+    },
+    "model_id": "Qwen/Qwen2-1.5B-Instruct",
+    "sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8"
+  },
+  "generated_recipe_record": {
+    "canonical_payload": {
+      "fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229",
+      "pinned_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+      "provenance": {
+        "argument_provenance": {
+          "contains_unverified_arguments": true,
+          "mobius_dtype_confidence": "candidate-unverified",
+          "mobius_dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value.",
+          "olive_precision_confidence": "candidate-unverified",
+          "olive_precision_rule": "Candidate path only; not yet FL verified."
+        },
+        "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+        "capability_status": "tool-supported-unverified",
+        "capability_version": "1.0.0",
+        "compiler_version": "1.0.0",
+        "evidence": [
+          {
+            "evidence_id": "mobius-doc-qwen-support",
+            "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+            "source_type": "upstream-doc",
+            "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+          },
+          {
+            "evidence_id": "oga-config-qwen-type",
+            "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+            "source_type": "upstream-doc",
+            "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+          }
+        ],
+        "generation_kind": "deterministic-recipe-agent-v1",
+        "input_metadata": {
+          "architectures": [
+            "Qwen2ForCausalLM"
+          ],
+          "available_files": [
+            ".gitattributes",
+            "config.json",
+            "generation_config.json",
+            "LICENSE",
+            "merges.txt",
+            "model.safetensors",
+            "README.md",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "vocab.json"
+          ],
+          "config_files": [
+            "config.json"
+          ],
+          "is_gated": false,
+          "model_id": "Qwen/Qwen2-1.5B-Instruct",
+          "model_type": "qwen2",
+          "requested_device": "cpu",
+          "requested_precision": "auto",
+          "requires_remote_code": false,
+          "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+          "task": "llm",
+          "tokenizer_files": [
+            "tokenizer.json",
+            "tokenizer_config.json"
+          ]
+        },
+        "matched_aliases": [
+          "qwen2",
+          "qwen2forcausallm"
+        ],
+        "promotion": null,
+        "resolution_outcome": "exact",
+        "resolution_reason_code": "resolved",
+        "toolchain": {
+          "foundry_cli_version": "0.11.0",
+          "foundry_sdk_version": "1.2.4",
+          "mobius_version": "0.1.0",
+          "oga_version": "0.15.2",
+          "olive_version": "0.13.0",
+          "onnx_version": "1.22.0",
+          "ort_version": "1.29.0"
+        }
+      },
+      "recipe": {
+        "ancillary_files": [
+          {
+            "relative_path": "genai_config.json",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "tokenizer.json",
+            "required": true,
+            "source": "olive-output-dir"
+          }
+        ],
+        "artifact_cache_prefix": "qwen2-1-5b-instruct",
+        "huggingface_model_id": "Qwen/Qwen2-1.5B-Instruct",
+        "id": "qwen-qwen2-1-5b-instruct-llm-cpu-int4",
+        "inference_modality": "llm",
+        "mobius": {
+          "dtype": null,
+          "ep": "cpu",
+          "runtime": "ort-genai",
+          "task": "text-generation"
+        },
+        "modality": "llm",
+        "model_name_prefix": "qwen2-1-5b-instruct-onboarding",
+        "olive": {
+          "device": "cpu",
+          "input_source": "mobius-output-dir",
+          "log_level": "1",
+          "precision": "int4",
+          "provider": "CPUExecutionProvider",
+          "task": "text-generation-with-past"
+        },
+        "optimization_choices": [
+          {
+            "default": true,
+            "precision": "int4",
+            "skip_olive": false,
+            "strategy": "mobius-olive",
+            "task_profile": "llm-cpu-int4"
+          }
+        ],
+        "preferred_revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+        "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+        "status": "experimental",
+        "status_reason": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+        "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "task_profile": "llm-cpu-int4",
+        "verified_revision": null,
+        "version": "0.1.0"
+      },
+      "schema_version": "1.0.0"
+    },
+    "canonical_payload_sha256": "82008e3a28c60f17b68ec591f041f8e6235a5af62fa4153dabdd5c9565176538",
+    "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-02T08:45:50.397377+00:00",
+    "model_id": "Qwen/Qwen2-1.5B-Instruct",
+    "profile_fingerprint": "264dff405d4ad4493de5306103d659511ede8df54b41023314f7b4dc86143192",
+    "recipe_fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229",
+    "recipe_status": "experimental",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+    "schema_version": "1.0.0",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "job": {
+    "artifacts": [],
+    "events": [
+      {
+        "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+        "sequence": 1,
+        "state": "queued",
+        "timestamp_utc": "2026-09-02T08:45:51.181530+00:00"
+      },
+      {
+        "message": "Starting preflight checks.",
+        "sequence": 2,
+        "state": "preflight",
+        "timestamp_utc": "2026-09-02T08:45:51.190860+00:00"
+      },
+      {
+        "message": "Pinned Hugging Face revision ba1cf1846d7df0a0591d6c00649f57e798519da8.",
+        "sequence": 3,
+        "state": "downloading",
+        "timestamp_utc": "2026-09-02T08:46:21.510889+00:00"
+      },
+      {
+        "message": "Running recipe Mobius cpu ort-genai default build.",
+        "sequence": 4,
+        "state": "mobius_building",
+        "timestamp_utc": "2026-09-02T08:46:21.525185+00:00"
+      },
+      {
+        "message": "Mobius output created; ONNX validation follows Olive.",
+        "sequence": 5,
+        "state": "mobius_validating",
+        "timestamp_utc": "2026-09-02T08:47:07.865442+00:00"
+      },
+      {
+        "message": "Running recipe Olive mobius-output-dir int4 optimization.",
+        "sequence": 6,
+        "state": "olive_optimizing",
+        "timestamp_utc": "2026-09-02T08:47:07.875590+00:00"
+      },
+      {
+        "message": "Creating immutable Foundry Local BYOM package.",
+        "sequence": 7,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-02T08:47:44.365961+00:00"
+      },
+      {
+        "message": "Validating ONNX, ORT CPU, and OGA generation.",
+        "sequence": 8,
+        "state": "runtime_validating",
+        "timestamp_utc": "2026-09-02T08:47:45.002191+00:00"
+      },
+      {
+        "message": "Failed (process_failed): Runtime validation failed: {\"ok\": false, \"error\": \"[ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for GatherBlockQuantized(1) node with name 'model/embed_tokens/Gather_node_0_Q4'\"}",
+        "sequence": 9,
+        "state": "failed",
+        "timestamp_utc": "2026-09-02T08:47:54.592291+00:00"
+      }
+    ],
+    "failure": {
+      "classification": "process_failed",
+      "message": "Runtime validation failed: {\"ok\": false, \"error\": \"[ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for GatherBlockQuantized(1) node with name 'model/embed_tokens/Gather_node_0_Q4'\"}",
+      "stage": "runtime_validating"
+    },
+    "finished_utc": "2026-09-02T08:47:54.592291+00:00",
+    "job_id": "40064d6c-b183-4e3a-b231-42ae92467c1b",
+    "result_artifact_id": null,
+    "started_utc": "2026-09-02T08:45:51.181530+00:00",
+    "state": "failed",
+    "validations": [
+      {
+        "checks": [
+          "Candidate 'Qwen/Qwen2-1.5B-Instruct' was not found in Foundry catalog."
+        ],
+        "failure": null,
+        "stage": "preflight",
+        "status": "passed"
+      }
+    ]
+  },
+  "job_poll_timed_out": false,
+  "lingering_processes_after_close": [],
+  "manifest_catalog_match": {
+    "confidence": "none",
+    "matched": false,
+    "matched_entry": null,
+    "reason": "No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'"
+  },
+  "manifest_recipe_exists": false,
+  "manifest_sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+  "model_detail": {
+    "build_blockers": [],
+    "buildable": true,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "model_id": "Qwen/Qwen2-1.5B-Instruct",
+    "recipe_reason": "No recipe is registered for model 'Qwen/Qwen2-1.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+    "task": "llm",
+    "warnings": []
+  },
+  "model_detail_http_status": 200,
+  "model_id": "Qwen/Qwen2-1.5B-Instruct",
+  "model_index": 3,
+  "preflight": {
+    "blockers": [
+      {
+        "classification": "invalid_request",
+        "message": "No recipe is registered for model 'Qwen/Qwen2-1.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+        "stage": "preflight"
+      }
+    ],
+    "cache_key": "a9d5a7627e134ea3b8a8a93e18fa6489b20904776c3936ec22517523ec28a310",
+    "cached": false,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "fingerprint": "39bae0ace88df5c288b46133af71b37207255f0cb46c96d23fb3cfbfeaae8229",
+      "verified_reuse": null
+    },
+    "ok": false,
+    "recipe_reason": "No recipe is registered for model 'Qwen/Qwen2-1.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "tools": [],
+    "warnings": []
+  },
+  "preflight_http_status": 200,
+  "preflight_recipe_unregistered_expected": true,
+  "preview_http_status": 200,
+  "resource_after": {
+    "cache_bytes": 12495391256,
+    "disk_free_gb": 1228.608,
+    "disk_used_gb": 677.833,
+    "runtime_bytes": 34946010231,
+    "state_bytes": 176128,
+    "timestamp_utc": "2026-09-02T08:48:01.868010+00:00",
+    "workspace_bytes": 22450348247
+  },
+  "resource_before": {
+    "cache_bytes": 12495391256,
+    "disk_free_gb": 1236.781,
+    "disk_used_gb": 669.661,
+    "runtime_bytes": 26176551006,
+    "state_bytes": 151552,
+    "timestamp_utc": "2026-09-02T08:45:49.938523+00:00",
+    "workspace_bytes": 13681008198
+  },
+  "started_utc": "2026-09-02T08:45:49.938523+00:00",
+  "workspace_retention": {
+    "action": "failed-workspace-deleted",
+    "attempt_state": "failed",
+    "freed_bytes": 8769340049,
+    "job_id": "40064d6c-b183-4e3a-b231-42ae92467c1b",
+    "model_id": "Qwen/Qwen2-1.5B-Instruct",
+    "workspace_path": "scratch://round-4/r4-20260902T083935Z\\workspace\\40064d6c-b183-4e3a-b231-42ae92467c1b"
+  }
+}

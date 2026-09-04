@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import time
+import json
 import sqlite3
+import time
 
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -35,7 +37,7 @@ from fl_model_onboarding.recipes import (
     RecipeRegistry,
     RecipeStatus,
 )
-from fl_model_onboarding.state_machine import transition
+from fl_model_onboarding.state_machine import fail_job, transition
 
 _TOOLS = (
     ToolAvailability("foundry", "command", True, "0.11.0"),
@@ -46,6 +48,52 @@ _TOOLS = (
     ToolAvailability("foundry-local-sdk", "python-package", True, "1.2.4"),
     ToolAvailability("huggingface_hub", "python-package", True, "1.22.0"),
 )
+
+
+class FakeHFMetadata:
+    def search_models(self, query: str, limit: int = 20, sort: str = "downloads"):  # noqa: ANN001
+        from fl_model_onboarding.adapters.interfaces import HuggingFaceSearchResult
+
+        return (
+            HuggingFaceSearchResult(
+                model_id=f"{query}-one",
+                downloads=100,
+                likes=20,
+                last_modified="2026-01-01T00:00:00Z",
+            ),
+            HuggingFaceSearchResult(
+                model_id=f"{query}-two",
+                downloads=50,
+                likes=10,
+                last_modified="2026-01-02T00:00:00Z",
+            ),
+        )[:limit]
+
+    def get_metadata(self, model_id: str, revision: str | None = None, files_metadata: bool = False):  # noqa: ANN001
+        from fl_model_onboarding.adapters.interfaces import HuggingFaceMetadata
+
+        config: dict[str, object] = {"model_type": "llama"}
+        if "whisper" in model_id:
+            config = {"model_type": "whisper"}
+        return HuggingFaceMetadata(
+            model_id=model_id,
+            revision=revision or "rev-1",
+            sha="1234567890abcdef1234567890abcdef12345678",
+            is_private=False,
+            is_gated=False,
+            last_modified="2026-01-01T00:00:00Z",
+            config=config,
+            safetensors_total_bytes=1024,
+            safetensors_parameter_count=256,
+            card_data={"license": "apache-2.0"},
+            sibling_count=3,
+            sibling_files=("config.json", "tokenizer.json", "model.safetensors"),
+        )
+
+
+class FakeFoundryCatalog:
+    def list_matches(self, search_query: str):  # noqa: ARG002
+        return ()
 
 
 class PassingPreflightInspector:
@@ -97,6 +145,47 @@ class BlockingPreflightInspector(PassingPreflightInspector):
         )
 
 
+class BlockingUntilCancelledPreflightInspector(PassingPreflightInspector):
+    def __init__(self) -> None:
+        self.started = Event()
+        self.seen_cancellation_event: Event | None = None
+
+    def inspect(  # type: ignore[override]
+        self,
+        request: BuildRequest,
+        *,
+        cancellation_event: Event | None = None,
+    ) -> PreflightResult:
+        self.started.set()
+        self.seen_cancellation_event = cancellation_event
+        if cancellation_event is not None:
+            cancellation_event.wait(timeout=5.0)
+        base = super().inspect(request)
+        return PreflightResult(
+            candidate=base.candidate,
+            workspace_root=base.workspace_root,
+            model_cache_dir=base.model_cache_dir,
+            output_dir=base.output_dir,
+            disk_free_gb_workspace=base.disk_free_gb_workspace,
+            disk_free_gb_cache=base.disk_free_gb_cache,
+            tools=base.tools,
+            foundry_catalog_matches=base.foundry_catalog_matches,
+            huggingface_revision=base.huggingface_revision,
+            huggingface_sha=base.huggingface_sha,
+            huggingface_private=base.huggingface_private,
+            huggingface_gated=base.huggingface_gated,
+            cache_key=base.cache_key,
+            blockers=(
+                FailureInfo(
+                    stage=JobState.PREFLIGHT,
+                    classification=FailureClassification.TOOL_UNAVAILABLE,
+                    message="cancelled preflight probe",
+                ),
+            ),
+            warnings=base.warnings,
+        )
+
+
 class DeterministicSuccessRunner:
     def run(self, job: BuildJob, *, persist, cancellation_event):  # noqa: ANN001
         if cancellation_event.is_set():
@@ -115,15 +204,105 @@ class DeterministicSuccessRunner:
             persist()
             if cancellation_event.is_set():
                 return
-        artifact_path = job.request.output_dir / "artifact.json"
-        artifact_path.write_text("{}", encoding="utf-8")
+        baseline_dir = job.request.workspace_root / "mobius"
+        baseline_dir.mkdir(parents=True, exist_ok=False)
+        (baseline_dir / "model.onnx").write_text("baseline", encoding="utf-8")
+        (baseline_dir / "inference_model.json").write_text(
+            json.dumps({"Name": f"baseline-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
+        artifact_path = job.request.output_dir / "optimized-package"
+        artifact_path.mkdir(parents=True, exist_ok=False)
+        (artifact_path / "model.onnx").write_text("optimized", encoding="utf-8")
+        (artifact_path / "inference_model.json").write_text(
+            json.dumps({"Name": f"optimized-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
         job.register_artifact(
             BuildArtifact(
                 artifact_id=f"artifact-{job.job_id}",
                 kind=ArtifactKind.MODEL,
                 path=artifact_path,
                 description="test artifact",
-                size_bytes=artifact_path.stat().st_size,
+                size_bytes=(artifact_path / "model.onnx").stat().st_size,
+            )
+        )
+        transition(job, JobState.SUCCEEDED, "Build succeeded.")
+        job.finished_utc = datetime.now(timezone.utc)
+        persist()
+
+
+class MissingBaselineSuccessRunner:
+    def run(self, job: BuildJob, *, persist, cancellation_event):  # noqa: ANN001
+        if cancellation_event.is_set():
+            return
+        for stage in (
+            JobState.DOWNLOADING,
+            JobState.MOBIUS_BUILDING,
+            JobState.MOBIUS_VALIDATING,
+            JobState.OLIVE_OPTIMIZING,
+            JobState.PACKAGING,
+            JobState.RUNTIME_VALIDATING,
+            JobState.FL_LOADING,
+            JobState.INFERENCING,
+        ):
+            transition(job, stage, f"Reached '{stage.value}'")
+            persist()
+            if cancellation_event.is_set():
+                return
+        artifact_path = job.request.output_dir / "optimized-package"
+        artifact_path.mkdir(parents=True, exist_ok=False)
+        (artifact_path / "model.onnx").write_text("optimized", encoding="utf-8")
+        (artifact_path / "inference_model.json").write_text(
+            json.dumps({"Name": f"optimized-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
+        job.register_artifact(
+            BuildArtifact(
+                artifact_id=f"artifact-{job.job_id}",
+                kind=ArtifactKind.MODEL,
+                path=artifact_path,
+                description="test artifact",
+                size_bytes=(artifact_path / "model.onnx").stat().st_size,
+            )
+        )
+        transition(job, JobState.SUCCEEDED, "Build succeeded.")
+        job.finished_utc = datetime.now(timezone.utc)
+        persist()
+
+
+class SelfComparingSuccessRunner:
+    def run(self, job: BuildJob, *, persist, cancellation_event):  # noqa: ANN001
+        if cancellation_event.is_set():
+            return
+        for stage in (
+            JobState.DOWNLOADING,
+            JobState.MOBIUS_BUILDING,
+            JobState.MOBIUS_VALIDATING,
+            JobState.OLIVE_OPTIMIZING,
+            JobState.PACKAGING,
+            JobState.RUNTIME_VALIDATING,
+            JobState.FL_LOADING,
+            JobState.INFERENCING,
+        ):
+            transition(job, stage, f"Reached '{stage.value}'")
+            persist()
+            if cancellation_event.is_set():
+                return
+        baseline_dir = job.request.workspace_root / "mobius"
+        baseline_dir.mkdir(parents=True, exist_ok=False)
+        (baseline_dir / "model.onnx").write_text("baseline", encoding="utf-8")
+        (baseline_dir / "inference_model.json").write_text(
+            json.dumps({"Name": f"baseline-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
+        job.register_artifact(
+            BuildArtifact(
+                artifact_id=f"artifact-{job.job_id}",
+                kind=ArtifactKind.MODEL,
+                path=baseline_dir,
+                description="test artifact",
+                size_bytes=(baseline_dir / "model.onnx").stat().st_size,
             )
         )
         transition(job, JobState.SUCCEEDED, "Build succeeded.")
@@ -145,6 +324,102 @@ class SlowCancellableRunner:
             time.sleep(0.02)
 
 
+class OversizedFailureRunner:
+    def run(self, job: BuildJob, *, persist, cancellation_event):  # noqa: ANN001
+        if cancellation_event.is_set():
+            return
+        transition(job, JobState.DOWNLOADING, "Downloading model data.")
+        persist()
+        if cancellation_event.is_set():
+            return
+        transition(job, JobState.MOBIUS_BUILDING, "Running oversized failure runner.")
+        persist()
+        fail_job(
+            job,
+            FailureInfo(
+                stage=JobState.MOBIUS_BUILDING,
+                classification=FailureClassification.PROCESS_FAILED,
+                message="x" * 10000,
+            ),
+        )
+        job.finished_utc = datetime.now(timezone.utc)
+        persist()
+
+
+class EchoTextBackend:
+    _QUALITY_RESPONSES = {
+        "What is 17 + 28? Reply using only digits.": "45",
+        "Which planet is known as the Red Planet? Reply with one word.": "Mars",
+        "Output exactly two words: blue river": "blue river",
+        "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.": (
+            '{"answer":12,"unit":"cm"}'
+        ),
+    }
+
+    def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        quality_response = self._QUALITY_RESPONSES.get(prompt)
+        if quality_response is not None:
+            return quality_response
+        return f"{artifact.artifact_id}:{job.job_id}:{prompt}:{max_tokens}"
+
+
+class BaselineUnavailableTextBackend(EchoTextBackend):
+    def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        if str(artifact.artifact_id).startswith("baseline-"):
+            raise RuntimeError("baseline runner unavailable")
+        return super().infer(artifact=artifact, job=job, prompt=prompt, max_tokens=max_tokens)
+
+
+class RegressedOptimizedTextBackend(EchoTextBackend):
+    def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        if (
+            not str(artifact.artifact_id).startswith("baseline-")
+            and prompt == "What is 17 + 28? Reply using only digits."
+        ):
+            return "forty five"
+        return super().infer(artifact=artifact, job=job, prompt=prompt, max_tokens=max_tokens)
+
+
+class BatchEchoTextBackend(EchoTextBackend):
+    def __init__(self) -> None:
+        self.infer_calls = 0
+        self.batch_calls: list[dict[str, object]] = []
+
+    def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        self.infer_calls += 1
+        return super().infer(artifact=artifact, job=job, prompt=prompt, max_tokens=max_tokens)
+
+    def infer_batch(self, *, artifact, job, prompts, max_tokens: int):  # noqa: ANN001
+        prompt_rows = list(prompts)
+        self.batch_calls.append(
+            {
+                "artifact_id": artifact.artifact_id,
+                "prompt_ids": [prompt_id for prompt_id, _ in prompt_rows],
+                "max_tokens": max_tokens,
+            }
+        )
+        outputs: list[str] = []
+        for _, prompt in prompt_rows:
+            quality_response = self._QUALITY_RESPONSES.get(prompt)
+            if quality_response is not None:
+                outputs.append(quality_response)
+            else:
+                outputs.append(f"{artifact.artifact_id}:{job.job_id}:{prompt}:{max_tokens}")
+        return tuple(outputs)
+
+
+class BatchBaselineTimeoutTextBackend(BatchEchoTextBackend):
+    def infer_batch(self, *, artifact, job, prompts, max_tokens: int):  # noqa: ANN001
+        if str(artifact.artifact_id).startswith("baseline-"):
+            raise RuntimeError("stage=prompt_timeout prompt_id=factual-red-planet")
+        return super().infer_batch(
+            artifact=artifact,
+            job=job,
+            prompts=prompts,
+            max_tokens=max_tokens,
+        )
+
+
 def _submission(model_id: str = "HuggingFaceTB/SmolLM2-1.7B-Instruct") -> BuildSubmission:
     return BuildSubmission(
         model_id=model_id,
@@ -158,14 +433,20 @@ def _service(
     *,
     preflight_inspector=None,
     build_stage_runner=None,
+    text_backend=None,
     recipe_registry: RecipeRegistry | None = None,
+    hf_metadata=None,
+    foundry_catalog=None,
 ) -> LocalOnboardingService:
     return LocalOnboardingService(
         db_path=tmp_path / "state.sqlite3",
         workspace_base=tmp_path / "w",
         model_cache_dir=tmp_path / "cache",
+        hf_metadata=hf_metadata or FakeHFMetadata(),  # type: ignore[arg-type]
+        foundry_catalog=foundry_catalog or FakeFoundryCatalog(),  # type: ignore[arg-type]
         preflight_inspector=preflight_inspector or PassingPreflightInspector(),  # type: ignore[arg-type]
         build_stage_runner=build_stage_runner,  # type: ignore[arg-type]
+        text_inference_backend=text_backend,  # type: ignore[arg-type]
         recipe_registry=recipe_registry,
     )
 
@@ -302,6 +583,353 @@ def test_experimental_recipe_requires_explicit_opt_in(tmp_path: Path) -> None:
         service.close()
 
 
+def test_generated_recipe_preview_and_attempt_failure_sync(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        generated = preview["generated_recipe"]
+        assert generated["eligible_for_automatic_recipe_attempt"] is True
+        fingerprint = generated["fingerprint"]
+        assert isinstance(fingerprint, str) and len(fingerprint) == 64
+
+        job, replay, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-failure-1",
+            model_id="owner/unregistered-model",
+        )
+        assert replay is False
+        assert attempt["state"] == "running"
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.FAILED
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        assert attempt_status["build_job_id"] == job.job_id
+        assert attempt_status["failure"]["classification"] == "gate_failed"
+        assert any(row["status"] == "failed" for row in attempt_status["gates"])
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_sync_truncates_oversized_failure_messages(tmp_path: Path) -> None:
+    service = _service(tmp_path, build_stage_runner=OversizedFailureRunner())
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-oversized-failure-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.FAILED
+        assert all(
+            "Recipe attempt synchronization error" not in event.message
+            for event in completed.events
+        )
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        assert attempt_status["failure"]["classification"] == "gate_failed"
+        assert len(str(attempt_status["failure"]["message"])) <= 2048
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_success_promotes_and_enables_verified_reuse(tmp_path: Path) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        text_backend=EchoTextBackend(),
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        generated = preview["generated_recipe"]
+        fingerprint = str(generated["fingerprint"])
+        assert generated["eligible_for_automatic_recipe_attempt"] is True
+
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-success-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "succeeded"
+        assert [row["gate"] for row in attempt_status["gates"]] == [
+            "mobius_build",
+            "olive_optimize",
+            "onnx_validation",
+            "ort_validation",
+            "oga_validation",
+            "fl_sdk_inference",
+            "quality_validation",
+        ]
+        assert all(row["status"] == "passed" for row in attempt_status["gates"])
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert "baseline-passed" in quality_gate["evidence_ref"]
+
+        reused = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )["generated_recipe"]
+        assert reused["eligible_for_automatic_recipe_attempt"] is False
+        assert reused["verified_reuse"]["available"] is True
+        assert reused["verified_reuse"]["source_recipe_fingerprint"] == fingerprint
+        assert reused["verified_reuse"]["attempt_id"] == attempt["attempt_id"]
+
+        tested = service.health()["compatibility_index"]
+        assert any(row["model_id"] == "owner/unregistered-model" for row in tested)  # type: ignore[index]
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_uses_batch_quality_inference_and_records_split_summary(
+    tmp_path: Path,
+) -> None:
+    backend = BatchEchoTextBackend()
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        text_backend=backend,
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-batch-quality-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        expected_prompt_ids = [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit",
+        ]
+        deadline = time.time() + 5.0
+        while len(backend.batch_calls) < 2 and time.time() < deadline:
+            time.sleep(0.02)
+        assert backend.infer_calls == 0
+        assert len(backend.batch_calls) == 2
+        assert backend.batch_calls[0]["prompt_ids"] == expected_prompt_ids
+        assert backend.batch_calls[1]["prompt_ids"] == expected_prompt_ids
+        assert str(backend.batch_calls[0]["artifact_id"]).startswith("baseline-")
+        assert not str(backend.batch_calls[1]["artifact_id"]).startswith("baseline-")
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "succeeded"
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["metrics_ref"] is not None
+        quality_validation = attempt_status["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "verified"
+        capability = quality_validation["model_capability"]
+        assert capability["checks_passed"] == 4
+        assert capability["total_checks"] == 4
+        assert capability["confidence"]["level"] == "low"
+
+        evidence = json.loads(
+            (completed.request.workspace_root / "quality-validation-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        prompt_rows = evidence["per_prompt"]
+        assert [row["prompt_id"] for row in prompt_rows] == expected_prompt_ids
+        assert all(isinstance(row.get("baseline"), dict) for row in prompt_rows)
+        assert all(isinstance(row.get("optimized"), dict) for row in prompt_rows)
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_requires_distinct_baseline_package(tmp_path: Path) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=SelfComparingSuccessRunner(),
+        text_backend=EchoTextBackend(),
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-self-compare-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "not_run"
+        assert "self-comparison" in quality_gate["evidence_ref"]
+        assert attempt_status["failure"]["classification"] == "validation_failed"
+        assert "same package identity" in attempt_status["failure"]["message"]
+
+        reuse = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )["generated_recipe"]
+        assert reuse["eligible_for_automatic_recipe_attempt"] is True
+        assert reuse["verified_reuse"] is None
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_without_baseline_cannot_promote(tmp_path: Path) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=MissingBaselineSuccessRunner(),
+        text_backend=EchoTextBackend(),
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-missing-baseline-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "not_run"
+        assert "baseline-not-run" in quality_gate["evidence_ref"]
+        assert attempt_status["failure"]["classification"] == "validation_failed"
+        assert "Quality baseline not run" in attempt_status["failure"]["message"]
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_baseline_regression_blocks_promotion(tmp_path: Path) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        text_backend=RegressedOptimizedTextBackend(),
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-baseline-regression-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "failed"
+        assert "baseline-regression" in quality_gate["evidence_ref"]
+        quality_validation = attempt_status["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "blocked"
+        assert quality_validation["model_capability"]["checks_passed"] == 3
+        assert quality_validation["model_capability"]["total_checks"] == 4
+        assert attempt_status["failure"]["classification"] == "validation_failed"
+        assert "baseline_passed_optimized_failed:arithmetic-addition-17-plus-28" in attempt_status["failure"]["message"]
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_baseline_execution_unavailable_is_structured_failure(tmp_path: Path) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        text_backend=BaselineUnavailableTextBackend(),
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-baseline-unavailable-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "unavailable"
+        assert "baseline-unavailable" in quality_gate["evidence_ref"]
+        quality_validation = attempt_status["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "inconclusive"
+        assert quality_validation["model_capability"] is None
+        assert attempt_status["failure"]["classification"] == "validation_failed"
+        assert "Baseline quality prompt" in attempt_status["failure"]["message"]
+        assert attempt_status["failure"]["source_owner"] == "fl-onboarding"
+    finally:
+        service.close()
+
+
+def test_generated_recipe_attempt_batch_timeout_is_attributed_to_baseline_prompt(
+    tmp_path: Path,
+) -> None:
+    service = _service(
+        tmp_path,
+        build_stage_runner=DeterministicSuccessRunner(),
+        text_backend=BatchBaselineTimeoutTextBackend(),
+    )
+    try:
+        preview = service.generated_recipe_preview(
+            model_id="owner/unregistered-model",
+            task=CandidateModality.LLM,
+        )
+        fingerprint = str(preview["generated_recipe"]["fingerprint"])
+        job, _, attempt = service.create_generated_recipe_attempt(
+            recipe_fingerprint=fingerprint,
+            idempotency_key="generated-baseline-batch-timeout-1",
+            model_id="owner/unregistered-model",
+        )
+        completed = _wait_for_terminal(service, job.job_id)
+        assert completed.state == JobState.SUCCEEDED
+
+        attempt_status = service.get_recipe_attempt(attempt_id=attempt["attempt_id"])
+        assert attempt_status["state"] == "failed"
+        quality_gate = next(row for row in attempt_status["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "unavailable"
+        assert "baseline-unavailable" in quality_gate["evidence_ref"]
+        assert attempt_status["failure"]["classification"] == "validation_failed"
+        assert "prompt_timeout" in attempt_status["failure"]["message"]
+        assert "factual-red-planet" in attempt_status["failure"]["message"]
+    finally:
+        service.close()
+
+
 def test_idempotency_replay_and_conflict(tmp_path: Path) -> None:
     service = _service(tmp_path, build_stage_runner=SlowCancellableRunner())
     try:
@@ -392,6 +1020,40 @@ def test_cancellation_quarantines_partial_output(tmp_path: Path) -> None:
         assert (quarantine / "partial.bin").exists()
     finally:
         service.close()
+
+
+def test_service_close_cancels_inflight_preflight_probe(tmp_path: Path) -> None:
+    inspector = BlockingUntilCancelledPreflightInspector()
+    service = _service(tmp_path, preflight_inspector=inspector)
+    closed = False
+    job_id = ""
+    try:
+        job, _ = service.create_build(_submission(), idempotency_key="k-close-during-preflight")
+        job_id = job.job_id
+        assert inspector.started.wait(timeout=5.0)
+        service.close()
+        closed = True
+        assert inspector.seen_cancellation_event is not None
+        assert inspector.seen_cancellation_event.is_set()
+        with sqlite3.connect(tmp_path / "state.sqlite3") as connection:
+            cached_rows = connection.execute("SELECT COUNT(*) AS c FROM preflight_cache").fetchone()
+            assert cached_rows is not None
+            assert int(cached_rows[0]) == 0
+        reopened = _service(tmp_path, preflight_inspector=PassingPreflightInspector())
+        try:
+            cancelled = reopened.get_build(job_id)
+            assert cancelled.state == JobState.CANCELLED
+            assert cancelled.failure is not None
+            assert cancelled.failure.classification == FailureClassification.CANCELLED
+            assert cancelled.failure.stage == JobState.PREFLIGHT
+        finally:
+            reopened.close()
+    finally:
+        if not closed:
+            try:
+                service.close()
+            except Exception:
+                pass
 
 
 def test_artifact_task_gating_and_failed_artifact_block(tmp_path: Path) -> None:

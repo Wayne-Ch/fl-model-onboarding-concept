@@ -1,4 +1,15 @@
-import { ApiParseError, asRecord, readBoolean, readNumber, readOptionalString, readRecord, readString, readStringArray, readUnknown } from "./runtime";
+import {
+  ApiParseError,
+  asRecord,
+  readBoolean,
+  readNumber,
+  readOptionalBoolean,
+  readOptionalString,
+  readRecord,
+  readString,
+  readStringArray,
+  readUnknown
+} from "./runtime";
 import { createFixtureTransport, type Transport } from "./fixtureServer";
 import type {
   ApiClient,
@@ -8,18 +19,37 @@ import type {
   BuildFailure,
   BuildRequest,
   BuildStatus,
+  CandidateAttemptState,
   CandidateGateOutcome,
+  CandidateInvocationCounters,
+  CandidateLineageSelectionState,
   CandidateOutcome,
+  CandidatePlanEntry,
+  CandidateQuantizationOverride,
+  CandidateReuseEvidence,
+  CandidateRole,
+  CandidateSelectedSummary,
+  CandidateSelectionPlan,
+  CandidateSelectionStatus,
+  CandidateTimelineEntry,
+  CandidateValidatedScope,
+  GeneratedRecipePreview,
   HealthSnapshot,
   JobEvent,
   ModelDetail,
+  ModelCapabilitySummary,
   ModelPreflight,
   ModelSummary,
   ModelTask,
+  RecipeAttemptCandidateSelection,
+  RecipeAttemptQualityValidation,
+  RecipeIntegritySummary,
+  RecipeAttemptStatus,
   RecipeStatus,
   SupportedOptimization,
   TestedStatus,
-  TextInferenceResult
+  TextInferenceResult,
+  WorkflowOutcome
 } from "./types";
 
 const DEFAULT_API_BASE_URL = "";
@@ -225,7 +255,8 @@ function parseModelDetail(input: unknown): ModelDetail {
     requiresExperimentalOptIn,
     buildableWithExperimentalOptIn,
     supportedOptimizations,
-    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"]))
+    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"])),
+    generatedRecipe: parseGeneratedRecipePreview(readUnknown(record, ["generated_recipe"]))
   };
 }
 
@@ -267,6 +298,437 @@ function parseCandidateOutcome(input: unknown): CandidateOutcome | undefined {
     evidenceReference: readString(record, ["evidence_reference"]),
     capabilityOwner: readString(record, ["capability_owner"]),
     nextAction: readString(record, ["next_action"])
+  };
+}
+
+function parseCandidateRole(value: string, context: string): CandidateRole {
+  if (value === "default" || value === "quality_retry") {
+    return value;
+  }
+  throw new ApiParseError(`Unknown candidate role "${value}" at ${context}.`);
+}
+
+function parseCandidateQuantizationOverride(input: unknown): CandidateQuantizationOverride | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate quantization override");
+  const blockSize = readNumber(record, ["block_size"]);
+  if (blockSize === undefined) {
+    throw new ApiParseError("Expected numeric block_size on candidate quantization override.");
+  }
+  return { blockSize };
+}
+
+function parseCandidatePlanEntry(input: unknown): CandidatePlanEntry {
+  const record = asRecord(input, "candidate plan entry");
+  const candidateIndex = readNumber(record, ["candidate_index"]);
+  if (candidateIndex === undefined) {
+    throw new ApiParseError("Expected numeric candidate_index on candidate plan entry.");
+  }
+  return {
+    candidateIndex,
+    candidateId: readString(record, ["candidate_id"]),
+    role: parseCandidateRole(readString(record, ["role"]), "candidate plan entry"),
+    quantizationOverride: parseCandidateQuantizationOverride(readUnknown(record, ["quantization_override"])),
+    eligibilityTrigger: readOptionalString(record, ["eligibility_trigger"])
+  };
+}
+
+function parseCandidateSelectionPlan(input: unknown): CandidateSelectionPlan | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate selection plan");
+  const maxCandidates = readNumber(record, ["max_candidates"]);
+  if (maxCandidates === undefined) {
+    throw new ApiParseError("Expected numeric max_candidates on candidate selection plan.");
+  }
+  const candidatesRaw = readUnknown(record, ["candidates"]);
+  if (!Array.isArray(candidatesRaw)) {
+    throw new ApiParseError("Expected candidates array on candidate selection plan.");
+  }
+  return {
+    policyId: readString(record, ["policy_id"]),
+    policyVersion: readString(record, ["policy_version"]),
+    policyFingerprint: readString(record, ["policy_fingerprint"]),
+    maxCandidates,
+    candidates: candidatesRaw.map(parseCandidatePlanEntry)
+  };
+}
+
+function parseGeneratedRecipePreview(input: unknown): GeneratedRecipePreview | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const record = asRecord(input, "generated recipe preview");
+  const capabilityRecord = readRecord(record, ["capability"]) ?? {};
+  const nestedCapability = readRecord(capabilityRecord, ["capability"]) ?? {};
+  const argument = readRecord(record, ["argument_confidence"]) ?? {};
+  const verifiedReuse = readRecord(record, ["verified_reuse"]);
+  const validationGates = readStringArray(record, ["validation_gates"]);
+  const capabilityId =
+    readOptionalString(nestedCapability, ["capability_id"]) ??
+    readOptionalString(capabilityRecord, ["capability_id"]);
+  const capabilityStatus =
+    readOptionalString(nestedCapability, ["status"]) ??
+    readOptionalString(capabilityRecord, ["status"]);
+  return {
+    eligibleForAutomaticRecipeAttempt: readBoolean(
+      record,
+      ["eligible_for_automatic_recipe_attempt"],
+      false
+    ),
+    requiresExplicitAttemptConfirmation: readBoolean(
+      record,
+      ["requires_explicit_attempt_confirmation"],
+      true
+    ),
+    experimentalUntilVerified: readBoolean(record, ["experimental_until_verified"], true),
+    fingerprint: readOptionalString(record, ["fingerprint"]),
+    compileError: readOptionalString(record, ["compile_error"]),
+    capability: {
+      outcome: readString(capabilityRecord, ["outcome"], "not-eligible"),
+      reasonCode: readString(capabilityRecord, ["reason_code"], "unknown"),
+      reason: readString(capabilityRecord, ["reason"], ""),
+      matchedAliases: readStringArray(capabilityRecord, ["matched_aliases"]),
+      capabilityId: capabilityId ?? undefined,
+      status: capabilityStatus ?? undefined
+    },
+    argumentConfidence: Object.keys(argument).length > 0
+      ? {
+          mobiusDtypeConfidence:
+            readString(argument, ["mobius_dtype_confidence"], "candidate-unverified"),
+          olivePrecisionConfidence:
+            readString(argument, ["olive_precision_confidence"], "candidate-unverified"),
+          containsUnverifiedArguments: readBoolean(
+            argument,
+            ["contains_unverified_arguments"],
+            true
+          )
+        }
+      : undefined,
+    validationGates,
+    verifiedReuse: verifiedReuse
+      ? {
+          available: readBoolean(verifiedReuse, ["available"], false),
+          verifiedFingerprint: readString(verifiedReuse, ["verified_fingerprint"]),
+          sourceRecipeFingerprint: readString(verifiedReuse, ["source_recipe_fingerprint"]),
+          attemptId: readString(verifiedReuse, ["attempt_id"]),
+          promotedUtc: readString(verifiedReuse, ["promoted_utc"]),
+          recipe: readRecord(verifiedReuse, ["recipe"]) ?? undefined
+        }
+      : undefined,
+    candidatePlan: parseCandidateSelectionPlan(readUnknown(record, ["candidate_plan"]))
+  };
+}
+
+function parseRecipeIntegritySummary(
+  input: unknown
+): RecipeIntegritySummary | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const record = asRecord(input, "recipe integrity summary");
+  const statusRaw = readOptionalString(record, ["status"])?.toLowerCase();
+  if (statusRaw !== "verified" && statusRaw !== "blocked" && statusRaw !== "inconclusive") {
+    return undefined;
+  }
+  const gateStatusRaw = readOptionalString(record, ["gate_status"])?.toLowerCase();
+  const gateStatus =
+    gateStatusRaw === "passed" ||
+    gateStatusRaw === "failed" ||
+    gateStatusRaw === "missing" ||
+    gateStatusRaw === "unavailable"
+      ? gateStatusRaw
+      : undefined;
+  const integrityFailures = readStringArray(record, ["integrity_failures"]);
+  return {
+    status: statusRaw,
+    gateStatus,
+    runtimeFunctional: readOptionalBoolean(record, ["runtime_functional"]),
+    baselineAvailable: readOptionalBoolean(record, ["baseline_available"]),
+    regressionFree: readOptionalBoolean(record, ["regression_free"]),
+    canPromote: readOptionalBoolean(record, ["can_promote"]),
+    integrityFailures: integrityFailures.length > 0 ? integrityFailures : undefined
+  };
+}
+
+function parseModelCapabilitySummary(
+  input: unknown
+): ModelCapabilitySummary | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const record = asRecord(input, "model capability summary");
+  const checksPassed = readNumber(record, ["checks_passed"]);
+  const totalChecks = readNumber(record, ["total_checks"]);
+  if (checksPassed === undefined || totalChecks === undefined) {
+    return undefined;
+  }
+  const confidenceRecord = readRecord(record, ["confidence"]);
+  return {
+    checksPassed,
+    totalChecks,
+    warnings: readStringArray(record, ["warnings"]),
+    confidence: confidenceRecord
+      ? {
+          level:
+            readOptionalString(confidenceRecord, ["level"]) === "high" ||
+            readOptionalString(confidenceRecord, ["level"]) === "low"
+              ? (readOptionalString(confidenceRecord, ["level"]) as "high" | "low")
+              : undefined,
+          determinismSupported: readOptionalBoolean(confidenceRecord, ["determinism_supported"]),
+          reasons: readStringArray(confidenceRecord, ["reasons"])
+        }
+      : undefined
+  };
+}
+
+function parseAttemptQualityValidation(
+  input: unknown
+): RecipeAttemptQualityValidation | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const record = asRecord(input, "attempt quality validation");
+  const recipeIntegrity = parseRecipeIntegritySummary(readUnknown(record, ["recipe_integrity"]));
+  if (!recipeIntegrity) {
+    return undefined;
+  }
+  return {
+    recipeIntegrity,
+    modelCapability: parseModelCapabilitySummary(readUnknown(record, ["model_capability"]))
+  };
+}
+
+function parseCandidateAttemptState(value: string): CandidateAttemptState {
+  if (
+    value === "generated" ||
+    value === "running" ||
+    value === "succeeded" ||
+    value === "failed" ||
+    value === "cancelled"
+  ) {
+    return value;
+  }
+  throw new ApiParseError(`Unknown candidate attempt_state "${value}".`);
+}
+
+function parseCandidateSelectionStatus(value: string): CandidateSelectionStatus {
+  if (value === "not_selected" || value === "selected") {
+    return value;
+  }
+  throw new ApiParseError(`Unknown candidate selection_status "${value}".`);
+}
+
+function parseCandidateLineageSelectionState(
+  input: unknown
+): CandidateLineageSelectionState | undefined {
+  if (input === undefined || input === null) {
+    return undefined;
+  }
+  if (input === "pending" || input === "selected" || input === "exhausted") {
+    return input;
+  }
+  throw new ApiParseError(`Unknown lineage_selection_state "${String(input)}".`);
+}
+
+function parseWorkflowOutcome(input: unknown): WorkflowOutcome {
+  if (input === undefined || input === null) {
+    return "not_applicable";
+  }
+  if (
+    input === "not_applicable" ||
+    input === "pending" ||
+    input === "selected" ||
+    input === "exhausted" ||
+    input === "reused"
+  ) {
+    return input;
+  }
+  throw new ApiParseError(`Unknown workflow_outcome "${String(input)}".`);
+}
+
+function parseCandidateInvocationCounters(input: unknown): CandidateInvocationCounters {
+  if (!input) {
+    return {};
+  }
+  const record = asRecord(input, "candidate invocation counters");
+  return {
+    mobiusBuildInvocationCount: readNumber(record, ["mobius_build_invocation_count"]),
+    oliveOptimizeInvocationCount: readNumber(record, ["olive_optimize_invocation_count"]),
+    totalInvocationCount: readNumber(record, ["total_invocation_count"]),
+    wallClockSeconds: readNumber(record, ["wall_clock_seconds"]),
+    estimatedCostUsd: readNumber(record, ["estimated_cost_usd"])
+  };
+}
+
+function parseCandidateValidatedScope(input: unknown): CandidateValidatedScope {
+  if (!input) {
+    return {};
+  }
+  const record = asRecord(input, "candidate validated scope");
+  return {
+    targetDevice: readOptionalString(record, ["target_device"]),
+    targetEp: readOptionalString(record, ["target_ep"]),
+    toolchainFingerprint: readOptionalString(record, ["toolchain_fingerprint"]),
+    environmentScope: readOptionalString(record, ["environment_scope"])
+  };
+}
+
+function parseCandidateTimelineEntry(input: unknown): CandidateTimelineEntry {
+  const record = asRecord(input, "candidate timeline entry");
+  const candidateIndex = readNumber(record, ["candidate_index"]);
+  if (candidateIndex === undefined) {
+    throw new ApiParseError("Expected numeric candidate_index on candidate timeline entry.");
+  }
+  return {
+    candidateAttemptId: readString(record, ["candidate_attempt_id"]),
+    attemptId: readString(record, ["attempt_id"]),
+    candidateIndex,
+    candidateId: readString(record, ["candidate_id"]),
+    role: parseCandidateRole(readString(record, ["role"]), "candidate timeline entry"),
+    attemptState: parseCandidateAttemptState(readString(record, ["attempt_state"])),
+    recipeFingerprint: readString(record, ["recipe_fingerprint"]),
+    quantizationOverride: parseCandidateQuantizationOverride(readUnknown(record, ["quantization_override"])),
+    eligibilityTrigger: readOptionalString(record, ["eligibility_trigger"]),
+    disposition: readOptionalString(record, ["disposition"]),
+    dispositionReasons: readStringArray(record, ["disposition_reasons"]),
+    selectionStatus: parseCandidateSelectionStatus(readString(record, ["selection_status"])),
+    artifactRef: readOptionalString(record, ["artifact_ref"]),
+    packageRef: readOptionalString(record, ["package_ref"]),
+    invocationCounters: parseCandidateInvocationCounters(readUnknown(record, ["invocation_counters"])),
+    validatedScope: parseCandidateValidatedScope(readUnknown(record, ["validated_scope"]))
+  };
+}
+
+function parseCandidateSelectedSummary(input: unknown): CandidateSelectedSummary | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate selected summary");
+  const candidateIndex = readNumber(record, ["candidate_index"]);
+  if (candidateIndex === undefined) {
+    throw new ApiParseError("Expected numeric candidate_index on candidate selected summary.");
+  }
+  return {
+    candidateAttemptId: readString(record, ["candidate_attempt_id"]),
+    attemptId: readString(record, ["attempt_id"]),
+    candidateIndex,
+    candidateId: readString(record, ["candidate_id"]),
+    selectedBy: readOptionalString(record, ["selected_by"]),
+    selectionReason: readOptionalString(record, ["selection_reason"]),
+    selectedUtc: readOptionalString(record, ["selected_utc"])
+  };
+}
+
+function parseCandidateReuseEvidence(input: unknown): CandidateReuseEvidence | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "candidate reuse evidence");
+  const runnerDispatchCount = readNumber(record, ["runner_dispatch_count"]);
+  const mobiusInvocationCount = readNumber(record, ["mobius_invocation_count"]);
+  const oliveInvocationCount = readNumber(record, ["olive_invocation_count"]);
+  if (runnerDispatchCount === undefined || mobiusInvocationCount === undefined || oliveInvocationCount === undefined) {
+    throw new ApiParseError("Expected numeric dispatch/invocation counts on candidate reuse evidence.");
+  }
+  // Required field: this evidence type exists only to record a candidate
+  // that was returned as an alias of a previously selected winner's own
+  // build, never a new build for this attempt. The backend invariant
+  // guarantees `reused_without_build` is always `true` whenever this
+  // object is present, so a missing/malformed value must fail loudly
+  // instead of silently defaulting to `false`, and an explicit `false`
+  // is itself a contract violation the UI must never treat as reuse.
+  const reusedWithoutBuild = readBoolean(record, ["reused_without_build"]);
+  if (!reusedWithoutBuild) {
+    throw new ApiParseError(
+      "Expected reused_without_build to be true on candidate reuse evidence; a false value violates the reuse-without-build invariant."
+    );
+  }
+  return {
+    reusedWithoutBuild,
+    sourceAttemptId: readString(record, ["source_attempt_id"]),
+    sourceCandidateAttemptId: readString(record, ["source_candidate_attempt_id"]),
+    sourceParentAttemptId: readString(record, ["source_parent_attempt_id"]),
+    policyId: readString(record, ["policy_id"]),
+    policyVersion: readString(record, ["policy_version"]),
+    policyFingerprint: readString(record, ["policy_fingerprint"]),
+    qualityProfileFingerprint: readString(record, ["quality_profile_fingerprint"]),
+    runnerDispatchCount,
+    mobiusInvocationCount,
+    oliveInvocationCount,
+    recordedUtc: readString(record, ["recorded_utc"])
+  };
+}
+
+function parseRecipeAttemptCandidateSelection(input: unknown): RecipeAttemptCandidateSelection | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const record = asRecord(input, "recipe attempt candidate selection");
+  const candidatesRaw = readUnknown(record, ["candidates"]);
+  if (!Array.isArray(candidatesRaw)) {
+    throw new ApiParseError("Expected candidates array on recipe attempt candidate selection.");
+  }
+  const aggregate = readUnknown(record, ["aggregate_invocation_counters"]);
+  return {
+    policyId: readOptionalString(record, ["policy_id"]),
+    policyVersion: readOptionalString(record, ["policy_version"]),
+    policyFingerprint: readOptionalString(record, ["policy_fingerprint"]),
+    maxCandidates: readNumber(record, ["max_candidates"]),
+    lineageSelectionState: parseCandidateLineageSelectionState(readUnknown(record, ["lineage_selection_state"])),
+    selectedCandidate: parseCandidateSelectedSummary(readUnknown(record, ["selected_candidate"])),
+    candidates: candidatesRaw.map(parseCandidateTimelineEntry),
+    aggregateInvocationCounters: aggregate ? parseCandidateInvocationCounters(aggregate) : undefined,
+    reuse: parseCandidateReuseEvidence(readUnknown(record, ["reuse"]))
+  };
+}
+
+function parseRecipeAttempt(input: unknown): RecipeAttemptStatus {
+  const record = asRecord(input, "recipe attempt");
+  const gatesRaw = readUnknown(record, ["gates"]);
+  const gates = Array.isArray(gatesRaw)
+    ? gatesRaw.map((row): RecipeAttemptStatus["gates"][number] => {
+        const gate = asRecord(row, "recipe attempt gate");
+        const status = readString(gate, ["status"], "failed");
+        const gateStatus: RecipeAttemptStatus["gates"][number]["status"] =
+          status === "passed" || status === "failed" || status === "not_run" || status === "unavailable"
+            ? status
+            : "failed";
+        const sequence = readNumber(gate, ["sequence"]);
+        return {
+          sequence: sequence ?? 0,
+          gate: readString(gate, ["gate"]),
+          status: gateStatus,
+          evidenceRef: readString(gate, ["evidence_ref"]),
+          metricsRef: readOptionalString(gate, ["metrics_ref"]) ?? undefined,
+          startedUtc: readString(gate, ["started_utc"]),
+          finishedUtc: readString(gate, ["finished_utc"])
+        };
+      })
+    : [];
+  const failureRecord = readRecord(record, ["failure"]);
+  return {
+    attemptId: readString(record, ["attempt_id"]),
+    recipeFingerprint: readString(record, ["recipe_fingerprint"]),
+    state: readString(record, ["state"]) as RecipeAttemptStatus["state"],
+    buildJobId: readOptionalString(record, ["build_job_id"]) ?? undefined,
+    gates,
+    qualityValidation: parseAttemptQualityValidation(readUnknown(record, ["quality_validation"])),
+    failure: failureRecord
+      ? {
+          classification: readString(failureRecord, ["classification"]),
+          stage: readString(failureRecord, ["stage"]),
+          message: readString(failureRecord, ["message"]),
+          evidenceRefs: readStringArray(failureRecord, ["evidence_refs"]),
+          sourceOwner: readString(failureRecord, ["source_owner"]),
+          nextAction: readString(failureRecord, ["next_action"])
+        }
+      : undefined,
+    workflowOutcome: parseWorkflowOutcome(readUnknown(record, ["workflow_outcome"])),
+    candidateSelection: parseRecipeAttemptCandidateSelection(readUnknown(record, ["candidate_selection"]))
   };
 }
 
@@ -329,7 +791,8 @@ function parsePreflight(input: unknown): ModelPreflight {
     recipeVersion: readOptionalString(recipe, ["version"]),
     requiresExperimentalOptIn,
     supportedOptimizations,
-    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"]))
+    candidateOutcome: parseCandidateOutcome(readUnknown(record, ["candidate_outcome"])),
+    generatedRecipe: parseGeneratedRecipePreview(readUnknown(record, ["generated_recipe"]))
   };
 }
 
@@ -575,6 +1038,24 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
       const { data } = await parseResponse(transport, `/api/models/detail?id=${encodedId}`, undefined, parseModelDetail);
       return data;
     },
+    async getGeneratedRecipePreview(modelId: string, task: "llm" | "asr"): Promise<GeneratedRecipePreview> {
+      const encodedId = encodeURIComponent(modelId);
+      const { data } = await parseResponse(
+        transport,
+        `/api/recipes/generated/preview?id=${encodedId}&task=${encodeURIComponent(task)}`,
+        undefined,
+        (input) => {
+          const record = asRecord(input, "generated recipe preview response");
+          const nested = readUnknown(record, ["generated_recipe"]);
+          const parsed = parseGeneratedRecipePreview(nested ?? input);
+          if (!parsed) {
+            throw new ApiParseError("Generated recipe preview payload is missing.");
+          }
+          return parsed;
+        }
+      );
+      return data;
+    },
     async preflightModel(request: {
       modelId: string;
       task: "llm" | "asr";
@@ -619,6 +1100,49 @@ export function createApiClient(options: CreateApiClientOptions = {}): ApiClient
           })
         },
         parseBuildStatus
+      );
+      return data;
+    },
+    async startGeneratedRecipeAttempt(
+      request: { modelId: string; recipeFingerprint: string; confirmAutomaticRecipeAttempt: boolean },
+      idempotencyKey: string
+    ): Promise<{ idempotentReplay: boolean; build: BuildStatus; attempt: RecipeAttemptStatus }> {
+      const { data } = await parseResponse(
+        transport,
+        "/api/recipes/generated/attempts",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "Idempotency-Key": idempotencyKey
+          },
+          body: JSON.stringify({
+            recipe_fingerprint: request.recipeFingerprint,
+            model_id: request.modelId,
+            confirm_automatic_recipe_attempt: request.confirmAutomaticRecipeAttempt
+          })
+        },
+        (input) => {
+          const record = asRecord(input, "generated recipe attempt response");
+          const job = parseBuildStatus(readUnknown(record, ["job"]) ?? record);
+          const attemptRaw = readUnknown(record, ["attempt"]);
+          const attempt = parseRecipeAttempt(attemptRaw);
+          return {
+            idempotentReplay: readBoolean(record, ["idempotent_replay"], false),
+            build: job,
+            attempt
+          };
+        }
+      );
+      return data;
+    },
+    async getGeneratedRecipeAttempt(attemptId: string): Promise<RecipeAttemptStatus> {
+      const encoded = encodeURIComponent(attemptId);
+      const { data } = await parseResponse(
+        transport,
+        `/api/recipes/generated/attempts/${encoded}`,
+        undefined,
+        parseRecipeAttempt
       );
       return data;
     },

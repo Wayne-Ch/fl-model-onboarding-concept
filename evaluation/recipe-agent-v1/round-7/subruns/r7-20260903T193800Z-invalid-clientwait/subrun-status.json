@@ -1,0 +1,30 @@
+{
+  "round": "round-7",
+  "subrun_id": "r7-20260903T193800Z",
+  "status": "invalid",
+  "classification": "invalid_client_wait_shutdown_diagnostic",
+  "valid_baseline": false,
+  "invalid_reasons": [
+    "client_wait_lifecycle_bug: harness treated parent attempt/job terminal as model terminal while workflow_outcome remained pending for candidate lineage",
+    "service_close_side_effect: TestClient/service closed with Smol fallback candidate preflight in flight, cancelling fallback job 720813be-c7ec-4306-804a-54b9c4031b2d before Olive/package stages"
+  ],
+  "observed_progress": {
+    "recipe_verified_count": 4,
+    "model_count": 5,
+    "selected_reuse_zero_build_count": 4,
+    "smollm_parent_attempt_id": "7f291a89-453b-4482-ad8a-c7869394143f",
+    "smollm_fallback_attempt_id": "15bdb958-9a71-4aca-9266-11312b632302",
+    "smollm_fallback_job_id": "720813be-c7ec-4306-804a-54b9c4031b2d",
+    "smollm_fallback_job_state": "cancelled",
+    "smollm_fallback_quantization_block_size": 64,
+    "smollm_fallback_workspace_present": false,
+    "final_lingering_process_count": 0
+  },
+  "corrective_commits": [
+    {
+      "sha": "18288f4",
+      "title": "Fix harness wait for candidate lineage"
+    }
+  ],
+  "superseded_by_subrun_id": null
+}

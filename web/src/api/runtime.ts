@@ -54,6 +54,17 @@ export function readBoolean(record: Record<string, unknown>, keys: string[], fal
   throw new ApiParseError(`Expected boolean at ${keys.join(" | ")}.`);
 }
 
+export function readOptionalBoolean(record: Record<string, unknown>, keys: string[]): boolean | undefined {
+  const value = readUnknown(record, keys);
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  throw new ApiParseError(`Expected optional boolean at ${keys.join(" | ")}.`);
+}
+
 export function readNumber(record: Record<string, unknown>, keys: string[]): number | undefined {
   const value = readUnknown(record, keys);
   if (value === undefined || value === null) {

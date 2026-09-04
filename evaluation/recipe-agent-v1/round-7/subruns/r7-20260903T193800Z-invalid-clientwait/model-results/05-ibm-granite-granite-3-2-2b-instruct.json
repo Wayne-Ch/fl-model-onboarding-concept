@@ -1,0 +1,1561 @@
+{
+  "attempt": {
+    "attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+    "build_job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+    "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-03T19:58:08.438624+00:00",
+    "failure": null,
+    "finished_utc": "2026-09-03T20:04:56.785044+00:00",
+    "gates": [
+      {
+        "evidence_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/mobius_build/passed",
+        "finished_utc": "2026-09-03T20:03:56.857283+00:00",
+        "gate": "mobius_build",
+        "metrics_ref": null,
+        "sequence": 1,
+        "started_utc": "2026-09-03T20:03:56.857283+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/olive_optimize/passed",
+        "finished_utc": "2026-09-03T20:03:56.862974+00:00",
+        "gate": "olive_optimize",
+        "metrics_ref": null,
+        "sequence": 2,
+        "started_utc": "2026-09-03T20:03:56.862974+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/onnx_validation/passed",
+        "finished_utc": "2026-09-03T20:03:56.873067+00:00",
+        "gate": "onnx_validation",
+        "metrics_ref": null,
+        "sequence": 3,
+        "started_utc": "2026-09-03T20:03:56.873067+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/ort_validation/passed",
+        "finished_utc": "2026-09-03T20:03:56.891958+00:00",
+        "gate": "ort_validation",
+        "metrics_ref": null,
+        "sequence": 4,
+        "started_utc": "2026-09-03T20:03:56.891958+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/oga_validation/passed",
+        "finished_utc": "2026-09-03T20:03:56.906175+00:00",
+        "gate": "oga_validation",
+        "metrics_ref": null,
+        "sequence": 5,
+        "started_utc": "2026-09-03T20:03:56.906175+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/fl_sdk_inference/passed",
+        "finished_utc": "2026-09-03T20:03:56.917400+00:00",
+        "gate": "fl_sdk_inference",
+        "metrics_ref": null,
+        "sequence": 6,
+        "started_utc": "2026-09-03T20:03:56.917400+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "quality://f3dc74bf-ed05-4d6f-b962-9200f191749a/quality_validation/baseline-passed",
+        "finished_utc": "2026-09-03T20:04:56.765538+00:00",
+        "gate": "quality_validation",
+        "metrics_ref": "quality-metrics://f3dc74bf-ed05-4d6f-b962-9200f191749a/quality-validation-evidence.json",
+        "sequence": 7,
+        "started_utc": "2026-09-03T20:04:56.765538+00:00",
+        "status": "passed"
+      }
+    ],
+    "idempotency_key": "r7-20260903T193800Z-05",
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+    "quality_validation": {
+      "model_capability": {
+        "checks_passed": 3,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure"
+        ]
+      },
+      "recipe_integrity": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      }
+    },
+    "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+    "request_fingerprint": "af9dffd5ae0622b615a7e83b6b8256ebd76ad52ecb321f24a76dcb544e7f7026",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+    "state": "succeeded",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "attempt_create": {
+    "payload": {
+      "attempt": {
+        "attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+        "build_job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+        "candidate_selection": {
+          "aggregate_invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": null,
+            "olive_optimize_invocation_count": null,
+            "total_invocation_count": null,
+            "wall_clock_seconds": null
+          },
+          "candidates": [
+            {
+              "artifact_ref": null,
+              "attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+              "attempt_state": "running",
+              "candidate_attempt_id": "3df741f4-cdd6-473a-84b0-1f159b630bd9",
+              "candidate_id": "default-int4",
+              "candidate_index": 0,
+              "disposition": null,
+              "disposition_reasons": [],
+              "eligibility_trigger": null,
+              "invocation_counters": {
+                "estimated_cost_usd": null,
+                "mobius_build_invocation_count": null,
+                "olive_optimize_invocation_count": null,
+                "total_invocation_count": null,
+                "wall_clock_seconds": null
+              },
+              "package_ref": null,
+              "quantization_override": null,
+              "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+              "role": "default",
+              "selection_status": "not_selected",
+              "validated_scope": {
+                "environment_scope": null,
+                "target_device": null,
+                "target_ep": null,
+                "toolchain_fingerprint": null
+              }
+            }
+          ],
+          "lineage_selection_state": "pending",
+          "max_candidates": 2,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "reuse": null,
+          "selected_candidate": null
+        },
+        "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+        "compiler_version": "1.0.0",
+        "created_utc": "2026-09-03T19:58:08.438624+00:00",
+        "failure": null,
+        "finished_utc": null,
+        "gates": [],
+        "idempotency_key": "r7-20260903T193800Z-05",
+        "model_id": "ibm-granite/granite-3.2-2b-instruct",
+        "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+        "quality_validation": null,
+        "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+        "request_fingerprint": "af9dffd5ae0622b615a7e83b6b8256ebd76ad52ecb321f24a76dcb544e7f7026",
+        "requested_device": "cpu",
+        "requested_precision": "auto",
+        "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+        "state": "running",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+        "workflow_outcome": "pending"
+      },
+      "idempotent_replay": false,
+      "job": {
+        "artifacts": [],
+        "events": [
+          {
+            "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+            "sequence": 1,
+            "state": "queued",
+            "timestamp_utc": "2026-09-03T19:58:08.477846+00:00"
+          }
+        ],
+        "failure": null,
+        "finished_utc": null,
+        "job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+        "production_invocation_evidence": null,
+        "request": {
+          "allow_experimental": true,
+          "candidate": {
+            "huggingface_model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "key": "llm-ibm-granite-granite-3.2-2b-instruct",
+            "modality": "llm",
+            "notes": "Compiled from verified architecture capability 'granite-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+            "recommended_mobius_dtype": "f32",
+            "recommended_olive_precision": "int4"
+          },
+          "dry_run": false,
+          "enforce_cpu_target": true,
+          "external_data_format": "safetensors",
+          "generated_recipe_attempt": {
+            "attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+            "confirmation_provenance": "api.confirm_automatic_recipe_attempt",
+            "confirmed": true,
+            "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d"
+          },
+          "hf_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+          "max_shard_size": "5GB",
+          "model_cache_dir": "scratch://round-7/r7-20260903T193800Z\\cache",
+          "optimization_precision": "int4",
+          "optimization_strategy": "mobius-olive",
+          "output_dir": "scratch://round-7/r7-20260903T193800Z\\workspace\\f3dc74bf-ed05-4d6f-b962-9200f191749a\\output",
+          "recipe_artifact_cache_prefix": "granite-3-2-2b-instruct",
+          "recipe_id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+          "recipe_model_name_prefix": "granite-3-2-2b-instruct-onboarding",
+          "recipe_reason": "Generated recipe attempt execution confirmed via explicit confirm_automatic_recipe_attempt signal.",
+          "recipe_status": "experimental",
+          "recipe_version": "0.1.0",
+          "runtime": "ort-genai",
+          "skip_olive": false,
+          "task_profile": "llm-cpu-int4",
+          "workspace_root": "scratch://round-7/r7-20260903T193800Z\\workspace\\f3dc74bf-ed05-4d6f-b962-9200f191749a"
+        },
+        "result_artifact_id": null,
+        "started_utc": "2026-09-03T19:58:08.477846+00:00",
+        "state": "queued",
+        "validations": []
+      }
+    },
+    "status_code": 200
+  },
+  "attempt_http_status": 200,
+  "event_count": 12,
+  "events_http_status": 200,
+  "failure_summary": {
+    "attempt_state": "succeeded",
+    "error_signature": null,
+    "first_failed_classification": null,
+    "first_failed_stage": null,
+    "next_action": null,
+    "preflight_recipe_status": "unregistered",
+    "preflight_recipe_unregistered_expected": true,
+    "prior_successful_gates": [
+      "mobius_build",
+      "olive_optimize",
+      "onnx_validation",
+      "ort_validation",
+      "oga_validation",
+      "fl_sdk_inference",
+      "quality_validation"
+    ],
+    "source_owner": null
+  },
+  "finished_utc": "2026-09-03T20:04:58.344437+00:00",
+  "generated_preview": {
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "argument_confidence": {
+        "contains_unverified_arguments": false,
+        "mobius_dtype_confidence": "evidence-pinned",
+        "olive_precision_confidence": "evidence-pinned"
+      },
+      "candidate_plan": {
+        "candidates": [
+          {
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "eligibility_trigger": null,
+            "quantization_override": null,
+            "role": "default"
+          },
+          {
+            "candidate_id": "int4-block-size-64",
+            "candidate_index": 1,
+            "eligibility_trigger": "retryable_optimized_structural_regression",
+            "quantization_override": {
+              "block_size": 64
+            },
+            "role": "quality_retry"
+          }
+        ],
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0"
+      },
+      "candidate_selection_reuse": null,
+      "capability": {
+        "capability": {
+          "capability_id": "granite-text-generation-cpu-int4-v1",
+          "family": "granite",
+          "known_blockers": [],
+          "modality": "llm",
+          "status": "verified",
+          "supported_devices": [
+            "cpu"
+          ],
+          "supported_request_precisions": [
+            "auto",
+            "int4"
+          ],
+          "supported_tasks": [
+            "llm"
+          ],
+          "version": "1.0.0"
+        },
+        "evidence": [
+          {
+            "evidence_id": "granite-model-type",
+            "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+            "source_type": "repo-doc",
+            "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+          },
+          {
+            "evidence_id": "granite-runtime-happy-path",
+            "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+            "source_type": "repo-doc",
+            "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+          }
+        ],
+        "matched_aliases": [
+          "granite",
+          "graniteforcausallm"
+        ],
+        "outcome": "exact",
+        "reason": "Resolved to capability 'granite-text-generation-cpu-int4-v1' (verified) via alias(es): granite, graniteforcausallm.",
+        "reason_code": "resolved"
+      },
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "experimental_until_verified": true,
+      "fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "recipe": {
+        "fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+        "pinned_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+        "provenance": {
+          "argument_provenance": {
+            "contains_unverified_arguments": false,
+            "mobius_dtype_confidence": "evidence-pinned",
+            "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+            "olive_precision_confidence": "evidence-pinned",
+            "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+          },
+          "capability_id": "granite-text-generation-cpu-int4-v1",
+          "capability_status": "verified",
+          "capability_version": "1.0.0",
+          "compiler_version": "1.0.0",
+          "evidence": [
+            {
+              "evidence_id": "granite-model-type",
+              "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+              "source_type": "repo-doc",
+              "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+            },
+            {
+              "evidence_id": "granite-runtime-happy-path",
+              "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+              "source_type": "repo-doc",
+              "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+            }
+          ],
+          "generation_kind": "deterministic-recipe-agent-v1",
+          "input_metadata": {
+            "architectures": [
+              "GraniteForCausalLM"
+            ],
+            "available_files": [
+              ".gitattributes",
+              "added_tokens.json",
+              "config.json",
+              "generation_config.json",
+              "merges.txt",
+              "model-00001-of-00002.safetensors",
+              "model-00002-of-00002.safetensors",
+              "model.safetensors.index.json",
+              "README.md",
+              "special_tokens_map.json",
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "vocab.json"
+            ],
+            "config_files": [
+              "config.json"
+            ],
+            "is_gated": false,
+            "model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "model_type": "granite",
+            "requested_device": "cpu",
+            "requested_precision": "auto",
+            "requires_remote_code": false,
+            "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+            "task": "llm",
+            "tokenizer_files": [
+              "tokenizer.json",
+              "tokenizer_config.json"
+            ]
+          },
+          "matched_aliases": [
+            "granite",
+            "graniteforcausallm"
+          ],
+          "promotion": null,
+          "resolution_outcome": "exact",
+          "resolution_reason_code": "resolved",
+          "toolchain": {
+            "foundry_cli_version": "0.11.0",
+            "foundry_sdk_version": "1.2.4",
+            "mobius_version": "0.1.0",
+            "oga_version": "0.15.2",
+            "olive_version": "0.13.0",
+            "onnx_version": "1.22.0",
+            "ort_version": "1.29.0"
+          }
+        },
+        "recipe": {
+          "ancillary_files": [
+            {
+              "relative_path": "genai_config.json",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "tokenizer.json",
+              "required": true,
+              "source": "olive-output-dir"
+            }
+          ],
+          "artifact_cache_prefix": "granite-3-2-2b-instruct",
+          "huggingface_model_id": "ibm-granite/granite-3.2-2b-instruct",
+          "id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+          "inference_modality": "llm",
+          "mobius": {
+            "dtype": "f32",
+            "ep": "cpu",
+            "runtime": "ort-genai",
+            "task": "text-generation"
+          },
+          "modality": "llm",
+          "model_name_prefix": "granite-3-2-2b-instruct-onboarding",
+          "olive": {
+            "device": "cpu",
+            "input_source": "mobius-output-dir",
+            "log_level": "1",
+            "precision": "int4",
+            "provider": "CPUExecutionProvider",
+            "task": "text-generation-with-past"
+          },
+          "optimization_choices": [
+            {
+              "default": true,
+              "precision": "int4",
+              "skip_olive": false,
+              "strategy": "mobius-olive",
+              "task_profile": "llm-cpu-int4"
+            }
+          ],
+          "preferred_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+          "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+          "status": "experimental",
+          "status_reason": "Compiled from verified architecture capability 'granite-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+          "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+          "task_profile": "llm-cpu-int4",
+          "verified_revision": null,
+          "version": "0.1.0"
+        },
+        "schema_version": "1.0.0"
+      },
+      "requires_explicit_attempt_confirmation": true,
+      "toolchain": {
+        "foundry_cli_version": "0.11.0",
+        "foundry_sdk_version": "1.2.4",
+        "mobius_version": "0.1.0",
+        "oga_version": "0.15.2",
+        "olive_version": "0.13.0",
+        "onnx_version": "1.22.0",
+        "ort_version": "1.29.0"
+      },
+      "validation_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "verified_reuse": null
+    },
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3"
+  },
+  "generated_recipe_record": {
+    "canonical_payload": {
+      "fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "pinned_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "provenance": {
+        "argument_provenance": {
+          "contains_unverified_arguments": false,
+          "mobius_dtype_confidence": "evidence-pinned",
+          "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+          "olive_precision_confidence": "evidence-pinned",
+          "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+        },
+        "capability_id": "granite-text-generation-cpu-int4-v1",
+        "capability_status": "verified",
+        "capability_version": "1.0.0",
+        "compiler_version": "1.0.0",
+        "evidence": [
+          {
+            "evidence_id": "granite-model-type",
+            "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+            "source_type": "repo-doc",
+            "summary": "Granite metadata captured config.model_type=granite and non-gated/public eligibility."
+          },
+          {
+            "evidence_id": "granite-runtime-happy-path",
+            "location": "docs/contract-probe-results.md#phase-2-recipe-registry-evidence-2026-08-31",
+            "source_type": "repo-doc",
+            "summary": "Granite path passed Mobius build, Olive INT4, runtime validation, and Foundry Local SDK inference."
+          }
+        ],
+        "generation_kind": "deterministic-recipe-agent-v1",
+        "input_metadata": {
+          "architectures": [
+            "GraniteForCausalLM"
+          ],
+          "available_files": [
+            ".gitattributes",
+            "added_tokens.json",
+            "config.json",
+            "generation_config.json",
+            "merges.txt",
+            "model-00001-of-00002.safetensors",
+            "model-00002-of-00002.safetensors",
+            "model.safetensors.index.json",
+            "README.md",
+            "special_tokens_map.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "vocab.json"
+          ],
+          "config_files": [
+            "config.json"
+          ],
+          "is_gated": false,
+          "model_id": "ibm-granite/granite-3.2-2b-instruct",
+          "model_type": "granite",
+          "requested_device": "cpu",
+          "requested_precision": "auto",
+          "requires_remote_code": false,
+          "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+          "task": "llm",
+          "tokenizer_files": [
+            "tokenizer.json",
+            "tokenizer_config.json"
+          ]
+        },
+        "matched_aliases": [
+          "granite",
+          "graniteforcausallm"
+        ],
+        "promotion": null,
+        "resolution_outcome": "exact",
+        "resolution_reason_code": "resolved",
+        "toolchain": {
+          "foundry_cli_version": "0.11.0",
+          "foundry_sdk_version": "1.2.4",
+          "mobius_version": "0.1.0",
+          "oga_version": "0.15.2",
+          "olive_version": "0.13.0",
+          "onnx_version": "1.22.0",
+          "ort_version": "1.29.0"
+        }
+      },
+      "recipe": {
+        "ancillary_files": [
+          {
+            "relative_path": "genai_config.json",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "tokenizer.json",
+            "required": true,
+            "source": "olive-output-dir"
+          }
+        ],
+        "artifact_cache_prefix": "granite-3-2-2b-instruct",
+        "huggingface_model_id": "ibm-granite/granite-3.2-2b-instruct",
+        "id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+        "inference_modality": "llm",
+        "mobius": {
+          "dtype": "f32",
+          "ep": "cpu",
+          "runtime": "ort-genai",
+          "task": "text-generation"
+        },
+        "modality": "llm",
+        "model_name_prefix": "granite-3-2-2b-instruct-onboarding",
+        "olive": {
+          "device": "cpu",
+          "input_source": "mobius-output-dir",
+          "log_level": "1",
+          "precision": "int4",
+          "provider": "CPUExecutionProvider",
+          "task": "text-generation-with-past"
+        },
+        "optimization_choices": [
+          {
+            "default": true,
+            "precision": "int4",
+            "skip_olive": false,
+            "strategy": "mobius-olive",
+            "task_profile": "llm-cpu-int4"
+          }
+        ],
+        "preferred_revision": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+        "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+        "status": "experimental",
+        "status_reason": "Compiled from verified architecture capability 'granite-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+        "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "task_profile": "llm-cpu-int4",
+        "verified_revision": null,
+        "version": "0.1.0"
+      },
+      "schema_version": "1.0.0"
+    },
+    "canonical_payload_sha256": "539d980427fd9f71593944156373d0db21515dda5705710ef0b68fb607dbab49",
+    "capability_fingerprint": "d8556c39d05d7ef454c9a729be58eb03261c8873ffcfcb4e081ea5309698c2c2",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-03T19:58:07.642802+00:00",
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "profile_fingerprint": "a96ea0e7d7095996594001bd398b38e5fd47d77ed8118093218dfcdba424c14d",
+    "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+    "recipe_status": "experimental",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+    "schema_version": "1.0.0",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "job": {
+    "artifacts": [
+      {
+        "artifact_id": "28d7fbc58180ed650ea49c3342d7c7bac0875f130718682c99f6c4fb0e66cb6a",
+        "description": "Immutable Foundry Local BYOM model package",
+        "kind": "model"
+      }
+    ],
+    "events": [
+      {
+        "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+        "sequence": 1,
+        "state": "queued",
+        "timestamp_utc": "2026-09-03T19:58:08.477846+00:00"
+      },
+      {
+        "message": "Starting preflight checks.",
+        "sequence": 2,
+        "state": "preflight",
+        "timestamp_utc": "2026-09-03T19:58:08.520029+00:00"
+      },
+      {
+        "message": "Pinned Hugging Face revision 641593c3b25bec0b1efe9f0f7d7a67f7243f86a3.",
+        "sequence": 3,
+        "state": "downloading",
+        "timestamp_utc": "2026-09-03T19:58:57.756309+00:00"
+      },
+      {
+        "message": "Running recipe Mobius cpu ort-genai f32 build.",
+        "sequence": 4,
+        "state": "mobius_building",
+        "timestamp_utc": "2026-09-03T19:58:57.772662+00:00"
+      },
+      {
+        "message": "Mobius output created; ONNX validation follows Olive.",
+        "sequence": 5,
+        "state": "mobius_validating",
+        "timestamp_utc": "2026-09-03T20:01:50.846743+00:00"
+      },
+      {
+        "message": "Running recipe Olive mobius-output-dir int4 optimization.",
+        "sequence": 6,
+        "state": "olive_optimizing",
+        "timestamp_utc": "2026-09-03T20:01:50.852774+00:00"
+      },
+      {
+        "message": "Creating immutable Foundry Local BYOM package.",
+        "sequence": 7,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-03T20:03:35.107469+00:00"
+      },
+      {
+        "message": "Staging decoder output reconciliation verified existing decoder mappings.",
+        "sequence": 8,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-03T20:03:36.723645+00:00"
+      },
+      {
+        "message": "Validating ONNX, ORT CPU, and OGA generation.",
+        "sequence": 9,
+        "state": "runtime_validating",
+        "timestamp_utc": "2026-09-03T20:03:36.740266+00:00"
+      },
+      {
+        "message": "Foundry Local SDK discovered and loaded the BYOM package.",
+        "sequence": 10,
+        "state": "fl_loading",
+        "timestamp_utc": "2026-09-03T20:03:50.056007+00:00"
+      },
+      {
+        "message": "Running bounded Foundry Local SDK chat inference.",
+        "sequence": 11,
+        "state": "inferencing",
+        "timestamp_utc": "2026-09-03T20:03:50.069826+00:00"
+      },
+      {
+        "message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "sequence": 12,
+        "state": "succeeded",
+        "timestamp_utc": "2026-09-03T20:03:56.841455+00:00"
+      }
+    ],
+    "failure": null,
+    "finished_utc": "2026-09-03T20:03:56.841455+00:00",
+    "job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+    "result_artifact_id": "28d7fbc58180ed650ea49c3342d7c7bac0875f130718682c99f6c4fb0e66cb6a",
+    "started_utc": "2026-09-03T19:58:08.477846+00:00",
+    "state": "succeeded",
+    "validations": [
+      {
+        "checks": [
+          "Candidate 'ibm-granite/granite-3.2-2b-instruct' was not found in Foundry catalog."
+        ],
+        "failure": null,
+        "stage": "preflight",
+        "status": "passed"
+      },
+      {
+        "checks": [
+          "onnx_checker=1",
+          "ort_cpu_load=passed",
+          "oga_generation=passed"
+        ],
+        "failure": null,
+        "stage": "runtime_validating",
+        "status": "passed"
+      },
+      {
+        "checks": [
+          "foundry_local_sdk_chat=passed"
+        ],
+        "failure": null,
+        "stage": "inferencing",
+        "status": "passed"
+      }
+    ]
+  },
+  "job_poll_timed_out": false,
+  "lingering_processes_after_close": [],
+  "manifest_catalog_match": {
+    "confidence": "none",
+    "matched": false,
+    "matched_entry": null,
+    "reason": "No catalog entry matches normalized HF name 'granite-3-2-2b-instruct'"
+  },
+  "manifest_recipe_exists": false,
+  "manifest_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+  "model_detail": {
+    "build_blockers": [],
+    "buildable": true,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "recipe_reason": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+    "task": "llm",
+    "warnings": []
+  },
+  "model_detail_http_status": 200,
+  "model_id": "ibm-granite/granite-3.2-2b-instruct",
+  "model_index": 5,
+  "preflight": {
+    "blockers": [
+      {
+        "classification": "invalid_request",
+        "message": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+        "stage": "preflight"
+      }
+    ],
+    "cache_key": "d19338499608cf32534f5906eb812ed8d284f20fa6662826c00b5d4376f9c612",
+    "cached": false,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "verified_reuse": null
+    },
+    "ok": false,
+    "recipe_reason": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "tools": [],
+    "warnings": []
+  },
+  "preflight_http_status": 200,
+  "preflight_recipe_unregistered_expected": true,
+  "preview_http_status": 200,
+  "quality_validation_evidence": {
+    "baseline_comparison": {
+      "passed": true,
+      "regressions": []
+    },
+    "batch_worker": {
+      "baseline": {
+        "request": {
+          "batch_timeout_seconds": 3600,
+          "expected_model_load_count": 1,
+          "max_tokens": 64,
+          "mode": "single-worker-batch",
+          "model_name": "granite-3-2-2b-instruct-onboarding-f3dc74bf-ed0-mobius-baseline:1",
+          "outer_command_timeout_seconds": 3615,
+          "outer_timeout_grace_seconds": 15,
+          "per_prompt_timeout_seconds": 900,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ]
+        },
+        "response": {
+          "completed_prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ],
+          "duration_seconds": 44.14,
+          "failed_prompt_id": null,
+          "failure_stage": null,
+          "ok": true,
+          "prompt_order_preserved": true,
+          "results": [
+            {
+              "duration_seconds": 2.375,
+              "prompt_id": "arithmetic-addition-17-plus-28",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 2.0,
+              "prompt_id": "factual-red-planet",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 1.64,
+              "prompt_id": "instruction-two-words-blue-river",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 7.047,
+              "prompt_id": "format-json-answer-unit",
+              "timed_out": false
+            }
+          ]
+        }
+      },
+      "optimized": {
+        "request": {
+          "batch_timeout_seconds": 3600,
+          "expected_model_load_count": 1,
+          "max_tokens": 64,
+          "mode": "single-worker-batch",
+          "model_name": "granite-3-2-2b-instruct-onboarding-28d7fbc58180:1",
+          "outer_command_timeout_seconds": 3615,
+          "outer_timeout_grace_seconds": 15,
+          "per_prompt_timeout_seconds": 900,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ]
+        },
+        "response": {
+          "completed_prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ],
+          "duration_seconds": 13.953,
+          "failed_prompt_id": null,
+          "failure_stage": null,
+          "ok": true,
+          "prompt_order_preserved": true,
+          "results": [
+            {
+              "duration_seconds": 1.891,
+              "prompt_id": "arithmetic-addition-17-plus-28",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 1.187,
+              "prompt_id": "factual-red-planet",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 1.578,
+              "prompt_id": "instruction-two-words-blue-river",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 2.297,
+              "prompt_id": "format-json-answer-unit",
+              "timed_out": false
+            }
+          ]
+        }
+      },
+      "prompt_order": [
+        "arithmetic-addition-17-plus-28",
+        "factual-red-planet",
+        "instruction-two-words-blue-river",
+        "format-json-answer-unit"
+      ]
+    },
+    "deterministic_inference": {
+      "max_tokens": 64,
+      "seed": 17,
+      "temperature": 0.0
+    },
+    "failure_excerpt": [
+      {
+        "baseline_failures": [
+          "exact_match_failed",
+          "relevance_keyword_missing"
+        ],
+        "baseline_output_text": "35",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "exact_match_failed",
+          "relevance_keyword_missing"
+        ],
+        "optimized_output_text": "25",
+        "optimized_passed": false,
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      }
+    ],
+    "metrics_ref": "quality-metrics://f3dc74bf-ed05-4d6f-b962-9200f191749a/quality-validation-evidence.json",
+    "model_capability": {
+      "checks_passed": 3,
+      "confidence": {
+        "determinism_supported": false,
+        "level": "low",
+        "reasons": [
+          "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+          "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+          "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+          "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+        ]
+      },
+      "per_prompt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "baseline_status": "failed",
+          "category": "arithmetic",
+          "comparison": "matched_fail",
+          "optimized_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "warnings": [
+            "shared_capability_failure"
+          ]
+        },
+        {
+          "baseline_failures": [],
+          "baseline_status": "passed",
+          "category": "factual-recall",
+          "comparison": "matched_pass",
+          "optimized_failures": [],
+          "optimized_status": "passed",
+          "prompt_id": "factual-red-planet",
+          "warnings": []
+        },
+        {
+          "baseline_failures": [],
+          "baseline_status": "passed",
+          "category": "instruction-following",
+          "comparison": "matched_pass",
+          "optimized_failures": [],
+          "optimized_status": "passed",
+          "prompt_id": "instruction-two-words-blue-river",
+          "warnings": []
+        },
+        {
+          "baseline_failures": [],
+          "baseline_status": "passed",
+          "category": "output-format",
+          "comparison": "matched_pass",
+          "optimized_failures": [],
+          "optimized_status": "passed",
+          "prompt_id": "format-json-answer-unit",
+          "warnings": []
+        }
+      ],
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure"
+      ]
+    },
+    "per_prompt": [
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "passed": false
+          },
+          "output_text": "35",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "arithmetic",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "passed": false
+          },
+          "output_text": "25",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "What is 17 + 28? Reply using only digits.",
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "Mars.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "factual-recall",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "Mars.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Which planet is known as the Red Planet? Reply with one word.",
+        "prompt_id": "factual-red-planet"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "Blue River",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "instruction-following",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "Blue River",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Output exactly two words: blue river",
+        "prompt_id": "instruction-two-words-blue-river"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "output-format",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.",
+        "prompt_id": "format-json-answer-unit"
+      }
+    ],
+    "profile_id": "textgen-basic-quality-v1",
+    "profile_version": "1.0.0",
+    "promotion_evidence": {
+      "baseline_comparison_gate": "passed",
+      "can_promote": true,
+      "functional_gate": "passed",
+      "metrics_capture_gate": "unavailable",
+      "notes": [
+        "Optional latency/memory/package metrics were not supplied.",
+        "Model capability confidence is low because deterministic inference settings were only partially enforced."
+      ]
+    },
+    "recipe_verification": {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    "ref_job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+    "schema_version": "1.0.0",
+    "status": "loaded",
+    "unsupported_determinism_fields_reported_by_runtime": [
+      "temperature",
+      "seed"
+    ]
+  },
+  "resource_after": {
+    "cache_bytes": 17131789589,
+    "disk_free_gb": 1094.56,
+    "disk_used_gb": 811.882,
+    "runtime_bytes": 76461133563,
+    "state_bytes": 327680,
+    "timestamp_utc": "2026-09-03T20:04:58.170840+00:00",
+    "workspace_bytes": 59328942294
+  },
+  "resource_before": {
+    "cache_bytes": 15693189735,
+    "disk_free_gb": 1118.884,
+    "disk_used_gb": 787.557,
+    "runtime_bytes": 50994135624,
+    "state_bytes": 303104,
+    "timestamp_utc": "2026-09-03T19:58:07.021397+00:00",
+    "workspace_bytes": 35300642785
+  },
+  "round7_first_request": {
+    "candidate_selection": {
+      "aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 261.606232
+      },
+      "candidates": [
+        {
+          "artifact_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/artifact/28d7fbc58180ed650ea49c3342d7c7bac0875f130718682c99f6c4fb0e66cb6a",
+          "attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+          "attempt_state": "succeeded",
+          "candidate_attempt_id": "3df741f4-cdd6-473a-84b0-1f159b630bd9",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "disposition": null,
+          "disposition_reasons": [],
+          "eligibility_trigger": null,
+          "invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": 1,
+            "olive_optimize_invocation_count": 1,
+            "total_invocation_count": 2,
+            "wall_clock_seconds": 261.606232
+          },
+          "package_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/package",
+          "quantization_override": null,
+          "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+          "role": "default",
+          "selection_status": "selected",
+          "validated_scope": {
+            "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+            "target_device": "cpu",
+            "target_ep": "cpu",
+            "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+          }
+        }
+      ],
+      "lineage_selection_state": "selected",
+      "max_candidates": 2,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "reuse": null,
+      "selected_candidate": {
+        "attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+        "candidate_attempt_id": "3df741f4-cdd6-473a-84b0-1f159b630bd9",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:04:56.826728+00:00",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+      }
+    },
+    "first_request_aggregate_invocation_counters": {
+      "estimated_cost_usd": null,
+      "mobius_build_invocation_count": 1,
+      "olive_optimize_invocation_count": 1,
+      "total_invocation_count": 2,
+      "wall_clock_seconds": 261.606232
+    },
+    "first_request_behavior_observation": {
+      "actual": {
+        "aggregate_mobius_build_invocation_count": 1,
+        "aggregate_olive_optimize_invocation_count": 1,
+        "candidate_count": 1,
+        "selected_candidate_index": 0,
+        "selected_candidate_role": "default",
+        "workflow_outcome": "selected"
+      },
+      "expected": {
+        "aggregate_mobius_build_invocation_count": 1,
+        "aggregate_olive_optimize_invocation_count": 1,
+        "default_candidate_expected": "verified-and-selected",
+        "fallback_candidate_expected": "not-registered",
+        "selected_candidate_index": 0,
+        "selected_candidate_role": "default"
+      },
+      "matches_expected": true,
+      "mismatch_fields": []
+    },
+    "winner_attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+    "winner_attempt_state": "succeeded",
+    "winner_candidate": {
+      "attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+      "candidate_attempt_id": "3df741f4-cdd6-473a-84b0-1f159b630bd9",
+      "candidate_id": "default-int4",
+      "candidate_index": 0,
+      "selected_by": "validation",
+      "selected_utc": "2026-09-03T20:04:56.826728+00:00",
+      "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+    },
+    "winner_candidate_timeline_entry": {
+      "artifact_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/artifact/28d7fbc58180ed650ea49c3342d7c7bac0875f130718682c99f6c4fb0e66cb6a",
+      "attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+      "attempt_state": "succeeded",
+      "candidate_attempt_id": "3df741f4-cdd6-473a-84b0-1f159b630bd9",
+      "candidate_id": "default-int4",
+      "candidate_index": 0,
+      "disposition": null,
+      "disposition_reasons": [],
+      "eligibility_trigger": null,
+      "invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 261.606232
+      },
+      "package_ref": "job://f3dc74bf-ed05-4d6f-b962-9200f191749a/package",
+      "quantization_override": null,
+      "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+      "role": "default",
+      "selection_status": "selected",
+      "validated_scope": {
+        "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+        "target_device": "cpu",
+        "target_ep": "cpu",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+      }
+    },
+    "winner_job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+    "winner_model_capability": {
+      "checks_passed": 3,
+      "confidence": {
+        "determinism_supported": false,
+        "level": "low",
+        "reasons": [
+          "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+          "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+          "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+          "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+        ]
+      },
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure"
+      ]
+    },
+    "winner_recipe_verification": {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    "workflow_outcome": "selected"
+  },
+  "round7_second_request_reuse": {
+    "attempt_build_job_id": null,
+    "build_job_alias_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+    "build_job_alias_matches_winner_job": true,
+    "create_http_status": 200,
+    "idempotency_key": "r7-20260903T193800Z-reuse-05",
+    "model_id": "ibm-granite/granite-3.2-2b-instruct",
+    "model_index": 5,
+    "poll_http_status": 200,
+    "preview_http_status": 200,
+    "recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d",
+    "reuse_attempt_id": "4a907343-e33b-4cba-9346-ed96875df478",
+    "reuse_attempt_state": "succeeded",
+    "reuse_evidence": {
+      "mobius_invocation_count": 0,
+      "olive_invocation_count": 0,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "recorded_utc": "2026-09-03T20:05:09.049053+00:00",
+      "reused_without_build": true,
+      "runner_dispatch_count": 0,
+      "source_attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+      "source_candidate_attempt_id": "3df741f4-cdd6-473a-84b0-1f159b630bd9",
+      "source_parent_attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3"
+    },
+    "reuse_evidence_row": {
+      "mobius_invocation_count": 0,
+      "olive_invocation_count": 0,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "recorded_utc": "2026-09-03T20:05:09.049053+00:00",
+      "reused_attempt_id": "4a907343-e33b-4cba-9346-ed96875df478",
+      "reused_without_build": true,
+      "runner_dispatch_count": 0,
+      "source_attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+      "source_candidate_attempt_id": "3df741f4-cdd6-473a-84b0-1f159b630bd9",
+      "source_parent_attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3"
+    },
+    "reuse_evidence_row_matches_response": true,
+    "reuse_workflow_outcome": "reused",
+    "reuse_zero_build_verified": true,
+    "runner_dispatch_mapping_present_for_reuse_attempt": false,
+    "second_request_submitted": true,
+    "service_dispatch_observation": {
+      "attempt_mapping_count_after": 6,
+      "attempt_mapping_count_before": 6,
+      "jobs_after": 6,
+      "jobs_before": 6,
+      "new_job_created_for_reuse_attempt": false
+    },
+    "source_ids_match_expected_winner": true,
+    "winner_job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+    "winner_resolution": {
+      "available": true,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+      "source_parent_attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+      "winner_attempt_id": "279cc4d5-960b-410d-8ca1-b0d4df6c3bb3",
+      "winner_candidate_attempt_id": "3df741f4-cdd6-473a-84b0-1f159b630bd9",
+      "winner_candidate_id": "default-int4",
+      "winner_candidate_index": 0,
+      "winner_job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+      "winner_recipe_fingerprint": "ff3f3668f8b2c4f06afcd00ebb2d470e04978813411b7e2f0d13eacce2e1540d"
+    }
+  },
+  "started_utc": "2026-09-03T19:58:07.020398+00:00",
+  "workspace_retention": {
+    "action": "retained-success-workspace",
+    "attempt_state": "succeeded",
+    "job_id": "f3dc74bf-ed05-4d6f-b962-9200f191749a",
+    "model_id": "ibm-granite/granite-3.2-2b-instruct"
+  }
+}

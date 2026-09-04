@@ -42,6 +42,7 @@ interface FixtureEvent {
 interface FixtureJob {
   jobId: string;
   model: FixtureModel;
+  attemptId?: string;
   stageIndex: number;
   currentStage: BuildStage;
   cancellable: boolean;
@@ -54,6 +55,32 @@ interface FixtureJob {
     message: string;
     retryable: boolean;
     logTail: string[];
+  };
+}
+
+interface FixtureAttemptGate {
+  sequence: number;
+  gate: string;
+  status: "passed" | "failed" | "not_run" | "unavailable";
+  evidence_ref: string;
+  started_utc: string;
+  finished_utc: string;
+}
+
+interface FixtureAttempt {
+  attemptId: string;
+  modelId: string;
+  recipeFingerprint: string;
+  state: "generated" | "running" | "succeeded" | "failed" | "cancelled";
+  buildJobId?: string;
+  gates: FixtureAttemptGate[];
+  failure?: {
+    classification: string;
+    stage: string;
+    message: string;
+    evidence_refs: string[];
+    source_owner: string;
+    next_action: string;
   };
 }
 
@@ -320,10 +347,66 @@ function candidateOutcome(model: FixtureModel): Record<string, unknown> | null {
   };
 }
 
+function generatedRecipePayload(model: FixtureModel): Record<string, unknown> {
+  const eligible = model.task === "llm" && !model.gated && model.recipeStatus === "unregistered";
+  const fingerprint = eligible ? "1111111111111111111111111111111111111111111111111111111111111111" : null;
+  return {
+    eligible_for_automatic_recipe_attempt: eligible,
+    requires_explicit_attempt_confirmation: true,
+    experimental_until_verified: true,
+    fingerprint,
+    compile_error: eligible ? null : model.blockedReason ?? "Generated recipe unavailable for this fixture model.",
+    capability: {
+      outcome: eligible ? "exact" : "not-eligible",
+      reason_code: eligible ? "resolved" : "unsupported-task",
+      reason: eligible
+        ? "Resolved to fixture capability."
+        : "Generated recipe flow is unavailable for this fixture model.",
+      matched_aliases: [model.id.split("/").pop() ?? model.id],
+      capability: eligible
+        ? {
+            capability_id: "fixture-llm-cpu-auto",
+            status: "tool-supported-unverified"
+          }
+        : null
+    },
+    argument_confidence: eligible
+      ? {
+          mobius_dtype_confidence: "candidate-unverified",
+          olive_precision_confidence: "candidate-unverified",
+          contains_unverified_arguments: true
+        }
+      : null,
+    validation_gates: [
+      "mobius_build",
+      "olive_optimize",
+      "onnx_validation",
+      "ort_validation",
+      "oga_validation",
+      "fl_sdk_inference",
+      "quality_validation"
+    ],
+    verified_reuse: null
+  };
+}
+
+function attemptResponse(attempt: FixtureAttempt): Record<string, unknown> {
+  return {
+    attempt_id: attempt.attemptId,
+    recipe_fingerprint: attempt.recipeFingerprint,
+    state: attempt.state,
+    build_job_id: attempt.buildJobId ?? null,
+    gates: attempt.gates,
+    failure: attempt.failure ?? null
+  };
+}
+
 export function createFixtureTransport(): Transport {
   const jobs = new Map<string, FixtureJob>();
+  const attempts = new Map<string, FixtureAttempt>();
   const testedArtifacts = new Map<string, string>();
   let nextJobId = 1;
+  let nextAttemptId = 1;
 
   function addEvent(job: FixtureJob, stage: BuildStage, message: string): void {
     const sequence = job.nextSequence;
@@ -375,6 +458,50 @@ export function createFixtureTransport(): Transport {
     };
   }
 
+  function syncAttemptFromJob(job: FixtureJob): void {
+    if (!job.attemptId) {
+      return;
+    }
+    const attempt = attempts.get(job.attemptId);
+    if (!attempt) {
+      return;
+    }
+    if (job.currentStage === "succeeded") {
+      attempt.state = "succeeded";
+      if (attempt.gates.length === 0) {
+        const now = nowIso();
+        attempt.gates = [
+          "mobius_build",
+          "olive_optimize",
+          "onnx_validation",
+          "ort_validation",
+          "oga_validation",
+          "fl_sdk_inference",
+          "quality_validation"
+        ].map((gate, index) => ({
+          sequence: index + 1,
+          gate,
+          status: "passed",
+          evidence_ref: `fixture://${attempt.attemptId}/${gate}`,
+          started_utc: now,
+          finished_utc: now
+        }));
+      }
+      return;
+    }
+    if (job.currentStage === "failed" || job.currentStage === "cancelled") {
+      attempt.state = job.currentStage === "failed" ? "failed" : "cancelled";
+      attempt.failure = {
+        classification: job.currentStage === "failed" ? "gate_failed" : "cancelled",
+        stage: job.currentStage,
+        message: job.failure?.message ?? `Build ${job.currentStage}.`,
+        evidence_refs: [`job://${job.jobId}`],
+        source_owner: "fixture",
+        next_action: "Retry with a new idempotency key."
+      };
+    }
+  }
+
   function advance(job: FixtureJob): void {
     if (job.currentStage === "succeeded" || job.currentStage === "failed" || job.currentStage === "cancelled") {
       job.cancellable = false;
@@ -392,6 +519,7 @@ export function createFixtureTransport(): Transport {
         logTail: ["E: kernel mismatch for op=MatMul", "E: calibration artifacts incompatible with selected precision"]
       };
       addEvent(job, "failed", "Build failed during Mobius validation.");
+      syncAttemptFromJob(job);
       return;
     }
 
@@ -404,6 +532,7 @@ export function createFixtureTransport(): Transport {
     if (job.currentStage === "succeeded") {
       job.cancellable = false;
       job.artifactId = `artifact-${job.jobId}`;
+      syncAttemptFromJob(job);
     }
   }
 
@@ -498,6 +627,7 @@ export function createFixtureTransport(): Transport {
           recipe_reason: model.recipeReason,
           requires_experimental_opt_in: model.requiresExperimentalOptIn,
           buildable_with_experimental_opt_in: model.buildableWithExperimentalOptIn,
+          generated_recipe: generatedRecipePayload(model),
           supported_optimizations: model.supportedOptimizations.map((item) => ({
             strategy: item.strategy,
             precision: item.precision,
@@ -536,6 +666,7 @@ export function createFixtureTransport(): Transport {
           recipe_status: model.recipeStatus,
           recipe_reason: model.recipeReason,
           requires_experimental_opt_in: model.requiresExperimentalOptIn,
+          generated_recipe: generatedRecipePayload(model),
           supported_optimizations: model.supportedOptimizations.map((item) => ({
             strategy: item.strategy,
             precision: item.precision,
@@ -544,6 +675,90 @@ export function createFixtureTransport(): Transport {
             default: item.default
           }))
         });
+      }
+
+      if (pathname === "/api/recipes/generated/preview" && method === "GET") {
+        const modelId = url.searchParams.get("id");
+        if (!modelId) {
+          return jsonResponse(400, { error: "Missing id query parameter." });
+        }
+        const model = findModel(modelId);
+        if (!model) {
+          return jsonResponse(404, { error: "Model not found." });
+        }
+        return jsonResponse(200, {
+          model_id: model.id,
+          task: model.task,
+          generated_recipe: generatedRecipePayload(model)
+        });
+      }
+
+      if (pathname === "/api/recipes/generated/attempts" && method === "POST") {
+        const idempotencyKey = init?.headers ? new Headers(init.headers).get("Idempotency-Key") : null;
+        if (!idempotencyKey) {
+          return jsonResponse(400, { error: "Idempotency-Key header is required." });
+        }
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        const modelId = typeof body.model_id === "string" ? body.model_id : undefined;
+        const fingerprint = typeof body.recipe_fingerprint === "string" ? body.recipe_fingerprint : undefined;
+        const confirmed = body.confirm_automatic_recipe_attempt === true;
+        if (!modelId || !fingerprint) {
+          return jsonResponse(400, { error: "Missing model_id or recipe_fingerprint." });
+        }
+        if (!confirmed) {
+          return jsonResponse(400, { error: "Automatic recipe attempt confirmation is required." });
+        }
+        const model = findModel(modelId);
+        if (!model) {
+          return jsonResponse(404, { error: "Model not found." });
+        }
+        const preview = generatedRecipePayload(model);
+        if (!preview.eligible_for_automatic_recipe_attempt) {
+          return jsonResponse(409, { error: "Model is not eligible for automatic recipe attempts." });
+        }
+        const attemptId = `attempt-${nextAttemptId}`;
+        nextAttemptId += 1;
+        const attempt: FixtureAttempt = {
+          attemptId,
+          modelId: model.id,
+          recipeFingerprint: fingerprint,
+          state: "running",
+          gates: []
+        };
+        const jobId = `job-${nextJobId}`;
+        nextJobId += 1;
+        const job: FixtureJob = {
+          jobId,
+          model,
+          attemptId,
+          stageIndex: 0,
+          currentStage: PIPELINE[0],
+          cancellable: true,
+          events: [],
+          nextSequence: 1
+        };
+        attempt.buildJobId = jobId;
+        addEvent(job, "queued", "Generated recipe attempt queued.");
+        attempts.set(attemptId, attempt);
+        jobs.set(jobId, job);
+        return jsonResponse(200, {
+          idempotent_replay: false,
+          job: currentStatus(job),
+          attempt: attemptResponse(attempt)
+        });
+      }
+
+      const generatedAttemptMatch = pathname.match(/^\/api\/recipes\/generated\/attempts\/([^/]+)$/);
+      if (generatedAttemptMatch && method === "GET") {
+        const attempt = attempts.get(decodeURIComponent(generatedAttemptMatch[1]));
+        if (!attempt) {
+          return jsonResponse(404, { error: "Recipe attempt not found." });
+        }
+        const job = attempt.buildJobId ? jobs.get(attempt.buildJobId) : undefined;
+        if (job) {
+          syncAttemptFromJob(job);
+        }
+        return jsonResponse(200, attemptResponse(attempt));
       }
 
       if (pathname === "/api/builds" && method === "POST") {
@@ -592,6 +807,7 @@ export function createFixtureTransport(): Transport {
           return jsonResponse(404, { error: "Build job not found." });
         }
         advance(job);
+        syncAttemptFromJob(job);
         return jsonResponse(200, currentStatus(job));
       }
 
@@ -605,6 +821,7 @@ export function createFixtureTransport(): Transport {
         if (job.currentStage !== "succeeded" && job.currentStage !== "failed" && job.currentStage !== "cancelled") {
           advance(job);
         }
+        syncAttemptFromJob(job);
         const events = job.events.filter((event) => event.sequence > after).map((event) => ({
           sequence: event.sequence,
           state: event.stage,
@@ -626,6 +843,7 @@ export function createFixtureTransport(): Transport {
         job.currentStage = "cancelled";
         job.cancellable = false;
         addEvent(job, "cancelled", "Build cancelled by user.");
+        syncAttemptFromJob(job);
         return jsonResponse(200, currentStatus(job));
       }
 

@@ -1,0 +1,233 @@
+{
+  "schema_version": "1.0.0",
+  "diagnostic_id": "quality-round4-diagnostic-001",
+  "round_id": "r4-20260902T083935Z",
+  "round_branch": "wayne-ch-linus-fixing-generated-execution",
+  "round_commit": "72a87d0abaeed8ac8b5027cc0f7978e321edb94c",
+  "quality_profile": {
+    "profile_id": "textgen-basic-quality-v1",
+    "version": "1.0.0",
+    "prompt_count": 4,
+    "deterministic_inference": {
+      "temperature": 0.0,
+      "seed": 17,
+      "max_tokens": 64
+    },
+    "unsupported_determinism_fields_at_runtime": ["temperature", "seed"],
+    "effective_determinism": "max_tokens only; temperature and seed not enforced by runtime"
+  },
+  "evidence_gap": {
+    "actual_outputs_retained": false,
+    "reason": "Round 4 ran with retain_failed_workspaces=false. Scratch workspaces containing model artifacts and inference outputs were deleted after the run. Committed artifacts contain only error_signatures (failure codes) but not raw baseline/optimized output text.",
+    "scratch_ref": "scratch://round-4/r4-20260902T083935Z",
+    "workspace_freed_bytes": 49568422734,
+    "remediation": "To recover actual outputs, a bounded rerun is needed using pinned cache snapshots still retained at 12.977 GiB. This requires loading the optimized and baseline (Mobius FP32) artifacts and re-executing the 4 quality prompts per model—no full rebuild is needed."
+  },
+  "models_diagnosed": [
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "revision_sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+      "parameter_count": "360M",
+      "architecture": "LlamaForCausalLM",
+      "capability_id": "llama-text-generation-cpu-int4-v1",
+      "optimization": "int4 via mobius-olive",
+      "all_prior_gates_passed": ["mobius_build", "olive_optimize", "onnx_validation", "ort_validation", "oga_validation", "fl_sdk_inference"],
+      "error_signature": "Quality validation failed: arithmetic-addition-17-plus-28:exact_match_failed|max_words_exceeded; instruction-two-words-blue-river:max_words_exceeded; format-json-answer-unit:forbidden_token_present:```|json_format_invalid; baseline:baseline_failed_functional_checks|optimized_failed_prompt:format-json-answer-unit",
+      "prompt_failures": [
+        {
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "category": "arithmetic",
+          "prompt_text": "What is 17 + 28? Reply using only digits.",
+          "expected_exact_match": "45",
+          "expected_max_words": 2,
+          "optimized_failure_codes": ["exact_match_failed", "max_words_exceeded"],
+          "baseline_passed_this_prompt": false,
+          "classification": "baseline_functional_failure",
+          "reasoning": "Both baseline (Mobius FP32) and optimized (INT4) failed this prompt. The max_words_exceeded failure indicates the model produced a verbose response instead of just digits. This is a baseline functional failure, not a quantization regression. Without retained raw output text, the detailed root cause (model capability vs prompt/template/inference plumbing) is unproven."
+        },
+        {
+          "prompt_id": "instruction-two-words-blue-river",
+          "category": "instruction-following",
+          "prompt_text": "Output exactly two words: blue river",
+          "expected_max_words": 2,
+          "expected_required_tokens": ["blue", "river"],
+          "optimized_failure_codes": ["max_words_exceeded"],
+          "baseline_passed_this_prompt": false,
+          "classification": "baseline_functional_failure",
+          "reasoning": "The baseline comparison regressions list does NOT include optimized_failed_prompt:instruction-two-words-blue-river. Under _compare_quantization logic, absence from the optimized_failed_prompt list means baseline also failed this prompt. Both baseline and optimized exceeded max_words. This is a baseline functional failure, not a quantization regression. Without retained raw output text, the detailed root cause (model capability vs prompt/template/inference plumbing) is unproven."
+        },
+        {
+          "prompt_id": "format-json-answer-unit",
+          "category": "output-format",
+          "prompt_text": "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.",
+          "expected_required_json_keys": ["answer", "unit"],
+          "expected_forbidden_tokens": ["```"],
+          "optimized_failure_codes": ["forbidden_token_present:```", "json_format_invalid"],
+          "baseline_passed_this_prompt": true,
+          "classification": "quantization_regression",
+          "reasoning": "The baseline comparison explicitly lists optimized_failed_prompt:format-json-answer-unit, confirming baseline PASSED this prompt but optimized FAILED. The optimized model wraps its JSON output in markdown code fences (triple-backtick), which triggers both forbidden_token_present (the profile contract forbids ```) and json_format_invalid (json.loads on fenced text fails). Even if the JSON parser were made fence-aware, the forbidden_token check independently fails on ```. This is a genuine INT4 quantization regression: the optimized model's formatting behavior degraded relative to the FP32 baseline."
+        },
+        {
+          "prompt_id": "factual-red-planet",
+          "category": "factual-recall",
+          "prompt_text": "Which planet is known as the Red Planet? Reply with one word.",
+          "optimized_failure_codes": [],
+          "baseline_passed_this_prompt": true,
+          "classification": "passed",
+          "reasoning": "This prompt passed for both baseline and optimized."
+        }
+      ],
+      "baseline_comparison_regressions": ["baseline_failed_functional_checks", "optimized_failed_prompt:format-json-answer-unit"],
+      "overall_diagnosis": {
+        "baseline_also_failed": true,
+        "genuine_quantization_regressions": ["format-json-answer-unit"],
+        "baseline_functional_failures": ["arithmetic-addition-17-plus-28", "instruction-two-words-blue-river"],
+        "summary": "1 of 4 prompts passed. 1 failure is a genuine INT4 quantization regression (JSON format — optimized introduced markdown fences; forbidden_token independently blocks promotion even if parser were fence-aware). 2 failures are baseline functional failures where both FP32 and INT4 failed (arithmetic, instruction word count); without retained raw outputs the detailed root cause is unproven. A bounded rerun with output capture is needed to establish whether these are model capability, prompt/template, or inference plumbing issues."
+      }
+    },
+    {
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "revision_sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+      "parameter_count": "2B",
+      "architecture": "GraniteForCausalLM",
+      "capability_id": "granite-text-generation-cpu-int4-v1",
+      "optimization": "int4 via mobius-olive",
+      "all_prior_gates_passed": ["mobius_build", "olive_optimize", "onnx_validation", "ort_validation", "oga_validation", "fl_sdk_inference"],
+      "error_signature": "Quality validation failed: arithmetic-addition-17-plus-28:exact_match_failed|relevance_keyword_missing; baseline:baseline_failed_functional_checks",
+      "prompt_failures": [
+        {
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "category": "arithmetic",
+          "prompt_text": "What is 17 + 28? Reply using only digits.",
+          "expected_exact_match": "45",
+          "expected_relevance_keywords": ["45"],
+          "expected_max_words": 2,
+          "optimized_failure_codes": ["exact_match_failed", "relevance_keyword_missing"],
+          "baseline_passed_this_prompt": false,
+          "classification": "baseline_functional_failure",
+          "reasoning": "The baseline comparison regressions list contains only baseline_failed_functional_checks and NO optimized_failed_prompt entries. This proves the baseline also failed the same prompt(s). relevance_keyword_missing means '45' does not appear anywhere in the output—the answer token is entirely absent, which specifically establishes a wrong-answer condition. Both FP32 baseline and INT4 optimized failed identically. This is a baseline functional failure, not a quantization regression."
+        },
+        {
+          "prompt_id": "factual-red-planet",
+          "category": "factual-recall",
+          "optimized_failure_codes": [],
+          "baseline_passed_this_prompt": true,
+          "classification": "passed",
+          "reasoning": "Passed."
+        },
+        {
+          "prompt_id": "instruction-two-words-blue-river",
+          "category": "instruction-following",
+          "optimized_failure_codes": [],
+          "baseline_passed_this_prompt": true,
+          "classification": "passed",
+          "reasoning": "Passed."
+        },
+        {
+          "prompt_id": "format-json-answer-unit",
+          "category": "output-format",
+          "optimized_failure_codes": [],
+          "baseline_passed_this_prompt": true,
+          "classification": "passed",
+          "reasoning": "Passed."
+        }
+      ],
+      "baseline_comparison_regressions": ["baseline_failed_functional_checks"],
+      "overall_diagnosis": {
+        "baseline_also_failed": true,
+        "genuine_quantization_regressions": [],
+        "baseline_functional_failures": ["arithmetic-addition-17-plus-28"],
+        "summary": "3 of 4 prompts passed. The single failure (arithmetic) is a baseline functional failure — both FP32 baseline and INT4 optimized failed identically with '45' absent from output (relevance_keyword_missing specifically establishes wrong-answer). Zero quantization regressions. Without retained raw output text, the detailed root cause beyond wrong-answer is unproven."
+      }
+    }
+  ],
+  "cross_cutting_analysis": {
+    "chat_template_verification": {
+      "status": "same_template_confirmed",
+      "reasoning": "Both baseline and optimized inference paths use the same _execute_quality_prompts method in local_service.py (lines 2164-2195). The backend.infer() call is identical for both; only the artifact path differs (Mobius FP32 baseline at workspace/mobius vs Olive INT4 at workspace/output). The chat template is determined by the tokenizer bundled with each artifact, which originates from the same source model. No chat template divergence."
+    },
+    "determinism_enforcement": {
+      "status": "partial",
+      "enforced": ["max_tokens"],
+      "not_enforced": ["temperature", "seed"],
+      "impact": "Without temperature=0 and seed enforcement, outputs are non-deterministic across runs. However, this affects reproducibility, not the validity of a single-run evaluation. Both baseline and optimized were evaluated in the same run with the same non-enforcement. The lack of seed/temperature control means re-running could produce different outputs, but within a single round, comparisons are fair."
+    },
+    "evaluator_analysis": {
+      "json_format_check": {
+        "issue": "legitimate_failure",
+        "detail": "The profile contract forbids ``` (triple-backtick) via forbidden_tokens. The _parse_json_object function (quality_validation.py line 478) calls json.loads() on raw output_text, which also fails on markdown-fenced content. Even if the parser were made fence-aware, the forbidden_token check independently rejects ```. The current contract is intentional: models must produce clean JSON without markdown wrapping. This is a legitimate format requirement.",
+        "recommendation": "keep_failure_as_legitimate"
+      },
+      "arithmetic_check": {
+        "issue": "fair_check",
+        "detail": "The arithmetic prompt ('What is 17+28? Reply using only digits.') with exact_match='45' and max_words=2 is a reasonable functional bar. Two-digit addition is a basic capability test. Models that cannot produce '45' genuinely lack this capability.",
+        "recommendation": "keep_failure_as_legitimate"
+      },
+      "instruction_word_count_check": {
+        "issue": "fair_but_strict",
+        "detail": "max_words=2 for 'Output exactly two words: blue river' is strict but fair—the prompt explicitly says 'exactly two words'. Small models (<1B) are known to struggle with precise output length control. This is a legitimate functional standard.",
+        "recommendation": "keep_failure_as_legitimate"
+      }
+    },
+    "prompt_fairness_assessment": {
+      "range": "0.36B to 3B instruction models",
+      "verdict": "The 4-prompt profile is generally fair for instruction-following models. Factual recall (Red Planet) and instruction following (two words) are reasonable. Arithmetic is a legitimate functional bar. JSON format requires clean output without markdown wrapping, which is an intentional contract.",
+      "prompts_by_difficulty": {
+        "easiest": "factual-red-planet (all models expected to pass)",
+        "moderate": "instruction-two-words-blue-river (requires precise output control)",
+        "moderate_to_hard": "format-json-answer-unit (requires clean structured output without markdown wrapping)",
+        "hardest_for_small": "arithmetic-addition-17-plus-28 (requires computation)"
+      }
+    }
+  },
+  "recommendations": [
+    {
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "recommendation": "keep_failures_as_legitimate",
+      "actions": [
+        {
+          "action": "keep_failure_as_legitimate",
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "rationale": "Baseline functional failure. Both baseline and optimized fail. Root cause unproven without retained raw outputs."
+        },
+        {
+          "action": "keep_failure_as_legitimate",
+          "prompt_id": "format-json-answer-unit",
+          "rationale": "Quantization regression — baseline passed, optimized introduced markdown fences. The forbidden_token contract independently rejects ```, so this is a legitimate current format failure."
+        },
+        {
+          "action": "keep_failure_as_legitimate",
+          "prompt_id": "instruction-two-words-blue-river",
+          "rationale": "Baseline functional failure. Both baseline and optimized fail. Root cause unproven without retained raw outputs."
+        }
+      ],
+      "path_to_passing": "SmolLM2-360M fails 3 of 4 prompts (2 baseline functional failures, 1 quantization regression). It remains in the model set. Without retained raw outputs, detailed root cause for baseline failures is unproven. A bounded rerun with output capture is the prerequisite for further analysis."
+    },
+    {
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "recommendation": "keep_failure_as_legitimate",
+      "actions": [
+        {
+          "action": "keep_failure_as_legitimate",
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "rationale": "Baseline functional failure. Both baseline and optimized produce wrong answer (relevance_keyword_missing confirms '45' absent). Zero quantization regressions. Without retained raw output, root cause beyond wrong-answer is unproven."
+        }
+      ],
+      "path_to_passing": "Granite 3.2 2B passes 3/4 with zero quantization regressions. The arithmetic failure is a baseline functional failure. Without retained raw outputs, root cause beyond wrong-answer is unproven. A bounded rerun with output capture is the prerequisite for further analysis."
+    }
+  ],
+  "generic_fixes_required": [],
+  "next_round_harness_requirements": [
+    {
+      "requirement_id": "retain-quality-outputs",
+      "description": "The next round harness must retain bounded sanitized baseline and optimized output text for every quality prompt, plus determinism enforcement metadata, in committed artifacts. This enables root-cause analysis (model capability vs prompt/template vs inference plumbing) without requiring a rerun. No model-specific prompt changes.",
+      "fields_per_prompt": ["prompt_id", "baseline_output_text", "optimized_output_text", "applied_determinism", "unsupported_determinism_fields"],
+      "sanitization": "Truncate output text to max_tokens limit. Strip any absolute filesystem paths. Do not include model binary content."
+    }
+  ],
+  "rerun_requirement": {
+    "needed": true,
+    "scope": "bounded_inference_only",
+    "description": "A bounded rerun is needed to capture actual baseline and optimized output text for all 4 prompts × 2 models. No full rebuild needed — pinned cache snapshots (12.977 GiB) are retained. The rerun should: (1) load baseline and optimized artifacts from cache, (2) execute 4 quality prompts on each, (3) capture and persist raw output text in the diagnostic artifacts. No evaluator or profile changes as a prerequisite."
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "round_id": "round-4",
+  "scope": {
+    "tinyllama_model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "qwen_model_ids": [
+      "Qwen/Qwen2-1.5B-Instruct",
+      "Qwen/Qwen2-0.5B-Instruct"
+    ],
+    "qwen_rebuilt_variant": "Qwen/Qwen2-0.5B-Instruct"
+  },
+  "toolchain_probe": {
+    "mobius": "0.1.0",
+    "olive": "0.13.0",
+    "onnx": "1.22.0",
+    "onnxruntime": "1.29.0",
+    "onnxruntime_genai": "0.15.2",
+    "foundry_local_sdk": "1.2.4"
+  },
+  "tinyllama": {
+    "round4_error_signature": "Runtime validation failed: {\"ok\": false, \"error\": \"Model output was not found: logits\"}",
+    "mobius_graph_outputs_head": [
+      "logits",
+      "present.0.key",
+      "present.0.value"
+    ],
+    "olive_graph_outputs_head": [
+      "logits_Q4",
+      "present.0.key",
+      "present.0.value"
+    ],
+    "olive_decoder_logits_mapping_before": "logits",
+    "olive_decoder_logits_mapping_after": "logits_Q4",
+    "runtime_validation_results": {
+      "olive_unpatched": {
+        "ok": false,
+        "error": "Model output was not found: logits"
+      },
+      "olive_reconciled_config": {
+        "ok": true,
+        "checks": [
+          "onnx_checker=1",
+          "ort_cpu_load=passed",
+          "oga_generation=passed"
+        ]
+      }
+    },
+    "foundry_results": {
+      "unpatched": {
+        "ok": false,
+        "error_contains": "Model output was not found: logits"
+      },
+      "reconciled_config": {
+        "ok": true
+      }
+    }
+  },
+  "qwen2_0_5b": {
+    "round4_error_signature": "Runtime validation failed: {\"ok\": false, \"error\": \"[ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for GatherBlockQuantized(1) node with name 'model/embed_tokens/Gather_node_0_Q4'\"}",
+    "olive_default": {
+      "op_counts": {
+        "GatherBlockQuantized": 3,
+        "MatMulNBits": 168,
+        "DequantizeLinear": 0
+      },
+      "observed_scale_dtypes": [
+        "BFLOAT16"
+      ],
+      "runtime_validation": {
+        "ok": false,
+        "error_contains": "GatherBlockQuantized(1) NOT_IMPLEMENTED"
+      }
+    },
+    "rtn_nodes_to_exclude_all_gather": {
+      "op_counts": {
+        "GatherBlockQuantized": 0,
+        "MatMulNBits": 168,
+        "DequantizeLinear": 0
+      },
+      "observed_scale_dtypes": [
+        "BFLOAT16"
+      ],
+      "runtime_validation": {
+        "ok": false,
+        "error_contains": "MatMulNBits(1) NOT_IMPLEMENTED"
+      }
+    },
+    "rtn_nodes_to_exclude_all_gather_and_qdq_rewrite": {
+      "op_counts": {
+        "GatherBlockQuantized": 0,
+        "MatMulNBits": 0,
+        "DequantizeLinear": 168
+      },
+      "runtime_validation": {
+        "ok": false,
+        "error_contains": "DequantizeLinear(24) NOT_IMPLEMENTED"
+      }
+    },
+    "mobius_f32_then_olive_int4": {
+      "op_counts": {
+        "GatherBlockQuantized": 1,
+        "MatMulNBits": 120,
+        "DequantizeLinear": 0
+      },
+      "observed_scale_dtypes": [
+        "FLOAT"
+      ],
+      "runtime_validation": {
+        "ok": true,
+        "checks": [
+          "onnx_checker=1",
+          "ort_cpu_load=passed",
+          "oga_generation=passed"
+        ]
+      }
+    },
+    "olive_optimize_extra_mb_options_probe": {
+      "requested_options": "int4_op_types_to_quantize=MatMul",
+      "generated_passes": [
+        "OnnxPeepholeOptimizer",
+        "OnnxBlockWiseRtnQuantization"
+      ],
+      "result": "GatherBlockQuantized still present and runtime fails with GatherBlockQuantized(1) NOT_IMPLEMENTED."
+    }
+  },
+  "upstream_contract_evidence": {
+    "olive_0_13_0_rtn_quantization": [
+      "OnnxBlockWiseRtnQuantization quantizes MatMul -> MatMulNBits and Gather -> GatherBlockQuantized.",
+      "The pass-level controls are nodes_to_exclude and nodes_to_include."
+    ],
+    "ort_1_29_0_gather_block_quantized_cpu": [
+      "Kernel type constraints register GatherBlockQuantized for scale tensor type T2 in {float, MLFloat16}.",
+      "The BFLOAT16 dequantization branch throws: DequantizeLinear into BFLOAT16 is not implemented yet."
+    ],
+    "ort_1_29_0_matmul_nbits_cpu": [
+      "MatMulNBits kernels are registered for T1=float and T1=MLFloat16 (not BFLOAT16)."
+    ]
+  },
+  "classifications": [
+    {
+      "issue": "TinyLlama logits mapping mismatch after Olive",
+      "category": "generic config/artifact reconciliation"
+    },
+    {
+      "issue": "Qwen INT4 default path quantizes BF16 tensors into contrib ops incompatible with current runtime type constraints",
+      "category": "missing ORT/OGA source/runtime capability"
+    },
+    {
+      "issue": "Olive ONNX RTN default quantizes Gather and MatMul; production optimize flow does not expose pass-level node exclude/include controls",
+      "category": "architecture-level Olive rule"
+    },
+    {
+      "issue": "System Python interpreter lacked required packages while Round 4 used dedicated venv; this affected local repro setup but not Round 4 root-cause signatures",
+      "category": "environment/package issue"
+    }
+  ]
+}

@@ -47,6 +47,7 @@ class HuggingFaceMetadata:
     safetensors_parameter_count: int | None
     card_data: dict[str, object] | None
     sibling_count: int | None
+    sibling_files: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)

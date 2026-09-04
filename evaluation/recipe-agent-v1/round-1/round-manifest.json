@@ -1,0 +1,542 @@
+{
+  "branch": "wayne-ch-basher-running-five-models",
+  "commit": "2da550d44d2d93bb679091149011a4dd91d5af23",
+  "final_snapshot": {
+    "cache_bytes": 0,
+    "disk_free_gb": 1402.85,
+    "disk_used_gb": 503.592,
+    "runtime_bytes": 385904,
+    "state_bytes": 385904,
+    "timestamp_utc": "2026-09-02T00:33:21.408961+00:00",
+    "workspace_bytes": 0
+  },
+  "finished_utc": "2026-09-02T00:33:21.408961+00:00",
+  "frozen_cli": {
+    "frozen_dry_run": {
+      "command": [
+        "<redacted-absolute-path>",
+        "-m",
+        "fl_model_onboarding.cli",
+        "recipe-agent",
+        "frozen-dry-run",
+        "--path",
+        "<repo-root>\\evaluation\\recipe-agent-v1\\models.json"
+      ],
+      "exit_code": 0,
+      "json": {
+        "manifest_path": "<repo-root>\\evaluation\\recipe-agent-v1\\models.json",
+        "outcomes": [
+          {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "llama-text-generation-cpu-int4-v1",
+              "matched_aliases": [
+                "llama",
+                "llamaforcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.",
+              "reason_code": "resolved",
+              "status": "verified"
+            },
+            "catalog_present": false,
+            "fingerprint": "b43810229af32be49c7fb206b5583724a0e0513a04778afce458d2116ad03bb2",
+            "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "model_type": "llama",
+            "recipe_id": "tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          },
+          {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "llama-text-generation-cpu-int4-v1",
+              "matched_aliases": [
+                "llama",
+                "llamaforcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.",
+              "reason_code": "resolved",
+              "status": "verified"
+            },
+            "catalog_present": false,
+            "fingerprint": "9c621c981470570952a48cdc1a0694d663894e37a0ae72e2af3f9229cb2f2a36",
+            "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+            "model_type": "llama",
+            "recipe_id": "huggingfacetb-smollm2-360m-instruct-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "a10cc1512eabd3dde888204e902eca88bddb4951",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          },
+          {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+              "matched_aliases": [
+                "qwen2",
+                "qwen2forcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.",
+              "reason_code": "resolved",
+              "status": "tool-supported-unverified"
+            },
+            "catalog_present": false,
+            "fingerprint": "1935fb6c9815a2cf2aa3f50cf45289b2522e814d19677b9616fff29e97fb640e",
+            "model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "model_type": "qwen2",
+            "recipe_id": "qwen-qwen2-1-5b-instruct-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          },
+          {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+              "matched_aliases": [
+                "qwen2",
+                "qwen2forcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.",
+              "reason_code": "resolved",
+              "status": "tool-supported-unverified"
+            },
+            "catalog_present": false,
+            "fingerprint": "3e87eb4d13225313c6f4b89d800be68f328c254aa52efa5faed24ab6949e98db",
+            "model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "model_type": "qwen2",
+            "recipe_id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          },
+          {
+            "architectures": [
+              "GraniteForCausalLM"
+            ],
+            "capability": {
+              "capability_id": "granite-text-generation-cpu-int4-v1",
+              "matched_aliases": [
+                "granite",
+                "graniteforcausallm"
+              ],
+              "outcome": "exact",
+              "reason": "Resolved to capability 'granite-text-generation-cpu-int4-v1' (verified) via alias(es): granite, graniteforcausallm.",
+              "reason_code": "resolved",
+              "status": "verified"
+            },
+            "catalog_present": false,
+            "fingerprint": "14f2e069f299cfc16857de6f56fac08292b1c801d888da1103c86b8e4545e941",
+            "model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "model_type": "granite",
+            "recipe_id": "ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4",
+            "recipe_status": "experimental",
+            "recipe_version": "0.1.0",
+            "sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3",
+            "status": "compiled",
+            "tool_execution": "not-started"
+          }
+        ],
+        "summary": {
+          "compiled_models": 5,
+          "non_compiled_models": 0,
+          "total_models": 5
+        },
+        "tool_execution": "disabled",
+        "valid": true
+      },
+      "stderr": "",
+      "stdout": "{\n  \"manifest_path\": \"<redacted-absolute-path>\",\n  \"valid\": true,\n  \"tool_execution\": \"disabled\",\n  \"summary\": {\n    \"total_models\": 5,\n    \"compiled_models\": 5,\n    \"non_compiled_models\": 0\n  },\n  \"outcomes\": [\n    {\n      \"model_id\": \"TinyLlama/TinyLlama-1.1B-Chat-v1.0\",\n      \"sha\": \"fe8a4ea1ffedaf415f4da2f062534de366a451e6\",\n      \"model_type\": \"llama\",\n      \"architectures\": [\n        \"LlamaForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.\",\n        \"matched_aliases\": [\n          \"llama\",\n          \"llamaforcausallm\"\n        ],\n        \"capability_id\": \"llama-text-generation-cpu-int4-v1\",\n        \"status\": \"verified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"b43810229af32be49c7fb206b5583724a0e0513a04778afce458d2116ad03bb2\",\n      \"recipe_id\": \"tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    },\n    {\n      \"model_id\": \"HuggingFaceTB/SmolLM2-360M-Instruct\",\n      \"sha\": \"a10cc1512eabd3dde888204e902eca88bddb4951\",\n      \"model_type\": \"llama\",\n      \"architectures\": [\n        \"LlamaForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.\",\n        \"matched_aliases\": [\n          \"llama\",\n          \"llamaforcausallm\"\n        ],\n        \"capability_id\": \"llama-text-generation-cpu-int4-v1\",\n        \"status\": \"verified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"9c621c981470570952a48cdc1a0694d663894e37a0ae72e2af3f9229cb2f2a36\",\n      \"recipe_id\": \"huggingfacetb-smollm2-360m-instruct-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    },\n    {\n      \"model_id\": \"Qwen/Qwen2-1.5B-Instruct\",\n      \"sha\": \"ba1cf1846d7df0a0591d6c00649f57e798519da8\",\n      \"model_type\": \"qwen2\",\n      \"architectures\": [\n        \"Qwen2ForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.\",\n        \"matched_aliases\": [\n          \"qwen2\",\n          \"qwen2forcausallm\"\n        ],\n        \"capability_id\": \"qwen-text-generation-cpu-int4-unverified-v1\",\n        \"status\": \"tool-supported-unverified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"1935fb6c9815a2cf2aa3f50cf45289b2522e814d19677b9616fff29e97fb640e\",\n      \"recipe_id\": \"qwen-qwen2-1-5b-instruct-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    },\n    {\n      \"model_id\": \"Qwen/Qwen2-0.5B-Instruct\",\n      \"sha\": \"c540970f9e29518b1d8f06ab8b24cba66ad77b6d\",\n      \"model_type\": \"qwen2\",\n      \"architectures\": [\n        \"Qwen2ForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.\",\n        \"matched_aliases\": [\n          \"qwen2\",\n          \"qwen2forcausallm\"\n        ],\n        \"capability_id\": \"qwen-text-generation-cpu-int4-unverified-v1\",\n        \"status\": \"tool-supported-unverified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"3e87eb4d13225313c6f4b89d800be68f328c254aa52efa5faed24ab6949e98db\",\n      \"recipe_id\": \"qwen-qwen2-0-5b-instruct-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    },\n    {\n      \"model_id\": \"ibm-granite/granite-3.2-2b-instruct\",\n      \"sha\": \"641593c3b25bec0b1efe9f0f7d7a67f7243f86a3\",\n      \"model_type\": \"granite\",\n      \"architectures\": [\n        \"GraniteForCausalLM\"\n      ],\n      \"catalog_present\": false,\n      \"capability\": {\n        \"outcome\": \"exact\",\n        \"reason_code\": \"resolved\",\n        \"reason\": \"Resolved to capability 'granite-text-generation-cpu-int4-v1' (verified) via alias(es): granite, graniteforcausallm.\",\n        \"matched_aliases\": [\n          \"granite\",\n          \"graniteforcausallm\"\n        ],\n        \"capability_id\": \"granite-text-generation-cpu-int4-v1\",\n        \"status\": \"verified\"\n      },\n      \"tool_execution\": \"not-started\",\n      \"status\": \"compiled\",\n      \"fingerprint\": \"14f2e069f299cfc16857de6f56fac08292b1c801d888da1103c86b8e4545e941\",\n      \"recipe_id\": \"ibm-granite-granite-3-2-2b-instruct-llm-cpu-int4\",\n      \"recipe_version\": \"0.1.0\",\n      \"recipe_status\": \"experimental\"\n    }\n  ]\n}"
+    },
+    "frozen_list": {
+      "command": [
+        "<redacted-absolute-path>",
+        "-m",
+        "fl_model_onboarding.cli",
+        "recipe-agent",
+        "frozen-list",
+        "--path",
+        "<repo-root>\\evaluation\\recipe-agent-v1\\models.json"
+      ],
+      "exit_code": 0,
+      "json": {
+        "count": 5,
+        "manifest_path": "<repo-root>\\evaluation\\recipe-agent-v1\\models.json",
+        "models": [
+          {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'"
+            },
+            "index": 1,
+            "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "model_type": "llama",
+            "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6"
+          },
+          {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'smollm2-360m-instruct'"
+            },
+            "index": 2,
+            "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+            "model_type": "llama",
+            "sha": "a10cc1512eabd3dde888204e902eca88bddb4951"
+          },
+          {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'"
+            },
+            "index": 3,
+            "model_id": "Qwen/Qwen2-1.5B-Instruct",
+            "model_type": "qwen2",
+            "sha": "ba1cf1846d7df0a0591d6c00649f57e798519da8"
+          },
+          {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'"
+            },
+            "index": 4,
+            "model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "model_type": "qwen2",
+            "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d"
+          },
+          {
+            "architectures": [
+              "GraniteForCausalLM"
+            ],
+            "catalog_match": {
+              "confidence": "none",
+              "matched": false,
+              "matched_entry": null,
+              "reason": "No catalog entry matches normalized HF name 'granite-3-2-2b-instruct'"
+            },
+            "index": 5,
+            "model_id": "ibm-granite/granite-3.2-2b-instruct",
+            "model_type": "granite",
+            "sha": "641593c3b25bec0b1efe9f0f7d7a67f7243f86a3"
+          }
+        ],
+        "schema_version": "1.0.0",
+        "selection_timestamp": "2026-08-31T23:47:14.488462+00:00"
+      },
+      "stderr": "",
+      "stdout": "{\n  \"manifest_path\": \"<redacted-absolute-path>\",\n  \"schema_version\": \"1.0.0\",\n  \"selection_timestamp\": \"2026-08-31T23:47:14.488462+00:00\",\n  \"count\": 5,\n  \"models\": [\n    {\n      \"index\": 1,\n      \"model_id\": \"TinyLlama/TinyLlama-1.1B-Chat-v1.0\",\n      \"sha\": \"fe8a4ea1ffedaf415f4da2f062534de366a451e6\",\n      \"model_type\": \"llama\",\n      \"architectures\": [\n        \"LlamaForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'\",\n        \"matched_entry\": null\n      }\n    },\n    {\n      \"index\": 2,\n      \"model_id\": \"HuggingFaceTB/SmolLM2-360M-Instruct\",\n      \"sha\": \"a10cc1512eabd3dde888204e902eca88bddb4951\",\n      \"model_type\": \"llama\",\n      \"architectures\": [\n        \"LlamaForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'smollm2-360m-instruct'\",\n        \"matched_entry\": null\n      }\n    },\n    {\n      \"index\": 3,\n      \"model_id\": \"Qwen/Qwen2-1.5B-Instruct\",\n      \"sha\": \"ba1cf1846d7df0a0591d6c00649f57e798519da8\",\n      \"model_type\": \"qwen2\",\n      \"architectures\": [\n        \"Qwen2ForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'\",\n        \"matched_entry\": null\n      }\n    },\n    {\n      \"index\": 4,\n      \"model_id\": \"Qwen/Qwen2-0.5B-Instruct\",\n      \"sha\": \"c540970f9e29518b1d8f06ab8b24cba66ad77b6d\",\n      \"model_type\": \"qwen2\",\n      \"architectures\": [\n        \"Qwen2ForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'\",\n        \"matched_entry\": null\n      }\n    },\n    {\n      \"index\": 5,\n      \"model_id\": \"ibm-granite/granite-3.2-2b-instruct\",\n      \"sha\": \"641593c3b25bec0b1efe9f0f7d7a67f7243f86a3\",\n      \"model_type\": \"granite\",\n      \"architectures\": [\n        \"GraniteForCausalLM\"\n      ],\n      \"catalog_match\": {\n        \"matched\": false,\n        \"confidence\": \"none\",\n        \"reason\": \"No catalog entry matches normalized HF name 'granite-3-2-2b-instruct'\",\n        \"matched_entry\": null\n      }\n    }\n  ]\n}"
+    },
+    "frozen_validate": {
+      "command": [
+        "<redacted-absolute-path>",
+        "-m",
+        "fl_model_onboarding.cli",
+        "recipe-agent",
+        "frozen-validate",
+        "--path",
+        "<repo-root>\\evaluation\\recipe-agent-v1\\models.json"
+      ],
+      "exit_code": 0,
+      "json": {
+        "errors": [],
+        "manifest_path": "<repo-root>\\evaluation\\recipe-agent-v1\\models.json",
+        "model_count": 5,
+        "valid": true
+      },
+      "stderr": "",
+      "stdout": "{\n  \"manifest_path\": \"<redacted-absolute-path>\",\n  \"valid\": true,\n  \"errors\": [],\n  \"model_count\": 5\n}"
+    }
+  },
+  "manifest_invariants": {
+    "actual_order": [
+      "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "Qwen/Qwen2-1.5B-Instruct",
+      "Qwen/Qwen2-0.5B-Instruct",
+      "ibm-granite/granite-3.2-2b-instruct"
+    ],
+    "count": 5,
+    "errors": [],
+    "expected_order": [
+      "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "Qwen/Qwen2-1.5B-Instruct",
+      "Qwen/Qwen2-0.5B-Instruct",
+      "ibm-granite/granite-3.2-2b-instruct"
+    ],
+    "full_sha_lengths": true,
+    "ok": true,
+    "order_matches": true,
+    "sha_matches": true
+  },
+  "manifest_path": "evaluation/recipe-agent-v1/models.json",
+  "manifest_sha256": "cc36baf68c8bbc3d4d3324bf4b1a90e2bac73b35219c73de7554d9cc11b59835",
+  "model_registry_and_catalog_snapshot": [
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'"
+      },
+      "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "recipe_registry_reason": "No recipe is registered for model 'TinyLlama/TinyLlama-1.1B-Chat-v1.0' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    },
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'smollm2-360m-instruct'"
+      },
+      "model_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "recipe_registry_reason": "No recipe is registered for model 'HuggingFaceTB/SmolLM2-360M-Instruct' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    },
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'qwen2-1-5b-instruct'"
+      },
+      "model_id": "Qwen/Qwen2-1.5B-Instruct",
+      "recipe_registry_reason": "No recipe is registered for model 'Qwen/Qwen2-1.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    },
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'"
+      },
+      "model_id": "Qwen/Qwen2-0.5B-Instruct",
+      "recipe_registry_reason": "No recipe is registered for model 'Qwen/Qwen2-0.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    },
+    {
+      "live_catalog_matches_count": 0,
+      "live_catalog_status": "live",
+      "manifest_catalog_match": {
+        "confidence": "none",
+        "matched": false,
+        "matched_entry": null,
+        "reason": "No catalog entry matches normalized HF name 'granite-3-2-2b-instruct'"
+      },
+      "model_id": "ibm-granite/granite-3.2-2b-instruct",
+      "recipe_registry_reason": "No recipe is registered for model 'ibm-granite/granite-3.2-2b-instruct' (llm). Build remains blocked until a recipe is added.",
+      "recipe_registry_status": "unregistered"
+    }
+  ],
+  "python_environment": {
+    "child_path_prefixed_scripts": false,
+    "command_resolution": {
+      "foundry": "path-lookup",
+      "mobius": "path-lookup",
+      "olive": "path-lookup"
+    },
+    "parent_path_has_scripts": false,
+    "python_executable_name": "python.exe",
+    "python_version": null,
+    "scripts_dir_name": "Scripts",
+    "scripts_dir_resolution": "unknown",
+    "venv_name": "unknown"
+  },
+  "quality_profile": {
+    "deterministic_inference": {
+      "max_tokens": 64,
+      "seed": 17,
+      "temperature": 0.0
+    },
+    "profile_id": "textgen-basic-quality-v1",
+    "prompt_count": 4,
+    "task": "text-generation",
+    "unsupported_determinism_fields_reported_by_runtime": [
+      "temperature",
+      "seed"
+    ],
+    "version": "1.0.0"
+  },
+  "reuse_checks": [],
+  "round_outcome": {
+    "attempt_success_rate": "0/5",
+    "baseline_valid": false,
+    "environment_blockers": [
+      "command:mobius",
+      "command:olive"
+    ],
+    "environment_fail_fast_triggered": false,
+    "model_success_rate_applicable": false,
+    "round_classification": "invalid_environment",
+    "success_rate": "not_applicable"
+  },
+  "run_id": "r1-20260902T003139Z",
+  "scratch_locations": {
+    "cache": "scratch://round-1/r1-20260902T003139Z/cache",
+    "recipe_attempt_db": "scratch://round-1/r1-20260902T003139Z/state/recipe-attempts.sqlite3",
+    "root": "scratch://round-1/r1-20260902T003139Z",
+    "service_db": "scratch://round-1/r1-20260902T003139Z/state/service.sqlite3",
+    "state": "scratch://round-1/r1-20260902T003139Z/state",
+    "workspace": "scratch://round-1/r1-20260902T003139Z/workspace"
+  },
+  "started_utc": "2026-09-02T00:31:39.620882+00:00",
+  "toolchain_probe": {
+    "missing_required": [
+      "command:mobius",
+      "command:olive"
+    ],
+    "probes": [
+      {
+        "available": true,
+        "kind": "command",
+        "name": "foundry",
+        "probe": "0.11.0",
+        "required": true,
+        "resolution": "path-lookup",
+        "version": "0.11.0"
+      },
+      {
+        "available": false,
+        "kind": "command",
+        "name": "mobius",
+        "probe": "command-not-found",
+        "required": true,
+        "resolution": "path-lookup",
+        "version": null
+      },
+      {
+        "available": false,
+        "kind": "command",
+        "name": "olive",
+        "probe": "command-not-found",
+        "required": true,
+        "resolution": "path-lookup",
+        "version": null
+      },
+      {
+        "available": true,
+        "import_name": "onnx",
+        "kind": "python-package",
+        "name": "onnx",
+        "probe": "{\"version\": \"1.22.0\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "version": "1.22.0"
+      },
+      {
+        "available": true,
+        "import_name": "onnxruntime",
+        "kind": "python-package",
+        "name": "onnxruntime",
+        "probe": "{\"version\": \"1.29.0\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "version": "1.29.0"
+      },
+      {
+        "available": true,
+        "import_name": "onnxruntime_genai",
+        "kind": "python-package",
+        "name": "onnxruntime-genai",
+        "probe": "{\"version\": \"0.15.2\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "version": "0.15.2"
+      },
+      {
+        "available": true,
+        "import_name": "foundry_local_sdk",
+        "kind": "python-package",
+        "name": "foundry-local-sdk",
+        "probe": "{\"version\": \"1.2.4\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "version": "1.2.4"
+      },
+      {
+        "available": true,
+        "import_name": "mobius",
+        "kind": "python-package",
+        "name": "mobius-onnx",
+        "probe": "{\"version\": \"0.1.0\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "version": "0.1.0"
+      },
+      {
+        "available": true,
+        "import_name": "olive",
+        "kind": "python-package",
+        "name": "olive-ai",
+        "probe": "{\"version\": \"0.13.0\"}",
+        "required": true,
+        "resolution": "python-interpreter",
+        "version": "0.13.0"
+      }
+    ],
+    "python_runtime": {
+      "child_path_prefixed_scripts": false,
+      "command_resolution": {
+        "foundry": "path-lookup",
+        "mobius": "path-lookup",
+        "olive": "path-lookup"
+      },
+      "parent_path_has_scripts": false,
+      "python_executable_name": "python.exe",
+      "python_version": null,
+      "scripts_dir_name": "Scripts",
+      "scripts_dir_resolution": "unknown",
+      "venv_name": "unknown"
+    },
+    "ready_for_round": false
+  }
+}

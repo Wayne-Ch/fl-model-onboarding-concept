@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import time
 
@@ -83,15 +84,15 @@ class SafeSubprocessRunner:
 
         while process.poll() is None:
             if cancel_event is not None and cancel_event.is_set():
-                process.kill()
-                process.wait(timeout=5)
+                _terminate_process_tree(process)
+                _wait_for_exit(process)
                 _join_reader_threads(stdout_thread, stderr_thread)
                 raise SubprocessCancelledError(
                     f"Process cancelled by caller. command={spec.argv!r}"
                 )
             if time.monotonic() - start > spec.timeout_seconds:
-                process.kill()
-                process.wait(timeout=5)
+                _terminate_process_tree(process)
+                _wait_for_exit(process)
                 _join_reader_threads(stdout_thread, stderr_thread)
                 raise TimeoutError(f"Command timed out after {spec.timeout_seconds}s: {spec.argv}")
             time.sleep(0.1)
@@ -120,6 +121,45 @@ def _drain_pipe(stream: BufferedReader, capture: _BoundedCapture) -> None:
 def _join_reader_threads(*threads: Thread) -> None:
     for thread in threads:
         thread.join(timeout=5)
+
+
+def _wait_for_exit(process: subprocess.Popen[bytes]) -> None:
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            pass
+        process.wait(timeout=5)
+
+
+def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    pid = process.pid
+    if os.name == "nt":
+        result = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            check=False,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+        if result.returncode in (0, 128, 255):
+            return
+    else:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+            return
+        except ProcessLookupError:
+            return
+        except OSError:
+            pass
+    try:
+        process.kill()
+    except OSError:
+        return
 
 
 def _sanitize_text(text: str) -> str:

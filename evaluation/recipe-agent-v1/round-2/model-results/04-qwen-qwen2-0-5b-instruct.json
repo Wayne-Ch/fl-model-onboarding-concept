@@ -1,0 +1,648 @@
+{
+  "attempt": {
+    "attempt_id": "475eaf49-d7e8-4bbf-b3f1-adb48393190b",
+    "build_job_id": "ba0348a0-18ad-4626-a732-c2c189dfdc20",
+    "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-02T02:55:39.053999+00:00",
+    "failure": {
+      "classification": "gate_failed",
+      "evidence_refs": [
+        "job://ba0348a0-18ad-4626-a732-c2c189dfdc20"
+      ],
+      "message": "Mobius build failed: ...uild _save_package(pkg, output_dir, args, optimize, component_filter) File \"<redacted-absolute-path>\", line 330, in _save_package artifacts = write_ort_genai_config( ^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 1119, in write_ort_genai_config tokenizer_files = _copy_tokenizer_files(hf_model_id, directory) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 224, in _copy_tokenizer_files src = hf_hub_download(model_id, filename) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 84, in _inner_fn validate_repo_id(arg_value) File \"<redacted-absolute-path>\", line 138, in validate_repo_id raise HFValidationError( huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: 'scratch://round-2/r2-20260902t1950z\\workspace\\ba0348a0-18ad-4626-a732-c2c189dfdc20\\snapshot'.",
+      "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+      "source_owner": "fl-onboarding",
+      "stage": "mobius_building"
+    },
+    "finished_utc": "2026-09-02T02:56:34.775414+00:00",
+    "gates": [
+      {
+        "evidence_ref": "job://ba0348a0-18ad-4626-a732-c2c189dfdc20/mobius_build/failed",
+        "finished_utc": "2026-09-02T02:56:34.763039+00:00",
+        "gate": "mobius_build",
+        "metrics_ref": null,
+        "sequence": 1,
+        "started_utc": "2026-09-02T02:56:34.763039+00:00",
+        "status": "failed"
+      }
+    ],
+    "idempotency_key": "r2-20260902t1950z-04",
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "profile_fingerprint": "83132f6e8d047a396fb1f5a3d6e63fedba4e2781a1404d8c6629b01bf4c64edd",
+    "recipe_fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db",
+    "request_fingerprint": "157fdfc2a50ea0250cfa361ac6ab7419ab8528dfe8d22bde4e54a4aa7af4b42b",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+    "state": "failed",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "attempt_create": {
+    "payload": {
+      "attempt": {
+        "attempt_id": "475eaf49-d7e8-4bbf-b3f1-adb48393190b",
+        "build_job_id": "ba0348a0-18ad-4626-a732-c2c189dfdc20",
+        "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+        "compiler_version": "1.0.0",
+        "created_utc": "2026-09-02T02:55:39.053999+00:00",
+        "failure": null,
+        "finished_utc": null,
+        "gates": [],
+        "idempotency_key": "r2-20260902t1950z-04",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct",
+        "profile_fingerprint": "83132f6e8d047a396fb1f5a3d6e63fedba4e2781a1404d8c6629b01bf4c64edd",
+        "recipe_fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db",
+        "request_fingerprint": "157fdfc2a50ea0250cfa361ac6ab7419ab8528dfe8d22bde4e54a4aa7af4b42b",
+        "requested_device": "cpu",
+        "requested_precision": "auto",
+        "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+        "state": "running",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+      },
+      "idempotent_replay": false,
+      "job": {
+        "artifacts": [],
+        "events": [
+          {
+            "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+            "sequence": 1,
+            "state": "queued",
+            "timestamp_utc": "2026-09-02T02:55:39.075732+00:00"
+          }
+        ],
+        "failure": null,
+        "finished_utc": null,
+        "job_id": "ba0348a0-18ad-4626-a732-c2c189dfdc20",
+        "request": {
+          "allow_experimental": true,
+          "candidate": {
+            "huggingface_model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "key": "llm-qwen-qwen2-0.5b-instruct",
+            "modality": "llm",
+            "notes": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+            "recommended_mobius_dtype": null,
+            "recommended_olive_precision": "int4"
+          },
+          "dry_run": false,
+          "enforce_cpu_target": true,
+          "external_data_format": "safetensors",
+          "generated_recipe_attempt": {
+            "attempt_id": "475eaf49-d7e8-4bbf-b3f1-adb48393190b",
+            "confirmation_provenance": "api.confirm_automatic_recipe_attempt",
+            "confirmed": true,
+            "recipe_fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db"
+          },
+          "hf_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "max_shard_size": "5GB",
+          "model_cache_dir": "scratch://round-2/r2-20260902t1950z\\cache",
+          "optimization_precision": "int4",
+          "optimization_strategy": "mobius-olive",
+          "output_dir": "scratch://round-2/r2-20260902t1950z\\workspace\\ba0348a0-18ad-4626-a732-c2c189dfdc20\\output",
+          "recipe_artifact_cache_prefix": "qwen2-0-5b-instruct",
+          "recipe_id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+          "recipe_model_name_prefix": "qwen2-0-5b-instruct-onboarding",
+          "recipe_reason": "Generated recipe attempt execution confirmed via explicit confirm_automatic_recipe_attempt signal.",
+          "recipe_status": "experimental",
+          "recipe_version": "0.1.0",
+          "runtime": "ort-genai",
+          "skip_olive": false,
+          "task_profile": "llm-cpu-int4",
+          "workspace_root": "scratch://round-2/r2-20260902t1950z\\workspace\\ba0348a0-18ad-4626-a732-c2c189dfdc20"
+        },
+        "result_artifact_id": null,
+        "started_utc": "2026-09-02T02:55:39.075732+00:00",
+        "state": "queued",
+        "validations": []
+      }
+    },
+    "status_code": 200
+  },
+  "attempt_http_status": 200,
+  "event_count": 5,
+  "events_http_status": 200,
+  "failure_summary": {
+    "attempt_state": "failed",
+    "error_signature": "Mobius build failed: ...uild _save_package(pkg, output_dir, args, optimize, component_filter) File \"<redacted-absolute-path>\", line 330, in _save_package artifacts = write_ort_genai_config( ^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 1119, in write_ort_genai_config tokenizer_files = _copy_tokenizer_files(hf_model_id, directory) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 224, in _copy_tokenizer_files src = hf_hub_download(model_id, filename) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 84, in _inner_fn validate_repo_id(arg_value) File \"<redacted-absolute-path>\", line 138, in validate_repo_id raise HFValidationError( huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: 'scratch://round-2/r2-20260902t1950z\\workspace\\ba0348a0-18ad-4626-a732-c2c189dfdc20\\snapshot'.",
+    "evidence_refs": [
+      "job://ba0348a0-18ad-4626-a732-c2c189dfdc20"
+    ],
+    "first_failed_classification": "gate_failed",
+    "first_failed_gate": {
+      "evidence_ref": "job://ba0348a0-18ad-4626-a732-c2c189dfdc20/mobius_build/failed",
+      "finished_utc": "2026-09-02T02:56:34.763039+00:00",
+      "gate": "mobius_build",
+      "metrics_ref": null,
+      "sequence": 1,
+      "started_utc": "2026-09-02T02:56:34.763039+00:00",
+      "status": "failed"
+    },
+    "first_failed_stage": "mobius_building",
+    "next_action": "Inspect the failed gate evidence and rerun with a fresh generated-attempt idempotency key.",
+    "preflight_recipe_status": "unregistered",
+    "preflight_recipe_unregistered_expected": true,
+    "prior_successful_gates": [],
+    "source_owner": "fl-onboarding"
+  },
+  "finished_utc": "2026-09-02T02:56:39.683179+00:00",
+  "generated_preview": {
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "argument_confidence": {
+        "contains_unverified_arguments": true,
+        "mobius_dtype_confidence": "candidate-unverified",
+        "olive_precision_confidence": "candidate-unverified"
+      },
+      "capability": {
+        "capability": {
+          "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+          "family": "qwen",
+          "known_blockers": [
+            {
+              "blocker_id": "qwen-fl-verification-missing",
+              "classification": "missing-fl-verification",
+              "message": "No deterministic FL runtime validation artifact has been recorded yet.",
+              "owner": "fl-onboarding"
+            }
+          ],
+          "modality": "llm",
+          "status": "tool-supported-unverified",
+          "supported_devices": [
+            "cpu"
+          ],
+          "supported_request_precisions": [
+            "auto",
+            "int4"
+          ],
+          "supported_tasks": [
+            "llm"
+          ],
+          "version": "1.0.0"
+        },
+        "evidence": [
+          {
+            "evidence_id": "mobius-doc-qwen-support",
+            "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+            "source_type": "upstream-doc",
+            "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+          },
+          {
+            "evidence_id": "oga-config-qwen-type",
+            "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+            "source_type": "upstream-doc",
+            "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+          }
+        ],
+        "matched_aliases": [
+          "qwen2",
+          "qwen2forcausallm"
+        ],
+        "outcome": "exact",
+        "reason": "Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.",
+        "reason_code": "resolved"
+      },
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "experimental_until_verified": true,
+      "fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db",
+      "recipe": {
+        "fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db",
+        "pinned_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+        "provenance": {
+          "argument_provenance": {
+            "contains_unverified_arguments": true,
+            "mobius_dtype_confidence": "candidate-unverified",
+            "mobius_dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value.",
+            "olive_precision_confidence": "candidate-unverified",
+            "olive_precision_rule": "Candidate path only; not yet FL verified."
+          },
+          "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+          "capability_status": "tool-supported-unverified",
+          "capability_version": "1.0.0",
+          "compiler_version": "1.0.0",
+          "evidence": [
+            {
+              "evidence_id": "mobius-doc-qwen-support",
+              "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+              "source_type": "upstream-doc",
+              "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+            },
+            {
+              "evidence_id": "oga-config-qwen-type",
+              "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+              "source_type": "upstream-doc",
+              "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+            }
+          ],
+          "generation_kind": "deterministic-recipe-agent-v1",
+          "input_metadata": {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "available_files": [
+              ".gitattributes",
+              "config.json",
+              "generation_config.json",
+              "LICENSE",
+              "merges.txt",
+              "model.safetensors",
+              "README.md",
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "vocab.json"
+            ],
+            "config_files": [
+              "config.json"
+            ],
+            "is_gated": false,
+            "model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "model_type": "qwen2",
+            "requested_device": "cpu",
+            "requested_precision": "auto",
+            "requires_remote_code": false,
+            "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+            "task": "llm",
+            "tokenizer_files": [
+              "tokenizer.json",
+              "tokenizer_config.json"
+            ]
+          },
+          "matched_aliases": [
+            "qwen2",
+            "qwen2forcausallm"
+          ],
+          "promotion": null,
+          "resolution_outcome": "exact",
+          "resolution_reason_code": "resolved",
+          "toolchain": {
+            "foundry_cli_version": "0.11.0",
+            "foundry_sdk_version": "1.2.4",
+            "mobius_version": "0.1.0",
+            "oga_version": "0.15.2",
+            "olive_version": "0.13.0",
+            "onnx_version": "1.22.0",
+            "ort_version": "1.29.0"
+          }
+        },
+        "recipe": {
+          "ancillary_files": [
+            {
+              "relative_path": "genai_config.json",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "tokenizer.json",
+              "required": true,
+              "source": "olive-output-dir"
+            }
+          ],
+          "artifact_cache_prefix": "qwen2-0-5b-instruct",
+          "huggingface_model_id": "Qwen/Qwen2-0.5B-Instruct",
+          "id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+          "inference_modality": "llm",
+          "mobius": {
+            "dtype": null,
+            "ep": "cpu",
+            "runtime": "ort-genai",
+            "task": "text-generation"
+          },
+          "modality": "llm",
+          "model_name_prefix": "qwen2-0-5b-instruct-onboarding",
+          "olive": {
+            "device": "cpu",
+            "input_source": "mobius-output-dir",
+            "log_level": "1",
+            "precision": "int4",
+            "provider": "CPUExecutionProvider",
+            "task": "text-generation-with-past"
+          },
+          "optimization_choices": [
+            {
+              "default": true,
+              "precision": "int4",
+              "skip_olive": false,
+              "strategy": "mobius-olive",
+              "task_profile": "llm-cpu-int4"
+            }
+          ],
+          "preferred_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+          "status": "experimental",
+          "status_reason": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+          "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+          "task_profile": "llm-cpu-int4",
+          "verified_revision": null,
+          "version": "0.1.0"
+        },
+        "schema_version": "1.0.0"
+      },
+      "requires_explicit_attempt_confirmation": true,
+      "toolchain": {
+        "foundry_cli_version": "0.11.0",
+        "foundry_sdk_version": "1.2.4",
+        "mobius_version": "0.1.0",
+        "oga_version": "0.15.2",
+        "olive_version": "0.13.0",
+        "onnx_version": "1.22.0",
+        "ort_version": "1.29.0"
+      },
+      "validation_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "verified_reuse": null
+    },
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d"
+  },
+  "generated_recipe_record": {
+    "canonical_payload": {
+      "fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db",
+      "pinned_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "provenance": {
+        "argument_provenance": {
+          "contains_unverified_arguments": true,
+          "mobius_dtype_confidence": "candidate-unverified",
+          "mobius_dtype_rule": "Use Mobius default or explicit caller dtype until verified evidence pins a value.",
+          "olive_precision_confidence": "candidate-unverified",
+          "olive_precision_rule": "Candidate path only; not yet FL verified."
+        },
+        "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+        "capability_status": "tool-supported-unverified",
+        "capability_version": "1.0.0",
+        "compiler_version": "1.0.0",
+        "evidence": [
+          {
+            "evidence_id": "mobius-doc-qwen-support",
+            "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+            "source_type": "upstream-doc",
+            "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+          },
+          {
+            "evidence_id": "oga-config-qwen-type",
+            "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+            "source_type": "upstream-doc",
+            "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+          }
+        ],
+        "generation_kind": "deterministic-recipe-agent-v1",
+        "input_metadata": {
+          "architectures": [
+            "Qwen2ForCausalLM"
+          ],
+          "available_files": [
+            ".gitattributes",
+            "config.json",
+            "generation_config.json",
+            "LICENSE",
+            "merges.txt",
+            "model.safetensors",
+            "README.md",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "vocab.json"
+          ],
+          "config_files": [
+            "config.json"
+          ],
+          "is_gated": false,
+          "model_id": "Qwen/Qwen2-0.5B-Instruct",
+          "model_type": "qwen2",
+          "requested_device": "cpu",
+          "requested_precision": "auto",
+          "requires_remote_code": false,
+          "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "task": "llm",
+          "tokenizer_files": [
+            "tokenizer.json",
+            "tokenizer_config.json"
+          ]
+        },
+        "matched_aliases": [
+          "qwen2",
+          "qwen2forcausallm"
+        ],
+        "promotion": null,
+        "resolution_outcome": "exact",
+        "resolution_reason_code": "resolved",
+        "toolchain": {
+          "foundry_cli_version": "0.11.0",
+          "foundry_sdk_version": "1.2.4",
+          "mobius_version": "0.1.0",
+          "oga_version": "0.15.2",
+          "olive_version": "0.13.0",
+          "onnx_version": "1.22.0",
+          "ort_version": "1.29.0"
+        }
+      },
+      "recipe": {
+        "ancillary_files": [
+          {
+            "relative_path": "genai_config.json",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "tokenizer.json",
+            "required": true,
+            "source": "olive-output-dir"
+          }
+        ],
+        "artifact_cache_prefix": "qwen2-0-5b-instruct",
+        "huggingface_model_id": "Qwen/Qwen2-0.5B-Instruct",
+        "id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+        "inference_modality": "llm",
+        "mobius": {
+          "dtype": null,
+          "ep": "cpu",
+          "runtime": "ort-genai",
+          "task": "text-generation"
+        },
+        "modality": "llm",
+        "model_name_prefix": "qwen2-0-5b-instruct-onboarding",
+        "olive": {
+          "device": "cpu",
+          "input_source": "mobius-output-dir",
+          "log_level": "1",
+          "precision": "int4",
+          "provider": "CPUExecutionProvider",
+          "task": "text-generation-with-past"
+        },
+        "optimization_choices": [
+          {
+            "default": true,
+            "precision": "int4",
+            "skip_olive": false,
+            "strategy": "mobius-olive",
+            "task_profile": "llm-cpu-int4"
+          }
+        ],
+        "preferred_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+        "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+        "status": "experimental",
+        "status_reason": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+        "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "task_profile": "llm-cpu-int4",
+        "verified_revision": null,
+        "version": "0.1.0"
+      },
+      "schema_version": "1.0.0"
+    },
+    "canonical_payload_sha256": "b73a524b898f04e11827403207848f40792481ff5db205b643c0e4c822c83898",
+    "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-02T02:55:38.290188+00:00",
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "profile_fingerprint": "83132f6e8d047a396fb1f5a3d6e63fedba4e2781a1404d8c6629b01bf4c64edd",
+    "recipe_fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db",
+    "recipe_status": "experimental",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+    "schema_version": "1.0.0",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "job": {
+    "artifacts": [],
+    "events": [
+      {
+        "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+        "sequence": 1,
+        "state": "queued",
+        "timestamp_utc": "2026-09-02T02:55:39.075732+00:00"
+      },
+      {
+        "message": "Starting preflight checks.",
+        "sequence": 2,
+        "state": "preflight",
+        "timestamp_utc": "2026-09-02T02:55:39.085147+00:00"
+      },
+      {
+        "message": "Pinned Hugging Face revision c540970f9e29518b1d8f06ab8b24cba66ad77b6d.",
+        "sequence": 3,
+        "state": "downloading",
+        "timestamp_utc": "2026-09-02T02:56:06.951596+00:00"
+      },
+      {
+        "message": "Running recipe Mobius cpu ort-genai default build.",
+        "sequence": 4,
+        "state": "mobius_building",
+        "timestamp_utc": "2026-09-02T02:56:16.648277+00:00"
+      },
+      {
+        "message": "Failed (process_failed): Mobius build failed: ...uild _save_package(pkg, output_dir, args, optimize, component_filter) File \"<redacted-absolute-path>\", line 330, in _save_package artifacts = write_ort_genai_config( ^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 1119, in write_ort_genai_config tokenizer_files = _copy_tokenizer_files(hf_model_id, directory) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 224, in _copy_tokenizer_files src = hf_hub_download(model_id, filename) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 84, in _inner_fn validate_repo_id(arg_value) File \"<redacted-absolute-path>\", line 138, in validate_repo_id raise HFValidationError( huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: 'scratch://round-2/r2-20260902t1950z\\workspace\\ba0348a0-18ad-4626-a732-c2c189dfdc20\\snapshot'.",
+        "sequence": 5,
+        "state": "failed",
+        "timestamp_utc": "2026-09-02T02:56:34.742856+00:00"
+      }
+    ],
+    "failure": {
+      "classification": "process_failed",
+      "message": "Mobius build failed: ...uild _save_package(pkg, output_dir, args, optimize, component_filter) File \"<redacted-absolute-path>\", line 330, in _save_package artifacts = write_ort_genai_config( ^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 1119, in write_ort_genai_config tokenizer_files = _copy_tokenizer_files(hf_model_id, directory) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 224, in _copy_tokenizer_files src = hf_hub_download(model_id, filename) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File \"<redacted-absolute-path>\", line 84, in _inner_fn validate_repo_id(arg_value) File \"<redacted-absolute-path>\", line 138, in validate_repo_id raise HFValidationError( huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: 'scratch://round-2/r2-20260902t1950z\\workspace\\ba0348a0-18ad-4626-a732-c2c189dfdc20\\snapshot'.",
+      "stage": "mobius_building"
+    },
+    "finished_utc": "2026-09-02T02:56:34.742856+00:00",
+    "job_id": "ba0348a0-18ad-4626-a732-c2c189dfdc20",
+    "result_artifact_id": null,
+    "started_utc": "2026-09-02T02:55:39.075732+00:00",
+    "state": "failed",
+    "validations": [
+      {
+        "checks": [
+          "Candidate 'Qwen/Qwen2-0.5B-Instruct' was not found in Foundry catalog."
+        ],
+        "failure": null,
+        "stage": "preflight",
+        "status": "passed"
+      }
+    ]
+  },
+  "job_poll_timed_out": false,
+  "lingering_processes_after_close": [],
+  "manifest_catalog_match": {
+    "confidence": "none",
+    "matched": false,
+    "matched_entry": null,
+    "reason": "No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'"
+  },
+  "manifest_recipe_exists": false,
+  "manifest_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+  "model_detail": {
+    "build_blockers": [],
+    "buildable": true,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "recipe_reason": "No recipe is registered for model 'Qwen/Qwen2-0.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+    "task": "llm",
+    "warnings": []
+  },
+  "model_detail_http_status": 200,
+  "model_id": "Qwen/Qwen2-0.5B-Instruct",
+  "model_index": 4,
+  "preflight": {
+    "blockers": [
+      {
+        "classification": "invalid_request",
+        "message": "No recipe is registered for model 'Qwen/Qwen2-0.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+        "stage": "preflight"
+      }
+    ],
+    "cache_key": "b005bae022c806566e2489640285bebef20ac7708deb6f416e48e9b5ab8d9f6f",
+    "cached": false,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "fingerprint": "d08ade5c87402496fef273b32f47843dff2e01722def5df45ededc91202561db",
+      "verified_reuse": null
+    },
+    "ok": false,
+    "recipe_reason": "No recipe is registered for model 'Qwen/Qwen2-0.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "tools": [],
+    "warnings": []
+  },
+  "preflight_http_status": 200,
+  "preflight_recipe_unregistered_expected": true,
+  "preview_http_status": 200,
+  "resource_after": {
+    "cache_bytes": 0,
+    "disk_free_gb": 1326.446,
+    "disk_used_gb": 579.995,
+    "runtime_bytes": 16971494107,
+    "state_bytes": 319952,
+    "timestamp_utc": "2026-09-02T02:56:39.665179+00:00",
+    "workspace_bytes": 16971174155
+  },
+  "resource_before": {
+    "cache_bytes": 0,
+    "disk_free_gb": 1328.311,
+    "disk_used_gb": 578.13,
+    "runtime_bytes": 14977750766,
+    "state_bytes": 303592,
+    "timestamp_utc": "2026-09-02T02:55:37.844769+00:00",
+    "workspace_bytes": 14977447174
+  },
+  "started_utc": "2026-09-02T02:55:37.844769+00:00"
+}

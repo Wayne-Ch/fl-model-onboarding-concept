@@ -8,11 +8,31 @@ import webbrowser
 from pathlib import Path
 from typing import Callable
 
+from .architecture_capabilities import ResolutionOutcome, load_architecture_capability_registry, normalize_huggingface_metadata
 from .contracts import CandidateModality
 from .local_api import create_app
 from .local_service import BuildSubmission, LocalOnboardingService, ServiceError, enforce_loopback_host
+from .recipe_compiler import (
+    GeneratedRecipeCompileError,
+    RecipeCompilerInput,
+    RecipeCompilerToolchain,
+    compile_generated_recipe,
+)
 from .serialization import to_jsonable
 from .version import __version__
+
+_DEFAULT_FROZEN_SET_PATH = (
+    Path(__file__).resolve().parents[2] / "evaluation" / "recipe-agent-v1" / "models.json"
+)
+_DRY_RUN_TOOLCHAIN = RecipeCompilerToolchain(
+    mobius_version="0.1.0",
+    olive_version="0.13.0",
+    onnx_version="1.22.0",
+    ort_version="1.29.0",
+    oga_version="0.15.2",
+    foundry_sdk_version="1.2.4",
+    foundry_cli_version="0.11.0",
+)
 
 
 def _print_json(value: object) -> None:
@@ -148,6 +168,219 @@ def _run_build_cancel(args: argparse.Namespace) -> int:
     return _run_with_service(args, run)
 
 
+def _load_frozen_set(path: Path) -> dict[str, object]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Frozen set manifest must be a JSON object.")
+    return payload
+
+
+def _validate_frozen_manifest(payload: dict[str, object]) -> tuple[bool, list[str]]:
+    errors: list[str] = []
+    models = payload.get("models")
+    if not isinstance(models, list):
+        errors.append("models must be an array.")
+        return False, errors
+    if len(models) != 5:
+        errors.append(f"models must contain exactly five entries; found {len(models)}.")
+    for index, row in enumerate(models, start=1):
+        if not isinstance(row, dict):
+            errors.append(f"models[{index}] must be an object.")
+            continue
+        model_id = row.get("model_id")
+        sha = row.get("sha")
+        model_type = row.get("model_type")
+        architectures = row.get("architectures")
+        if not isinstance(model_id, str) or not model_id.strip():
+            errors.append(f"models[{index}].model_id must be a non-empty string.")
+        if not isinstance(sha, str) or len(sha) != 40:
+            errors.append(f"models[{index}].sha must be a full 40-character commit SHA.")
+        if not isinstance(model_type, str) or not model_type.strip():
+            errors.append(f"models[{index}].model_type must be a non-empty string.")
+        if not isinstance(architectures, list) or not all(isinstance(item, str) for item in architectures):
+            errors.append(f"models[{index}].architectures must be an array of strings.")
+    return not errors, errors
+
+
+def _run_recipe_agent_frozen_list(args: argparse.Namespace) -> int:
+    try:
+        path = Path(args.path).resolve() if args.path else _DEFAULT_FROZEN_SET_PATH
+        payload = _load_frozen_set(path)
+        models = payload.get("models")
+        if not isinstance(models, list):
+            raise ValueError("Frozen set models array is missing.")
+        _print_json(
+            {
+                "manifest_path": str(path),
+                "schema_version": payload.get("schema_version"),
+                "selection_timestamp": payload.get("selection_timestamp"),
+                "count": len(models),
+                "models": [
+                    {
+                        "index": row.get("index"),
+                        "model_id": row.get("model_id"),
+                        "sha": row.get("sha"),
+                        "model_type": row.get("model_type"),
+                        "architectures": row.get("architectures"),
+                        "catalog_match": row.get("catalog_match"),
+                    }
+                    for row in models
+                    if isinstance(row, dict)
+                ],
+            }
+        )
+        return 0
+    except Exception as exc:
+        print(json.dumps({"code": "FROZEN_SET_LOAD_FAILED", "message": str(exc)}), file=sys.stderr)
+        return 2
+
+
+def _run_recipe_agent_frozen_validate(args: argparse.Namespace) -> int:
+    try:
+        path = Path(args.path).resolve() if args.path else _DEFAULT_FROZEN_SET_PATH
+        payload = _load_frozen_set(path)
+        valid, errors = _validate_frozen_manifest(payload)
+        _print_json(
+            {
+                "manifest_path": str(path),
+                "valid": valid,
+                "errors": errors,
+                "model_count": len(payload.get("models", [])) if isinstance(payload.get("models"), list) else 0,
+            }
+        )
+        return 0 if valid else 2
+    except Exception as exc:
+        print(json.dumps({"code": "FROZEN_SET_VALIDATE_FAILED", "message": str(exc)}), file=sys.stderr)
+        return 2
+
+
+def _run_recipe_agent_frozen_dry_run(args: argparse.Namespace) -> int:
+    try:
+        path = Path(args.path).resolve() if args.path else _DEFAULT_FROZEN_SET_PATH
+        payload = _load_frozen_set(path)
+        valid, errors = _validate_frozen_manifest(payload)
+        if not valid:
+            _print_json({"manifest_path": str(path), "valid": False, "errors": errors})
+            return 2
+        models = payload["models"]
+        assert isinstance(models, list)
+        capability_registry = load_architecture_capability_registry()
+
+        outcomes: list[dict[str, object]] = []
+        for row in models:
+            assert isinstance(row, dict)
+            model_id = str(row["model_id"])
+            revision_sha = str(row["sha"]).lower()
+            model_type = str(row["model_type"])
+            architectures_raw = row.get("architectures")
+            architectures = (
+                tuple(str(item) for item in architectures_raw)
+                if isinstance(architectures_raw, list)
+                else ()
+            )
+            catalog_match = row.get("catalog_match")
+            catalog_present = (
+                isinstance(catalog_match, dict)
+                and bool(catalog_match.get("matched"))
+            )
+            normalized_metadata = normalize_huggingface_metadata(
+                model_id=model_id,
+                config={"model_type": model_type, "architectures": list(architectures)},
+                is_gated=False,
+                is_private=False,
+            )
+            capability_resolution = capability_registry.resolve(
+                metadata=normalized_metadata,
+                task=CandidateModality.LLM.value,
+                device="cpu",
+                requested_precision="auto",
+            )
+            outcome: dict[str, object] = {
+                "model_id": model_id,
+                "sha": revision_sha,
+                "model_type": model_type,
+                "architectures": list(architectures),
+                "catalog_present": catalog_present,
+                "capability": {
+                    "outcome": capability_resolution.outcome.value,
+                    "reason_code": capability_resolution.reason_code.value,
+                    "reason": capability_resolution.reason,
+                    "matched_aliases": list(capability_resolution.matched_aliases),
+                    "capability_id": (
+                        capability_resolution.capability.capability_id
+                        if capability_resolution.capability is not None
+                        else None
+                    ),
+                    "status": (
+                        capability_resolution.capability.status.value
+                        if capability_resolution.capability is not None
+                        else None
+                    ),
+                },
+                "tool_execution": "not-started",
+            }
+            if catalog_present:
+                outcome["status"] = "blocked"
+                outcome["reason"] = "catalog-present"
+                outcomes.append(outcome)
+                continue
+
+            try:
+                candidate = compile_generated_recipe(
+                    RecipeCompilerInput(
+                        model_id=model_id,
+                        revision_sha=revision_sha,
+                        model_type=model_type,
+                        architectures=architectures,
+                        task=CandidateModality.LLM.value,
+                        requested_device="cpu",
+                        requested_precision="auto",
+                        is_gated=False,
+                        requires_remote_code=False,
+                        config_files=("config.json",),
+                        tokenizer_files=("tokenizer.json",),
+                        available_files=("config.json", "tokenizer.json"),
+                        capability_resolution=capability_resolution,
+                        toolchain=_DRY_RUN_TOOLCHAIN,
+                    )
+                )
+            except GeneratedRecipeCompileError as exc:
+                outcome["status"] = (
+                    "capability-gap"
+                    if capability_resolution.outcome != ResolutionOutcome.EXACT
+                    else "compile-failed"
+                )
+                outcome["reason"] = str(exc)
+                outcomes.append(outcome)
+                continue
+
+            outcome["status"] = "compiled"
+            outcome["fingerprint"] = candidate.fingerprint
+            outcome["recipe_id"] = candidate.recipe.id
+            outcome["recipe_version"] = candidate.recipe.version
+            outcome["recipe_status"] = candidate.recipe.status.value
+            outcomes.append(outcome)
+
+        compiled = sum(1 for row in outcomes if row.get("status") == "compiled")
+        _print_json(
+            {
+                "manifest_path": str(path),
+                "valid": True,
+                "tool_execution": "disabled",
+                "summary": {
+                    "total_models": len(outcomes),
+                    "compiled_models": compiled,
+                    "non_compiled_models": len(outcomes) - compiled,
+                },
+                "outcomes": outcomes,
+            }
+        )
+        return 0
+    except Exception as exc:
+        print(json.dumps({"code": "FROZEN_SET_DRY_RUN_FAILED", "message": str(exc)}), file=sys.stderr)
+        return 2
+
+
 def _run_service_serve(args: argparse.Namespace) -> int:
     try:
         warning = enforce_loopback_host(host=args.host, allow_non_loopback=bool(args.allow_non_loopback))
@@ -261,6 +494,36 @@ def _create_parser() -> argparse.ArgumentParser:
         help="Enable the verified SmolLM2 Mobius/Olive/Foundry Local execution pipeline.",
     )
 
+    recipe_agent = sub.add_parser("recipe-agent", help="Recipe Agent v1 utilities.")
+    recipe_agent_sub = recipe_agent.add_subparsers(dest="recipe_agent_command", required=True)
+
+    frozen_list = recipe_agent_sub.add_parser(
+        "frozen-list",
+        help="List frozen Recipe Agent v1 evaluation models.",
+    )
+    frozen_list.add_argument(
+        "--path",
+        help="Path to evaluation/recipe-agent-v1/models.json (defaults to repository frozen set).",
+    )
+
+    frozen_validate = recipe_agent_sub.add_parser(
+        "frozen-validate",
+        help="Validate frozen Recipe Agent v1 evaluation manifest.",
+    )
+    frozen_validate.add_argument(
+        "--path",
+        help="Path to evaluation/recipe-agent-v1/models.json (defaults to repository frozen set).",
+    )
+
+    frozen_dry_run = recipe_agent_sub.add_parser(
+        "frozen-dry-run",
+        help="Dry-run deterministic candidate compilation for all frozen models (no build/download).",
+    )
+    frozen_dry_run.add_argument(
+        "--path",
+        help="Path to evaluation/recipe-agent-v1/models.json (defaults to repository frozen set).",
+    )
+
     return parser
 
 
@@ -286,6 +549,12 @@ def main(argv: list[str] | None = None) -> int:
         return _run_build_cancel(args)
     if args.command == "service" and args.service_command == "serve":
         return _run_service_serve(args)
+    if args.command == "recipe-agent" and args.recipe_agent_command == "frozen-list":
+        return _run_recipe_agent_frozen_list(args)
+    if args.command == "recipe-agent" and args.recipe_agent_command == "frozen-validate":
+        return _run_recipe_agent_frozen_validate(args)
+    if args.command == "recipe-agent" and args.recipe_agent_command == "frozen-dry-run":
+        return _run_recipe_agent_frozen_dry_run(args)
     parser.error("Unsupported command.")
     return 2
 

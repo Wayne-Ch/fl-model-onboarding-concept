@@ -1,0 +1,944 @@
+from __future__ import annotations
+
+import json
+
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+import fl_model_onboarding.quality_validation as quality_validation_module
+
+from fl_model_onboarding.quality_validation import (
+    CapabilityComparisonStatus,
+    CapabilityConfidenceLevel,
+    DEFAULT_TEXT_GENERATION_QUALITY_PROFILE,
+    DeterministicInferenceConfig,
+    GateState,
+    PromptExecutionRecord,
+    QualityMetrics,
+    QualityRetryDisposition,
+    RecipeIntegrityStatus,
+    evaluate_quality_validation,
+    load_quality_validation_profile_registry,
+    quality_validation_profiles_path,
+    quality_validation_schema_path,
+)
+
+_UNCHANGED = object()
+
+
+def _profile():
+    return DEFAULT_TEXT_GENERATION_QUALITY_PROFILE
+
+
+def _determinism(profile) -> DeterministicInferenceConfig:
+    return DeterministicInferenceConfig(
+        temperature=profile.deterministic_inference.temperature,
+        seed=profile.deterministic_inference.seed,
+        max_tokens=profile.deterministic_inference.max_tokens,
+    )
+
+
+def _passing_outputs(profile) -> tuple[PromptExecutionRecord, ...]:
+    return (
+        PromptExecutionRecord(
+            prompt_id="arithmetic-addition-17-plus-28",
+            output_text="45",
+            applied_determinism=_determinism(profile),
+        ),
+        PromptExecutionRecord(
+            prompt_id="factual-red-planet",
+            output_text="Mars",
+            applied_determinism=_determinism(profile),
+        ),
+        PromptExecutionRecord(
+            prompt_id="instruction-two-words-blue-river",
+            output_text="blue river",
+            applied_determinism=_determinism(profile),
+        ),
+        PromptExecutionRecord(
+            prompt_id="format-json-answer-unit",
+            output_text='{"answer": 12, "unit": "cm"}',
+            applied_determinism=_determinism(profile),
+        ),
+    )
+
+
+def _replace_output(
+    outputs: tuple[PromptExecutionRecord, ...],
+    prompt_id: str,
+    *,
+    output_text: str | None = None,
+    determinism: DeterministicInferenceConfig | None | object = _UNCHANGED,
+    unsupported: tuple[str, ...] | None = None,
+) -> tuple[PromptExecutionRecord, ...]:
+    updated: list[PromptExecutionRecord] = []
+    for row in outputs:
+        if row.prompt_id != prompt_id:
+            updated.append(row)
+            continue
+        resolved_determinism = row.applied_determinism
+        if determinism is not _UNCHANGED:
+            resolved_determinism = determinism if isinstance(determinism, DeterministicInferenceConfig) else None
+        updated.append(
+            PromptExecutionRecord(
+                prompt_id=row.prompt_id,
+                output_text=output_text if output_text is not None else row.output_text,
+                applied_determinism=resolved_determinism,
+                unsupported_determinism_fields=(
+                    unsupported if unsupported is not None else row.unsupported_determinism_fields
+                ),
+            )
+        )
+    return tuple(updated)
+
+
+def _retryable_smollm_structural_result():
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='```json\n{"answer":12,"unit":"cm"}\n```',
+    )
+    return evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+
+
+def _derive_retry_with_integrity_failures(*, result, integrity_failures: tuple[str, ...]):
+    tampered = replace(
+        result,
+        recipe_verification=replace(result.recipe_verification, integrity_failures=integrity_failures),
+    )
+    return quality_validation_module._derive_quality_retry_disposition(tampered)
+
+
+def test_quality_validation_passes_and_emits_promotable_evidence() -> None:
+    profile = _profile()
+    optimized = _passing_outputs(profile)
+    baseline = _passing_outputs(profile)
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        optimized_metrics=QualityMetrics(latency_ms=75.0, peak_memory_mb=842.0, package_size_mb=431.2),
+        baseline_metrics=QualityMetrics(latency_ms=72.5, peak_memory_mb=910.0, package_size_mb=622.8),
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is True
+    assert result.baseline_functional is not None
+    assert result.baseline_functional.passed is True
+    assert result.baseline_comparison is not None
+    assert result.baseline_comparison.passed is True
+    assert result.recipe_verification.status == RecipeIntegrityStatus.VERIFIED
+    assert result.recipe_verification.runtime_functional is True
+    assert result.recipe_verification.baseline_available is True
+    assert result.recipe_verification.regression_free is True
+    assert result.recipe_verification.can_promote is True
+    assert result.model_capability.checks_passed == 4
+    assert result.model_capability.total_checks == 4
+    assert result.model_capability.warnings == ()
+    assert result.model_capability.confidence.level == CapabilityConfidenceLevel.HIGH
+    assert result.promotion_evidence.functional_gate == GateState.PASSED
+    assert result.promotion_evidence.baseline_comparison_gate == GateState.PASSED
+    assert result.promotion_evidence.metrics_gate == GateState.RECORDED
+    assert result.promotion_evidence.can_promote is True
+
+
+def test_quality_validation_detects_baseline_pass_optimized_fail_regression() -> None:
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text="```json\n{\"answer\":12,\"unit\":\"cm\"}\n```",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is False
+    assert result.baseline_comparison is not None
+    assert result.baseline_comparison.passed is False
+    assert "optimized_failed_prompt:format-json-answer-unit" in result.baseline_comparison.regressions
+    assert any(
+        row.startswith("optimized_structural_regression:format-json-answer-unit:")
+        for row in result.baseline_comparison.regressions
+    )
+    assert result.recipe_verification.status == RecipeIntegrityStatus.BLOCKED
+    assert "baseline_passed_optimized_failed:format-json-answer-unit" in result.recipe_verification.integrity_failures
+    assert any(
+        row.startswith("optimized_structural_regression:format-json-answer-unit:")
+        for row in result.recipe_verification.integrity_failures
+    )
+    assert result.promotion_evidence.can_promote is False
+
+
+def test_shared_absolute_failure_is_model_capability_advisory_only() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text="1728",
+    )
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text="1728",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is False
+    assert result.recipe_verification.status == RecipeIntegrityStatus.VERIFIED
+    assert result.recipe_verification.can_promote is True
+    assert result.promotion_evidence.can_promote is True
+    prompt = next(
+        row
+        for row in result.model_capability.prompt_results
+        if row.prompt_id == "factual-red-planet"
+    )
+    assert prompt.comparison == CapabilityComparisonStatus.MATCHED_FAIL
+    assert "shared_capability_failure" in prompt.warnings
+    assert "factual-red-planet:shared_capability_failure" in result.model_capability.warnings
+
+
+def test_optimized_improvement_and_shared_failure_are_capability_advisories() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _replace_output(
+            _passing_outputs(profile),
+            "arithmetic-addition-17-plus-28",
+            output_text="44",
+        ),
+        "instruction-two-words-blue-river",
+        output_text="blue",
+    )
+    optimized = _replace_output(
+        _replace_output(
+            _passing_outputs(profile),
+            "arithmetic-addition-17-plus-28",
+            output_text="45",
+        ),
+        "instruction-two-words-blue-river",
+        output_text="river",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.status == RecipeIntegrityStatus.VERIFIED
+    assert result.recipe_verification.can_promote is True
+    arithmetic = next(
+        row
+        for row in result.model_capability.prompt_results
+        if row.prompt_id == "arithmetic-addition-17-plus-28"
+    )
+    instruction = next(
+        row
+        for row in result.model_capability.prompt_results
+        if row.prompt_id == "instruction-two-words-blue-river"
+    )
+    assert arithmetic.comparison == CapabilityComparisonStatus.IMPROVED
+    assert "optimized_improved_over_baseline" in arithmetic.warnings
+    assert instruction.comparison == CapabilityComparisonStatus.DIVERGENT_FAIL
+    assert "divergent_capability_failure" in instruction.warnings
+
+
+def test_granite_style_shared_failure_and_unsupported_determinism_is_advisory() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        output_text="35",
+        unsupported=("temperature", "seed"),
+    )
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        output_text="25",
+        unsupported=("temperature", "seed"),
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.status == RecipeIntegrityStatus.VERIFIED
+    assert result.recipe_verification.can_promote is True
+    arithmetic = next(
+        row
+        for row in result.model_capability.prompt_results
+        if row.prompt_id == "arithmetic-addition-17-plus-28"
+    )
+    assert arithmetic.comparison == CapabilityComparisonStatus.MATCHED_FAIL
+    assert "shared_capability_failure" in arithmetic.warnings
+    assert result.model_capability.confidence.level == CapabilityConfidenceLevel.LOW
+    assert any(
+        "determinism_unsupported" in reason
+        for reason in result.model_capability.confidence.reasons
+    )
+
+
+@pytest.mark.parametrize(
+    "output_text",
+    [
+        "",
+        "ok ok ok ok ok ok ok ok ok",
+        "@@@@ #### $$$$ !!!!",
+    ],
+)
+def test_quality_validation_rejects_empty_repetitive_or_garbled_outputs(output_text: str) -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text=output_text,
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is False
+    assert result.recipe_verification.runtime_functional is False
+    assert result.recipe_verification.status == RecipeIntegrityStatus.BLOCKED
+    assert result.promotion_evidence.functional_gate == GateState.FAILED
+
+
+@pytest.mark.parametrize(
+    "output_text",
+    [
+        "Mars.",
+        "Mars!",
+        '"Mars"',
+        "   Mars.   ",
+    ],
+)
+def test_allowed_answers_accepts_short_punctuation_variants(output_text: str) -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text=output_text,
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is True
+
+
+def test_allowed_answers_rejects_extra_explanatory_text() -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text="The answer is Mars.",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is False
+    row = next(
+        item
+        for item in result.optimized_functional.prompt_results
+        if item.prompt_id == "factual-red-planet"
+    )
+    assert "allowed_answers_failed" in row.failures
+    assert "max_words_exceeded" in row.failures
+
+
+def test_format_constraint_requires_valid_json_and_keys() -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='{"answer": 12, "unit": "cm"}',
+    )
+    passing = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert passing.optimized_functional.passed is True
+
+    failing = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='{"answer": 12}',
+    )
+    failed_result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=failing,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert failed_result.optimized_functional.passed is False
+    row = next(
+        item
+        for item in failed_result.optimized_functional.prompt_results
+        if item.prompt_id == "format-json-answer-unit"
+    )
+    assert "json_key_missing:unit" in row.failures
+
+
+def test_missing_determinism_record_lowers_confidence_without_blocking() -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        determinism=None,
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is True
+    assert result.recipe_verification.can_promote is True
+    assert result.promotion_evidence.can_promote is True
+    assert result.model_capability.confidence.level == CapabilityConfidenceLevel.LOW
+    row = next(
+        item
+        for item in result.optimized_functional.prompt_results
+        if item.prompt_id == "arithmetic-addition-17-plus-28"
+    )
+    assert row.determinism.recorded is False
+    assert any(
+        reason.endswith(":determinism_not_recorded")
+        for reason in result.model_capability.confidence.reasons
+    )
+
+
+def test_partial_determinism_support_is_recorded_not_silently_ignored() -> None:
+    profile = _profile()
+    applied = DeterministicInferenceConfig(
+        temperature=profile.deterministic_inference.temperature,
+        seed=999,
+        max_tokens=profile.deterministic_inference.max_tokens,
+    )
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        determinism=applied,
+        unsupported=("seed",),
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert result.optimized_functional.passed is True
+    row = next(
+        item
+        for item in result.optimized_functional.prompt_results
+        if item.prompt_id == "arithmetic-addition-17-plus-28"
+    )
+    assert row.determinism.recorded is True
+    assert row.determinism.fully_enforced is False
+    assert row.determinism.unsupported_fields == ("seed",)
+    assert result.model_capability.confidence.level == CapabilityConfidenceLevel.LOW
+    assert any("determinism_unsupported" in reason for reason in result.model_capability.confidence.reasons)
+    assert any(
+        "deterministic inference settings were only partially enforced" in note
+        for note in result.promotion_evidence.notes
+    )
+
+
+def test_metrics_are_optional_for_gate_pass() -> None:
+    profile = _profile()
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=_passing_outputs(profile),
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    assert result.metrics.gate_state == GateState.UNAVAILABLE
+    assert result.promotion_evidence.metrics_gate == GateState.UNAVAILABLE
+    assert result.promotion_evidence.can_promote is True
+
+
+def test_missing_required_baseline_comparison_blocks_promotion() -> None:
+    profile = _profile()
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=_passing_outputs(profile),
+        baseline_outputs=None,
+        require_baseline_comparison=True,
+    )
+    assert result.baseline_comparison is None
+    assert result.recipe_verification.status == RecipeIntegrityStatus.INCONCLUSIVE
+    assert result.recipe_verification.baseline_available is False
+    assert result.recipe_verification.regression_free is False
+    assert "baseline_unavailable" in result.recipe_verification.integrity_failures
+    assert result.promotion_evidence.baseline_comparison_gate == GateState.MISSING
+    assert result.promotion_evidence.can_promote is False
+
+
+def test_schema_and_profile_data_integrity() -> None:
+    schema = json.loads(quality_validation_schema_path().read_text(encoding="utf-8"))
+    data = json.loads(quality_validation_profiles_path().read_text(encoding="utf-8"))
+    assert schema["properties"]["schema_version"]["const"] == data["schema_version"]
+    registry = load_quality_validation_profile_registry()
+    assert len(registry.all()) >= 1
+    profile = registry.get("textgen-basic-quality-v1")
+    assert profile.task.value == "text-generation"
+    assert len(profile.prompts) == 4
+
+
+def test_profile_fingerprint_changes_when_profile_changes() -> None:
+    profile = _profile()
+    changed_version = replace(profile, version="1.0.1")
+    changed_prompt = replace(
+        profile,
+        prompts=(
+            replace(profile.prompts[0], prompt=profile.prompts[0].prompt + " now"),
+            *profile.prompts[1:],
+        ),
+    )
+    assert changed_version.fingerprint != profile.fingerprint
+    assert changed_prompt.fingerprint != profile.fingerprint
+
+
+def test_loader_rejects_duplicate_prompt_ids(tmp_path: Path) -> None:
+    payload = json.loads(quality_validation_profiles_path().read_text(encoding="utf-8"))
+    first_prompt = dict(payload["profiles"][0]["prompts"][0])
+    payload["profiles"][0]["prompts"].append(first_prompt)
+    data_path = tmp_path / "duplicate-prompts.json"
+    data_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate prompt_id"):
+        load_quality_validation_profile_registry(data_path=data_path, schema_path=quality_validation_schema_path())
+
+
+def test_loader_rejects_invalid_expected_constraints(tmp_path: Path) -> None:
+    payload = json.loads(quality_validation_profiles_path().read_text(encoding="utf-8"))
+    payload["profiles"][0]["prompts"][0]["expected"] = {}
+    data_path = tmp_path / "invalid-expected.json"
+    data_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    with pytest.raises(ValueError, match="at least one assessable constraint"):
+        load_quality_validation_profile_registry(data_path=data_path, schema_path=quality_validation_schema_path())
+
+
+def test_wrong_model_task_fails_closed() -> None:
+    with pytest.raises(ValueError, match="Unsupported model task"):
+        evaluate_quality_validation(
+            profile=_profile(),
+            model_task="asr",
+            optimized_outputs=_passing_outputs(_profile()),
+            baseline_outputs=_passing_outputs(_profile()),
+        )
+
+
+def test_missing_prompt_results_fail_closed() -> None:
+    profile = _profile()
+    missing = _passing_outputs(profile)[:-1]
+    with pytest.raises(ValueError, match="missing prompt results"):
+        evaluate_quality_validation(
+            profile=profile,
+            model_task="llm",
+            optimized_outputs=missing,
+            baseline_outputs=_passing_outputs(profile),
+        )
+
+
+def test_inconsistent_baseline_and_optimized_cases_fail_closed() -> None:
+    profile = _profile()
+    baseline = (
+        PromptExecutionRecord(
+            prompt_id="unexpected-prompt-id",
+            output_text="45",
+            applied_determinism=_determinism(profile),
+        ),
+        *_passing_outputs(profile)[1:],
+    )
+    with pytest.raises(ValueError, match="baseline outputs"):
+        evaluate_quality_validation(
+            profile=profile,
+            model_task="llm",
+            optimized_outputs=_passing_outputs(profile),
+            baseline_outputs=tuple(baseline),
+        )
+
+
+# --- Quality retry disposition -------------------------------------------------------
+
+
+def test_retry_disposition_is_retryable_for_smollm_shaped_json_and_fence_regression() -> None:
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='```json\n{"answer":12,"unit":"cm"}\n```',
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    # Existing gates are unchanged by adding the retry evaluation.
+    assert result.recipe_verification.status == RecipeIntegrityStatus.BLOCKED
+    assert result.recipe_verification.can_promote is False
+    assert result.promotion_evidence.can_promote is False
+
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION
+    assert evaluation.is_retryable is True
+    assert any(reason.startswith("optimized_structural_regression:format-json-answer-unit:") for reason in evaluation.reasons)
+
+
+def test_retry_disposition_is_not_retryable_when_baseline_unavailable() -> None:
+    profile = _profile()
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=_passing_outputs(profile),
+        baseline_outputs=None,
+        require_baseline_comparison=True,
+    )
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.is_retryable is False
+    assert evaluation.reasons == ("baseline_unavailable",)
+
+
+def test_retry_disposition_ignores_capability_advisory_failures_when_recipe_regression_is_retryable() -> None:
+    profile = _profile()
+    # Arithmetic is a shared capability failure and instruction-following is a
+    # divergent capability failure in both baseline/optimized runs; these remain
+    # advisory only and must not block the retry trigger once recipe-integrity
+    # evidence proves an optimized-only allowlisted structural regression.
+    baseline = _replace_output(
+        _replace_output(
+            _passing_outputs(profile),
+            "arithmetic-addition-17-plus-28",
+            output_text="44",
+        ),
+        "instruction-two-words-blue-river",
+        output_text="blue",
+    )
+    optimized = _replace_output(
+        _replace_output(
+            _replace_output(
+                _passing_outputs(profile),
+                "arithmetic-addition-17-plus-28",
+                output_text="44",
+            ),
+            "instruction-two-words-blue-river",
+            output_text="river stream",
+        ),
+        "format-json-answer-unit",
+        output_text='```json\n{"answer":12,"unit":"cm"}\n```',
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is False
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.RETRYABLE_OPTIMIZED_STRUCTURAL_REGRESSION
+    assert any(reason.startswith("optimized_structural_regression:format-json-answer-unit:") for reason in evaluation.reasons)
+    assert not any("arithmetic-addition-17-plus-28" in reason for reason in evaluation.reasons)
+    assert not any("instruction-two-words-blue-river" in reason for reason in evaluation.reasons)
+
+
+def test_retry_disposition_is_not_retryable_when_structural_prompt_fails_in_baseline_and_optimized() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='{"answer":12}',
+    )
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='```json\n{"answer":12,"unit":"cm"}\n```',
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is False
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("baseline_and_optimized_failed:format-json-answer-unit",)
+
+
+def test_retry_disposition_is_not_retryable_for_capability_only_wrong_answer() -> None:
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text="Venus",
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is False
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("non_structural_regression:factual-red-planet",)
+
+
+def test_retry_disposition_is_not_retryable_for_missing_json_key_regression() -> None:
+    # json_key_missing is a real structural-ish failure but is *not* on the narrow
+    # proven allowlist (only json_format_invalid and forbidden formatting tokens are).
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text='{"answer": 12}',
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is False
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("non_structural_regression:format-json-answer-unit",)
+
+
+@pytest.mark.parametrize(
+    ("output_text", "expected_failures"),
+    [
+        (
+            "12",
+            ("required_token_missing:cm", "relevance_keyword_missing", "json_format_invalid"),
+        ),
+        (
+            "cm",
+            ("required_token_missing:12", "relevance_keyword_missing", "json_format_invalid"),
+        ),
+    ],
+)
+def test_retry_disposition_is_not_retryable_for_mixed_same_prompt_failures(
+    output_text: str,
+    expected_failures: tuple[str, ...],
+) -> None:
+    profile = _profile()
+    baseline = _passing_outputs(profile)
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "format-json-answer-unit",
+        output_text=output_text,
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    prompt_row = next(
+        row
+        for row in result.optimized_functional.prompt_results
+        if row.prompt_id == "format-json-answer-unit"
+    )
+    for failure_code in expected_failures:
+        assert failure_code in prompt_row.failures
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("non_structural_regression:format-json-answer-unit",)
+
+
+@pytest.mark.parametrize(
+    "integrity_failures",
+    [
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+            "optimized_structural_regression:format-json-answer-unit:json_key_missing:unit",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:factual-red-planet:json_format_invalid",
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+        ),
+        (
+            "baseline_passed_optimized_failed:",
+            "optimized_structural_regression:format-json-answer-unit:forbidden_token_present:```",
+            "optimized_structural_regression:format-json-answer-unit:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:missing-prompt",
+            "optimized_structural_regression:missing-prompt:json_format_invalid",
+        ),
+        (
+            "baseline_passed_optimized_failed:format-json-answer-unit",
+            "optimized_structural_regression:format-json-answer-unit",
+        ),
+    ],
+)
+def test_retry_disposition_fails_closed_for_inconsistent_integrity_evidence(
+    integrity_failures: tuple[str, ...],
+) -> None:
+    result = _retryable_smollm_structural_result()
+    evaluation = _derive_retry_with_integrity_failures(
+        result=result,
+        integrity_failures=integrity_failures,
+    )
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("unattributed_block",)
+
+
+def test_retry_disposition_is_not_retryable_for_optimized_improvement() -> None:
+    profile = _profile()
+    baseline = _replace_output(
+        _passing_outputs(profile),
+        "arithmetic-addition-17-plus-28",
+        output_text="44",
+    )
+    optimized = _passing_outputs(profile)
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is True
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("no_blocking_regression",)
+
+
+def test_retry_disposition_is_not_retryable_for_matched_failure_only() -> None:
+    profile = _profile()
+    baseline = _replace_output(_passing_outputs(profile), "factual-red-planet", output_text="1728")
+    optimized = _replace_output(_passing_outputs(profile), "factual-red-planet", output_text="1728")
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=baseline,
+        require_baseline_comparison=True,
+    )
+    assert result.recipe_verification.can_promote is True
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("no_blocking_regression",)
+
+
+@pytest.mark.parametrize(
+    "output_text",
+    [
+        "",
+        "ok ok ok ok ok ok ok ok ok",
+        "@@@@ #### $$$$ !!!!",
+    ],
+)
+def test_retry_disposition_is_not_retryable_for_pathological_runtime_failure(output_text: str) -> None:
+    profile = _profile()
+    optimized = _replace_output(
+        _passing_outputs(profile),
+        "factual-red-planet",
+        output_text=output_text,
+    )
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=optimized,
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("optimized_runtime_failure",)
+
+
+def test_retry_disposition_is_not_retryable_when_fully_passing() -> None:
+    profile = _profile()
+    result = evaluate_quality_validation(
+        profile=profile,
+        model_task="llm",
+        optimized_outputs=_passing_outputs(profile),
+        baseline_outputs=_passing_outputs(profile),
+        require_baseline_comparison=True,
+    )
+    evaluation = result.quality_retry_evaluation
+    assert evaluation is not None
+    assert evaluation.disposition == QualityRetryDisposition.NOT_RETRYABLE
+    assert evaluation.reasons == ("no_blocking_regression",)

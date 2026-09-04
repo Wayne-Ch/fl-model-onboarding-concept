@@ -35,6 +35,12 @@ class BuildCreateRequest(BaseModel):
     optimization_precision: str | None = None
 
 
+class GeneratedRecipeAttemptCreateRequest(BaseModel):
+    recipe_fingerprint: str = Field(min_length=64, max_length=64)
+    model_id: str | None = None
+    confirm_automatic_recipe_attempt: bool = False
+
+
 class TextInferenceRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=8192)
     max_tokens: int = Field(default=128, ge=1, le=4096)
@@ -105,6 +111,45 @@ def create_app(
             allow_experimental=body.allow_experimental,
         )
         return live_service.preflight(submission)
+
+    @app.get("/api/recipes/generated/preview")
+    async def generated_recipe_preview(
+        id: str = Query(..., min_length=1),
+        task: Literal["llm", "asr"] = Query(default="llm"),
+    ) -> dict[str, object]:
+        return live_service.generated_recipe_preview(
+            model_id=id,
+            task=CandidateModality(task),
+        )
+
+    @app.post("/api/recipes/generated/attempts")
+    async def create_generated_recipe_attempt(
+        body: GeneratedRecipeAttemptCreateRequest,
+        idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    ) -> dict[str, object]:
+        if not body.confirm_automatic_recipe_attempt:
+            raise ServiceError(
+                code="AUTOMATIC_RECIPE_ATTEMPT_CONFIRMATION_REQUIRED",
+                message=(
+                    "Automatic recipe attempts require explicit confirmation. "
+                    "Set confirm_automatic_recipe_attempt=true."
+                ),
+                status_code=400,
+            )
+        job, replay, attempt = live_service.create_generated_recipe_attempt(
+            recipe_fingerprint=body.recipe_fingerprint,
+            idempotency_key=idempotency_key,
+            model_id=body.model_id,
+        )
+        return {
+            "idempotent_replay": replay,
+            "job": to_jsonable(job),
+            "attempt": attempt,
+        }
+
+    @app.get("/api/recipes/generated/attempts/{attempt_id}")
+    async def get_generated_recipe_attempt(attempt_id: str) -> dict[str, object]:
+        return live_service.get_recipe_attempt(attempt_id=attempt_id)
 
     @app.post("/api/builds")
     async def create_build(

@@ -1,0 +1,1606 @@
+{
+  "attempt": {
+    "attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+    "build_job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+    "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-03T19:54:33.349095+00:00",
+    "failure": null,
+    "finished_utc": "2026-09-03T19:58:05.776184+00:00",
+    "gates": [
+      {
+        "evidence_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/mobius_build/passed",
+        "finished_utc": "2026-09-03T19:57:43.211082+00:00",
+        "gate": "mobius_build",
+        "metrics_ref": null,
+        "sequence": 1,
+        "started_utc": "2026-09-03T19:57:43.211082+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/olive_optimize/passed",
+        "finished_utc": "2026-09-03T19:57:43.224818+00:00",
+        "gate": "olive_optimize",
+        "metrics_ref": null,
+        "sequence": 2,
+        "started_utc": "2026-09-03T19:57:43.224818+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/onnx_validation/passed",
+        "finished_utc": "2026-09-03T19:57:43.240737+00:00",
+        "gate": "onnx_validation",
+        "metrics_ref": null,
+        "sequence": 3,
+        "started_utc": "2026-09-03T19:57:43.240737+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/ort_validation/passed",
+        "finished_utc": "2026-09-03T19:57:43.257854+00:00",
+        "gate": "ort_validation",
+        "metrics_ref": null,
+        "sequence": 4,
+        "started_utc": "2026-09-03T19:57:43.257854+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/oga_validation/passed",
+        "finished_utc": "2026-09-03T19:57:43.262022+00:00",
+        "gate": "oga_validation",
+        "metrics_ref": null,
+        "sequence": 5,
+        "started_utc": "2026-09-03T19:57:43.262022+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/fl_sdk_inference/passed",
+        "finished_utc": "2026-09-03T19:57:43.278285+00:00",
+        "gate": "fl_sdk_inference",
+        "metrics_ref": null,
+        "sequence": 6,
+        "started_utc": "2026-09-03T19:57:43.278285+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "quality://f52639a6-d8f6-4b95-bb46-540f2cd183f2/quality_validation/baseline-passed",
+        "finished_utc": "2026-09-03T19:58:05.764047+00:00",
+        "gate": "quality_validation",
+        "metrics_ref": "quality-metrics://f52639a6-d8f6-4b95-bb46-540f2cd183f2/quality-validation-evidence.json",
+        "sequence": 7,
+        "started_utc": "2026-09-03T19:58:05.764047+00:00",
+        "status": "passed"
+      }
+    ],
+    "idempotency_key": "r7-20260903T193800Z-04",
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "profile_fingerprint": "40148bef0c7133a7aa0441d52f8ce03ecc17c15d85cd292a5834c22432646fb1",
+    "quality_validation": {
+      "model_capability": {
+        "checks_passed": 2,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:divergent_capability_failure",
+          "instruction-two-words-blue-river:shared_capability_failure"
+        ]
+      },
+      "recipe_integrity": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      }
+    },
+    "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+    "request_fingerprint": "38c3684d467f4c8bd40a629148105566914bac4fad26f0898d5955a0f3abfb00",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+    "state": "succeeded",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "attempt_create": {
+    "payload": {
+      "attempt": {
+        "attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+        "build_job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+        "candidate_selection": {
+          "aggregate_invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": null,
+            "olive_optimize_invocation_count": null,
+            "total_invocation_count": null,
+            "wall_clock_seconds": null
+          },
+          "candidates": [
+            {
+              "artifact_ref": null,
+              "attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+              "attempt_state": "running",
+              "candidate_attempt_id": "9acde117-a80f-43c4-b2e7-fc66a932159e",
+              "candidate_id": "default-int4",
+              "candidate_index": 0,
+              "disposition": null,
+              "disposition_reasons": [],
+              "eligibility_trigger": null,
+              "invocation_counters": {
+                "estimated_cost_usd": null,
+                "mobius_build_invocation_count": null,
+                "olive_optimize_invocation_count": null,
+                "total_invocation_count": null,
+                "wall_clock_seconds": null
+              },
+              "package_ref": null,
+              "quantization_override": null,
+              "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+              "role": "default",
+              "selection_status": "not_selected",
+              "validated_scope": {
+                "environment_scope": null,
+                "target_device": null,
+                "target_ep": null,
+                "toolchain_fingerprint": null
+              }
+            }
+          ],
+          "lineage_selection_state": "pending",
+          "max_candidates": 2,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "reuse": null,
+          "selected_candidate": null
+        },
+        "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+        "compiler_version": "1.0.0",
+        "created_utc": "2026-09-03T19:54:33.349095+00:00",
+        "failure": null,
+        "finished_utc": null,
+        "gates": [],
+        "idempotency_key": "r7-20260903T193800Z-04",
+        "model_id": "Qwen/Qwen2-0.5B-Instruct",
+        "profile_fingerprint": "40148bef0c7133a7aa0441d52f8ce03ecc17c15d85cd292a5834c22432646fb1",
+        "quality_validation": null,
+        "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+        "request_fingerprint": "38c3684d467f4c8bd40a629148105566914bac4fad26f0898d5955a0f3abfb00",
+        "requested_device": "cpu",
+        "requested_precision": "auto",
+        "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+        "state": "running",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+        "workflow_outcome": "pending"
+      },
+      "idempotent_replay": false,
+      "job": {
+        "artifacts": [],
+        "events": [
+          {
+            "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+            "sequence": 1,
+            "state": "queued",
+            "timestamp_utc": "2026-09-03T19:54:33.400347+00:00"
+          }
+        ],
+        "failure": null,
+        "finished_utc": null,
+        "job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+        "production_invocation_evidence": null,
+        "request": {
+          "allow_experimental": true,
+          "candidate": {
+            "huggingface_model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "key": "llm-qwen-qwen2-0.5b-instruct",
+            "modality": "llm",
+            "notes": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+            "recommended_mobius_dtype": "f32",
+            "recommended_olive_precision": "int4"
+          },
+          "dry_run": false,
+          "enforce_cpu_target": true,
+          "external_data_format": "safetensors",
+          "generated_recipe_attempt": {
+            "attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+            "confirmation_provenance": "api.confirm_automatic_recipe_attempt",
+            "confirmed": true,
+            "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895"
+          },
+          "hf_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "max_shard_size": "5GB",
+          "model_cache_dir": "scratch://round-7/r7-20260903T193800Z\\cache",
+          "optimization_precision": "int4",
+          "optimization_strategy": "mobius-olive",
+          "output_dir": "scratch://round-7/r7-20260903T193800Z\\workspace\\f52639a6-d8f6-4b95-bb46-540f2cd183f2\\output",
+          "recipe_artifact_cache_prefix": "qwen2-0-5b-instruct",
+          "recipe_id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+          "recipe_model_name_prefix": "qwen2-0-5b-instruct-onboarding",
+          "recipe_reason": "Generated recipe attempt execution confirmed via explicit confirm_automatic_recipe_attempt signal.",
+          "recipe_status": "experimental",
+          "recipe_version": "0.1.0",
+          "runtime": "ort-genai",
+          "skip_olive": false,
+          "task_profile": "llm-cpu-int4",
+          "workspace_root": "scratch://round-7/r7-20260903T193800Z\\workspace\\f52639a6-d8f6-4b95-bb46-540f2cd183f2"
+        },
+        "result_artifact_id": null,
+        "started_utc": "2026-09-03T19:54:33.400347+00:00",
+        "state": "queued",
+        "validations": []
+      }
+    },
+    "status_code": 200
+  },
+  "attempt_http_status": 200,
+  "event_count": 12,
+  "events_http_status": 200,
+  "failure_summary": {
+    "attempt_state": "succeeded",
+    "error_signature": null,
+    "first_failed_classification": null,
+    "first_failed_stage": null,
+    "next_action": null,
+    "preflight_recipe_status": "unregistered",
+    "preflight_recipe_unregistered_expected": true,
+    "prior_successful_gates": [
+      "mobius_build",
+      "olive_optimize",
+      "onnx_validation",
+      "ort_validation",
+      "oga_validation",
+      "fl_sdk_inference",
+      "quality_validation"
+    ],
+    "source_owner": null
+  },
+  "finished_utc": "2026-09-03T19:58:07.020398+00:00",
+  "generated_preview": {
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "argument_confidence": {
+        "contains_unverified_arguments": true,
+        "mobius_dtype_confidence": "candidate-unverified",
+        "olive_precision_confidence": "candidate-unverified"
+      },
+      "candidate_plan": {
+        "candidates": [
+          {
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "eligibility_trigger": null,
+            "quantization_override": null,
+            "role": "default"
+          },
+          {
+            "candidate_id": "int4-block-size-64",
+            "candidate_index": 1,
+            "eligibility_trigger": "retryable_optimized_structural_regression",
+            "quantization_override": {
+              "block_size": 64
+            },
+            "role": "quality_retry"
+          }
+        ],
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0"
+      },
+      "candidate_selection_reuse": null,
+      "capability": {
+        "capability": {
+          "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+          "family": "qwen",
+          "known_blockers": [
+            {
+              "blocker_id": "qwen-fl-verification-missing",
+              "classification": "missing-fl-verification",
+              "message": "No deterministic FL runtime validation artifact has been recorded yet.",
+              "owner": "fl-onboarding"
+            }
+          ],
+          "modality": "llm",
+          "status": "tool-supported-unverified",
+          "supported_devices": [
+            "cpu"
+          ],
+          "supported_request_precisions": [
+            "auto",
+            "int4"
+          ],
+          "supported_tasks": [
+            "llm"
+          ],
+          "version": "1.0.0"
+        },
+        "evidence": [
+          {
+            "evidence_id": "mobius-doc-qwen-support",
+            "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+            "source_type": "upstream-doc",
+            "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+          },
+          {
+            "evidence_id": "oga-config-qwen-type",
+            "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+            "source_type": "upstream-doc",
+            "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+          },
+          {
+            "evidence_id": "round4-runtime-qwen-f32-int4-candidate",
+            "location": "docs/recipe-agent-runtime-diagnostics.md#qwen2-diagnosis-rebuilt-variant-qwen2-0-5b",
+            "source_type": "repo-doc",
+            "summary": "Round 4 runtime diagnostics showed Mobius dtype f32 plus Olive INT4 passes current runtime while default candidate path failed."
+          }
+        ],
+        "matched_aliases": [
+          "qwen2",
+          "qwen2forcausallm"
+        ],
+        "outcome": "exact",
+        "reason": "Resolved to capability 'qwen-text-generation-cpu-int4-unverified-v1' (tool-supported-unverified) via alias(es): qwen2, qwen2forcausallm.",
+        "reason_code": "resolved"
+      },
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "experimental_until_verified": true,
+      "fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "recipe": {
+        "fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+        "pinned_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+        "provenance": {
+          "argument_provenance": {
+            "contains_unverified_arguments": true,
+            "mobius_dtype_confidence": "candidate-unverified",
+            "mobius_dtype_rule": "Round 4 runtime diagnostics observed BF16-scale INT4 contrib-op failures in current ORT/OGA; candidate policy pins Mobius dtype to f32 while preserving Olive INT4.",
+            "olive_precision_confidence": "candidate-unverified",
+            "olive_precision_rule": "Candidate path only; not yet FL verified."
+          },
+          "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+          "capability_status": "tool-supported-unverified",
+          "capability_version": "1.0.0",
+          "compiler_version": "1.0.0",
+          "evidence": [
+            {
+              "evidence_id": "mobius-doc-qwen-support",
+              "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+              "source_type": "upstream-doc",
+              "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+            },
+            {
+              "evidence_id": "oga-config-qwen-type",
+              "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+              "source_type": "upstream-doc",
+              "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+            },
+            {
+              "evidence_id": "round4-runtime-qwen-f32-int4-candidate",
+              "location": "docs/recipe-agent-runtime-diagnostics.md#qwen2-diagnosis-rebuilt-variant-qwen2-0-5b",
+              "source_type": "repo-doc",
+              "summary": "Round 4 runtime diagnostics showed Mobius dtype f32 plus Olive INT4 passes current runtime while default candidate path failed."
+            }
+          ],
+          "generation_kind": "deterministic-recipe-agent-v1",
+          "input_metadata": {
+            "architectures": [
+              "Qwen2ForCausalLM"
+            ],
+            "available_files": [
+              ".gitattributes",
+              "config.json",
+              "generation_config.json",
+              "LICENSE",
+              "merges.txt",
+              "model.safetensors",
+              "README.md",
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "vocab.json"
+            ],
+            "config_files": [
+              "config.json"
+            ],
+            "is_gated": false,
+            "model_id": "Qwen/Qwen2-0.5B-Instruct",
+            "model_type": "qwen2",
+            "requested_device": "cpu",
+            "requested_precision": "auto",
+            "requires_remote_code": false,
+            "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+            "task": "llm",
+            "tokenizer_files": [
+              "tokenizer.json",
+              "tokenizer_config.json"
+            ]
+          },
+          "matched_aliases": [
+            "qwen2",
+            "qwen2forcausallm"
+          ],
+          "promotion": null,
+          "resolution_outcome": "exact",
+          "resolution_reason_code": "resolved",
+          "toolchain": {
+            "foundry_cli_version": "0.11.0",
+            "foundry_sdk_version": "1.2.4",
+            "mobius_version": "0.1.0",
+            "oga_version": "0.15.2",
+            "olive_version": "0.13.0",
+            "onnx_version": "1.22.0",
+            "ort_version": "1.29.0"
+          }
+        },
+        "recipe": {
+          "ancillary_files": [
+            {
+              "relative_path": "genai_config.json",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "tokenizer.json",
+              "required": true,
+              "source": "olive-output-dir"
+            }
+          ],
+          "artifact_cache_prefix": "qwen2-0-5b-instruct",
+          "huggingface_model_id": "Qwen/Qwen2-0.5B-Instruct",
+          "id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+          "inference_modality": "llm",
+          "mobius": {
+            "dtype": "f32",
+            "ep": "cpu",
+            "runtime": "ort-genai",
+            "task": "text-generation"
+          },
+          "modality": "llm",
+          "model_name_prefix": "qwen2-0-5b-instruct-onboarding",
+          "olive": {
+            "device": "cpu",
+            "input_source": "mobius-output-dir",
+            "log_level": "1",
+            "precision": "int4",
+            "provider": "CPUExecutionProvider",
+            "task": "text-generation-with-past"
+          },
+          "optimization_choices": [
+            {
+              "default": true,
+              "precision": "int4",
+              "skip_olive": false,
+              "strategy": "mobius-olive",
+              "task_profile": "llm-cpu-int4"
+            }
+          ],
+          "preferred_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+          "status": "experimental",
+          "status_reason": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+          "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+          "task_profile": "llm-cpu-int4",
+          "verified_revision": null,
+          "version": "0.1.0"
+        },
+        "schema_version": "1.0.0"
+      },
+      "requires_explicit_attempt_confirmation": true,
+      "toolchain": {
+        "foundry_cli_version": "0.11.0",
+        "foundry_sdk_version": "1.2.4",
+        "mobius_version": "0.1.0",
+        "oga_version": "0.15.2",
+        "olive_version": "0.13.0",
+        "onnx_version": "1.22.0",
+        "ort_version": "1.29.0"
+      },
+      "validation_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "verified_reuse": null
+    },
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d"
+  },
+  "generated_recipe_record": {
+    "canonical_payload": {
+      "fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "pinned_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+      "provenance": {
+        "argument_provenance": {
+          "contains_unverified_arguments": true,
+          "mobius_dtype_confidence": "candidate-unverified",
+          "mobius_dtype_rule": "Round 4 runtime diagnostics observed BF16-scale INT4 contrib-op failures in current ORT/OGA; candidate policy pins Mobius dtype to f32 while preserving Olive INT4.",
+          "olive_precision_confidence": "candidate-unverified",
+          "olive_precision_rule": "Candidate path only; not yet FL verified."
+        },
+        "capability_id": "qwen-text-generation-cpu-int4-unverified-v1",
+        "capability_status": "tool-supported-unverified",
+        "capability_version": "1.0.0",
+        "compiler_version": "1.0.0",
+        "evidence": [
+          {
+            "evidence_id": "mobius-doc-qwen-support",
+            "location": "https://raw.githubusercontent.com/onnxruntime/mobius/main/README.md",
+            "source_type": "upstream-doc",
+            "summary": "Mobius highlighted Text Generation models include Qwen 2/2.5/3/3.5/3.6."
+          },
+          {
+            "evidence_id": "oga-config-qwen-type",
+            "location": "https://onnxruntime.ai/docs/genai/reference/config.html",
+            "source_type": "upstream-doc",
+            "summary": "OGA Config::Model type list includes qwen2 and qwen3 for decoder-only LLMs."
+          },
+          {
+            "evidence_id": "round4-runtime-qwen-f32-int4-candidate",
+            "location": "docs/recipe-agent-runtime-diagnostics.md#qwen2-diagnosis-rebuilt-variant-qwen2-0-5b",
+            "source_type": "repo-doc",
+            "summary": "Round 4 runtime diagnostics showed Mobius dtype f32 plus Olive INT4 passes current runtime while default candidate path failed."
+          }
+        ],
+        "generation_kind": "deterministic-recipe-agent-v1",
+        "input_metadata": {
+          "architectures": [
+            "Qwen2ForCausalLM"
+          ],
+          "available_files": [
+            ".gitattributes",
+            "config.json",
+            "generation_config.json",
+            "LICENSE",
+            "merges.txt",
+            "model.safetensors",
+            "README.md",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "vocab.json"
+          ],
+          "config_files": [
+            "config.json"
+          ],
+          "is_gated": false,
+          "model_id": "Qwen/Qwen2-0.5B-Instruct",
+          "model_type": "qwen2",
+          "requested_device": "cpu",
+          "requested_precision": "auto",
+          "requires_remote_code": false,
+          "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "task": "llm",
+          "tokenizer_files": [
+            "tokenizer.json",
+            "tokenizer_config.json"
+          ]
+        },
+        "matched_aliases": [
+          "qwen2",
+          "qwen2forcausallm"
+        ],
+        "promotion": null,
+        "resolution_outcome": "exact",
+        "resolution_reason_code": "resolved",
+        "toolchain": {
+          "foundry_cli_version": "0.11.0",
+          "foundry_sdk_version": "1.2.4",
+          "mobius_version": "0.1.0",
+          "oga_version": "0.15.2",
+          "olive_version": "0.13.0",
+          "onnx_version": "1.22.0",
+          "ort_version": "1.29.0"
+        }
+      },
+      "recipe": {
+        "ancillary_files": [
+          {
+            "relative_path": "genai_config.json",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "tokenizer.json",
+            "required": true,
+            "source": "olive-output-dir"
+          }
+        ],
+        "artifact_cache_prefix": "qwen2-0-5b-instruct",
+        "huggingface_model_id": "Qwen/Qwen2-0.5B-Instruct",
+        "id": "qwen-qwen2-0-5b-instruct-llm-cpu-int4",
+        "inference_modality": "llm",
+        "mobius": {
+          "dtype": "f32",
+          "ep": "cpu",
+          "runtime": "ort-genai",
+          "task": "text-generation"
+        },
+        "modality": "llm",
+        "model_name_prefix": "qwen2-0-5b-instruct-onboarding",
+        "olive": {
+          "device": "cpu",
+          "input_source": "mobius-output-dir",
+          "log_level": "1",
+          "precision": "int4",
+          "provider": "CPUExecutionProvider",
+          "task": "text-generation-with-past"
+        },
+        "optimization_choices": [
+          {
+            "default": true,
+            "precision": "int4",
+            "skip_olive": false,
+            "strategy": "mobius-olive",
+            "task_profile": "llm-cpu-int4"
+          }
+        ],
+        "preferred_revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+        "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+        "status": "experimental",
+        "status_reason": "Compiled from tool-supported-unverified capability 'qwen-text-generation-cpu-int4-unverified-v1'. Mobius/Olive argument provenance remains candidate-unverified until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote this recipe.",
+        "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "task_profile": "llm-cpu-int4",
+        "verified_revision": null,
+        "version": "0.1.0"
+      },
+      "schema_version": "1.0.0"
+    },
+    "canonical_payload_sha256": "466cd68be19f93b8cc04a57cc6f1546f55b0908441fa26f47c78e93de1d1077f",
+    "capability_fingerprint": "9dfacd17b15f8427b0a5f8c319bdd1225a5179b818b084188373cff55dc1e9f4",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-03T19:54:32.499099+00:00",
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "profile_fingerprint": "40148bef0c7133a7aa0441d52f8ce03ecc17c15d85cd292a5834c22432646fb1",
+    "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+    "recipe_status": "experimental",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+    "schema_version": "1.0.0",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "job": {
+    "artifacts": [
+      {
+        "artifact_id": "954f23e3b03e005322adf120251c4241e553e584684d168d6b7f55f73a43214b",
+        "description": "Immutable Foundry Local BYOM model package",
+        "kind": "model"
+      }
+    ],
+    "events": [
+      {
+        "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+        "sequence": 1,
+        "state": "queued",
+        "timestamp_utc": "2026-09-03T19:54:33.400347+00:00"
+      },
+      {
+        "message": "Starting preflight checks.",
+        "sequence": 2,
+        "state": "preflight",
+        "timestamp_utc": "2026-09-03T19:54:33.446820+00:00"
+      },
+      {
+        "message": "Pinned Hugging Face revision c540970f9e29518b1d8f06ab8b24cba66ad77b6d.",
+        "sequence": 3,
+        "state": "downloading",
+        "timestamp_utc": "2026-09-03T19:55:58.112868+00:00"
+      },
+      {
+        "message": "Running recipe Mobius cpu ort-genai f32 build.",
+        "sequence": 4,
+        "state": "mobius_building",
+        "timestamp_utc": "2026-09-03T19:55:58.123193+00:00"
+      },
+      {
+        "message": "Mobius output created; ONNX validation follows Olive.",
+        "sequence": 5,
+        "state": "mobius_validating",
+        "timestamp_utc": "2026-09-03T19:56:36.492177+00:00"
+      },
+      {
+        "message": "Running recipe Olive mobius-output-dir int4 optimization.",
+        "sequence": 6,
+        "state": "olive_optimizing",
+        "timestamp_utc": "2026-09-03T19:56:36.505724+00:00"
+      },
+      {
+        "message": "Creating immutable Foundry Local BYOM package.",
+        "sequence": 7,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-03T19:57:12.422374+00:00"
+      },
+      {
+        "message": "Staging decoder output reconciliation verified existing decoder mappings.",
+        "sequence": 8,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-03T19:57:14.053938+00:00"
+      },
+      {
+        "message": "Validating ONNX, ORT CPU, and OGA generation.",
+        "sequence": 9,
+        "state": "runtime_validating",
+        "timestamp_utc": "2026-09-03T19:57:14.078133+00:00"
+      },
+      {
+        "message": "Foundry Local SDK discovered and loaded the BYOM package.",
+        "sequence": 10,
+        "state": "fl_loading",
+        "timestamp_utc": "2026-09-03T19:57:35.694672+00:00"
+      },
+      {
+        "message": "Running bounded Foundry Local SDK chat inference.",
+        "sequence": 11,
+        "state": "inferencing",
+        "timestamp_utc": "2026-09-03T19:57:35.703275+00:00"
+      },
+      {
+        "message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "sequence": 12,
+        "state": "succeeded",
+        "timestamp_utc": "2026-09-03T19:57:43.189111+00:00"
+      }
+    ],
+    "failure": null,
+    "finished_utc": "2026-09-03T19:57:43.189111+00:00",
+    "job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+    "result_artifact_id": "954f23e3b03e005322adf120251c4241e553e584684d168d6b7f55f73a43214b",
+    "started_utc": "2026-09-03T19:54:33.400347+00:00",
+    "state": "succeeded",
+    "validations": [
+      {
+        "checks": [
+          "Candidate 'Qwen/Qwen2-0.5B-Instruct' was not found in Foundry catalog."
+        ],
+        "failure": null,
+        "stage": "preflight",
+        "status": "passed"
+      },
+      {
+        "checks": [
+          "onnx_checker=1",
+          "ort_cpu_load=passed",
+          "oga_generation=passed"
+        ],
+        "failure": null,
+        "stage": "runtime_validating",
+        "status": "passed"
+      },
+      {
+        "checks": [
+          "foundry_local_sdk_chat=passed"
+        ],
+        "failure": null,
+        "stage": "inferencing",
+        "status": "passed"
+      }
+    ]
+  },
+  "job_poll_timed_out": false,
+  "lingering_processes_after_close": [],
+  "manifest_catalog_match": {
+    "confidence": "none",
+    "matched": false,
+    "matched_entry": null,
+    "reason": "No catalog entry matches normalized HF name 'qwen2-0-5b-instruct'"
+  },
+  "manifest_recipe_exists": false,
+  "manifest_sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+  "model_detail": {
+    "build_blockers": [],
+    "buildable": true,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "recipe_reason": "No recipe is registered for model 'Qwen/Qwen2-0.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "sha": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+    "task": "llm",
+    "warnings": []
+  },
+  "model_detail_http_status": 200,
+  "model_id": "Qwen/Qwen2-0.5B-Instruct",
+  "model_index": 4,
+  "preflight": {
+    "blockers": [
+      {
+        "classification": "invalid_request",
+        "message": "No recipe is registered for model 'Qwen/Qwen2-0.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+        "stage": "preflight"
+      }
+    ],
+    "cache_key": "f5eed41978357873d2c58ab0edfa79142388b9c49299bcf3c7267de1a892bd37",
+    "cached": false,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "verified_reuse": null
+    },
+    "ok": false,
+    "recipe_reason": "No recipe is registered for model 'Qwen/Qwen2-0.5B-Instruct' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "tools": [],
+    "warnings": []
+  },
+  "preflight_http_status": 200,
+  "preflight_recipe_unregistered_expected": true,
+  "preview_http_status": 200,
+  "quality_validation_evidence": {
+    "baseline_comparison": {
+      "passed": true,
+      "regressions": []
+    },
+    "batch_worker": {
+      "baseline": {
+        "request": {
+          "batch_timeout_seconds": 3600,
+          "expected_model_load_count": 1,
+          "max_tokens": 64,
+          "mode": "single-worker-batch",
+          "model_name": "qwen2-0-5b-instruct-onboarding-f52639a6-d8f-mobius-baseline:1",
+          "outer_command_timeout_seconds": 3615,
+          "outer_timeout_grace_seconds": 15,
+          "per_prompt_timeout_seconds": 900,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ]
+        },
+        "response": {
+          "completed_prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ],
+          "duration_seconds": 10.766,
+          "failed_prompt_id": null,
+          "failure_stage": null,
+          "ok": true,
+          "prompt_order_preserved": true,
+          "results": [
+            {
+              "duration_seconds": 0.547,
+              "prompt_id": "arithmetic-addition-17-plus-28",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.516,
+              "prompt_id": "factual-red-planet",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.515,
+              "prompt_id": "instruction-two-words-blue-river",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 1.157,
+              "prompt_id": "format-json-answer-unit",
+              "timed_out": false
+            }
+          ]
+        }
+      },
+      "optimized": {
+        "request": {
+          "batch_timeout_seconds": 3600,
+          "expected_model_load_count": 1,
+          "max_tokens": 64,
+          "mode": "single-worker-batch",
+          "model_name": "qwen2-0-5b-instruct-onboarding-954f23e3b03e:1",
+          "outer_command_timeout_seconds": 3615,
+          "outer_timeout_grace_seconds": 15,
+          "per_prompt_timeout_seconds": 900,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ]
+        },
+        "response": {
+          "completed_prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ],
+          "duration_seconds": 10.203,
+          "failed_prompt_id": null,
+          "failure_stage": null,
+          "ok": true,
+          "prompt_order_preserved": true,
+          "results": [
+            {
+              "duration_seconds": 1.063,
+              "prompt_id": "arithmetic-addition-17-plus-28",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.328,
+              "prompt_id": "factual-red-planet",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.672,
+              "prompt_id": "instruction-two-words-blue-river",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.484,
+              "prompt_id": "format-json-answer-unit",
+              "timed_out": false
+            }
+          ]
+        }
+      },
+      "prompt_order": [
+        "arithmetic-addition-17-plus-28",
+        "factual-red-planet",
+        "instruction-two-words-blue-river",
+        "format-json-answer-unit"
+      ]
+    },
+    "deterministic_inference": {
+      "max_tokens": 64,
+      "seed": 17,
+      "temperature": 0.0
+    },
+    "failure_excerpt": [
+      {
+        "baseline_failures": [
+          "exact_match_failed",
+          "relevance_keyword_missing"
+        ],
+        "baseline_output_text": "35",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "exact_match_failed",
+          "max_words_exceeded"
+        ],
+        "optimized_output_text": "The sum of 17 and 28 is 45.",
+        "optimized_passed": false,
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      },
+      {
+        "baseline_failures": [
+          "max_words_exceeded"
+        ],
+        "baseline_output_text": "Blue River, River of the Blue Mountains",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "max_words_exceeded"
+        ],
+        "optimized_output_text": "Blue River, River of the Blue.",
+        "optimized_passed": false,
+        "prompt_id": "instruction-two-words-blue-river"
+      }
+    ],
+    "metrics_ref": "quality-metrics://f52639a6-d8f6-4b95-bb46-540f2cd183f2/quality-validation-evidence.json",
+    "model_capability": {
+      "checks_passed": 2,
+      "confidence": {
+        "determinism_supported": false,
+        "level": "low",
+        "reasons": [
+          "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+          "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+          "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+          "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+        ]
+      },
+      "per_prompt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "relevance_keyword_missing"
+          ],
+          "baseline_status": "failed",
+          "category": "arithmetic",
+          "comparison": "divergent_fail",
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "warnings": [
+            "divergent_capability_failure"
+          ]
+        },
+        {
+          "baseline_failures": [],
+          "baseline_status": "passed",
+          "category": "factual-recall",
+          "comparison": "matched_pass",
+          "optimized_failures": [],
+          "optimized_status": "passed",
+          "prompt_id": "factual-red-planet",
+          "warnings": []
+        },
+        {
+          "baseline_failures": [
+            "max_words_exceeded"
+          ],
+          "baseline_status": "failed",
+          "category": "instruction-following",
+          "comparison": "matched_fail",
+          "optimized_failures": [
+            "max_words_exceeded"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "instruction-two-words-blue-river",
+          "warnings": [
+            "shared_capability_failure"
+          ]
+        },
+        {
+          "baseline_failures": [],
+          "baseline_status": "passed",
+          "category": "output-format",
+          "comparison": "matched_pass",
+          "optimized_failures": [],
+          "optimized_status": "passed",
+          "prompt_id": "format-json-answer-unit",
+          "warnings": []
+        }
+      ],
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:divergent_capability_failure",
+        "instruction-two-words-blue-river:shared_capability_failure"
+      ]
+    },
+    "per_prompt": [
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "exact_match_failed",
+              "relevance_keyword_missing"
+            ],
+            "passed": false
+          },
+          "output_text": "35",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "arithmetic",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "The sum of 17 and 28 is 45.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "What is 17 + 28? Reply using only digits.",
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "Mars.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "factual-recall",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "Mars",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Which planet is known as the Red Planet? Reply with one word.",
+        "prompt_id": "factual-red-planet"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "Blue River, River of the Blue Mountains",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "instruction-following",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "Blue River, River of the Blue.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Output exactly two words: blue river",
+        "prompt_id": "instruction-two-words-blue-river"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "output-format",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [],
+            "passed": true
+          },
+          "output_text": "{\n  \"answer\": \"12\",\n  \"unit\": \"cm\"\n}",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.",
+        "prompt_id": "format-json-answer-unit"
+      }
+    ],
+    "profile_id": "textgen-basic-quality-v1",
+    "profile_version": "1.0.0",
+    "promotion_evidence": {
+      "baseline_comparison_gate": "passed",
+      "can_promote": true,
+      "functional_gate": "passed",
+      "metrics_capture_gate": "unavailable",
+      "notes": [
+        "Optional latency/memory/package metrics were not supplied.",
+        "Model capability confidence is low because deterministic inference settings were only partially enforced."
+      ]
+    },
+    "recipe_verification": {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    "ref_job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+    "schema_version": "1.0.0",
+    "status": "loaded",
+    "unsupported_determinism_fields_reported_by_runtime": [
+      "temperature",
+      "seed"
+    ]
+  },
+  "resource_after": {
+    "cache_bytes": 15693189735,
+    "disk_free_gb": 1118.884,
+    "disk_used_gb": 787.557,
+    "runtime_bytes": 50994226104,
+    "state_bytes": 303104,
+    "timestamp_utc": "2026-09-03T19:58:06.890451+00:00",
+    "workspace_bytes": 35300642785
+  },
+  "resource_before": {
+    "cache_bytes": 14865873763,
+    "disk_free_gb": 1125.445,
+    "disk_used_gb": 780.997,
+    "runtime_bytes": 44519573453,
+    "state_bytes": 270336,
+    "timestamp_utc": "2026-09-03T19:54:31.414991+00:00",
+    "workspace_bytes": 29653429354
+  },
+  "round7_first_request": {
+    "candidate_selection": {
+      "aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 71.77387
+      },
+      "candidates": [
+        {
+          "artifact_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/artifact/954f23e3b03e005322adf120251c4241e553e584684d168d6b7f55f73a43214b",
+          "attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+          "attempt_state": "succeeded",
+          "candidate_attempt_id": "9acde117-a80f-43c4-b2e7-fc66a932159e",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "disposition": null,
+          "disposition_reasons": [],
+          "eligibility_trigger": null,
+          "invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": 1,
+            "olive_optimize_invocation_count": 1,
+            "total_invocation_count": 2,
+            "wall_clock_seconds": 71.77387
+          },
+          "package_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/package",
+          "quantization_override": null,
+          "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+          "role": "default",
+          "selection_status": "selected",
+          "validated_scope": {
+            "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+            "target_device": "cpu",
+            "target_ep": "cpu",
+            "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+          }
+        }
+      ],
+      "lineage_selection_state": "selected",
+      "max_candidates": 2,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "reuse": null,
+      "selected_candidate": {
+        "attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+        "candidate_attempt_id": "9acde117-a80f-43c4-b2e7-fc66a932159e",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T19:58:05.832006+00:00",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+      }
+    },
+    "first_request_aggregate_invocation_counters": {
+      "estimated_cost_usd": null,
+      "mobius_build_invocation_count": 1,
+      "olive_optimize_invocation_count": 1,
+      "total_invocation_count": 2,
+      "wall_clock_seconds": 71.77387
+    },
+    "first_request_behavior_observation": {
+      "actual": {
+        "aggregate_mobius_build_invocation_count": 1,
+        "aggregate_olive_optimize_invocation_count": 1,
+        "candidate_count": 1,
+        "selected_candidate_index": 0,
+        "selected_candidate_role": "default",
+        "workflow_outcome": "selected"
+      },
+      "expected": {
+        "aggregate_mobius_build_invocation_count": 1,
+        "aggregate_olive_optimize_invocation_count": 1,
+        "default_candidate_expected": "verified-and-selected",
+        "fallback_candidate_expected": "not-registered",
+        "selected_candidate_index": 0,
+        "selected_candidate_role": "default"
+      },
+      "matches_expected": true,
+      "mismatch_fields": []
+    },
+    "winner_attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+    "winner_attempt_state": "succeeded",
+    "winner_candidate": {
+      "attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+      "candidate_attempt_id": "9acde117-a80f-43c4-b2e7-fc66a932159e",
+      "candidate_id": "default-int4",
+      "candidate_index": 0,
+      "selected_by": "validation",
+      "selected_utc": "2026-09-03T19:58:05.832006+00:00",
+      "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+    },
+    "winner_candidate_timeline_entry": {
+      "artifact_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/artifact/954f23e3b03e005322adf120251c4241e553e584684d168d6b7f55f73a43214b",
+      "attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+      "attempt_state": "succeeded",
+      "candidate_attempt_id": "9acde117-a80f-43c4-b2e7-fc66a932159e",
+      "candidate_id": "default-int4",
+      "candidate_index": 0,
+      "disposition": null,
+      "disposition_reasons": [],
+      "eligibility_trigger": null,
+      "invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 71.77387
+      },
+      "package_ref": "job://f52639a6-d8f6-4b95-bb46-540f2cd183f2/package",
+      "quantization_override": null,
+      "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+      "role": "default",
+      "selection_status": "selected",
+      "validated_scope": {
+        "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+        "target_device": "cpu",
+        "target_ep": "cpu",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+      }
+    },
+    "winner_job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+    "winner_model_capability": {
+      "checks_passed": 2,
+      "confidence": {
+        "determinism_supported": false,
+        "level": "low",
+        "reasons": [
+          "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+          "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+          "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+          "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+        ]
+      },
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:divergent_capability_failure",
+        "instruction-two-words-blue-river:shared_capability_failure"
+      ]
+    },
+    "winner_recipe_verification": {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    "workflow_outcome": "selected"
+  },
+  "round7_second_request_reuse": {
+    "attempt_build_job_id": null,
+    "build_job_alias_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+    "build_job_alias_matches_winner_job": true,
+    "create_http_status": 200,
+    "idempotency_key": "r7-20260903T193800Z-reuse-04",
+    "model_id": "Qwen/Qwen2-0.5B-Instruct",
+    "model_index": 4,
+    "poll_http_status": 200,
+    "preview_http_status": 200,
+    "recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895",
+    "reuse_attempt_id": "ed355905-4ee6-49be-885d-718aed449159",
+    "reuse_attempt_state": "succeeded",
+    "reuse_evidence": {
+      "mobius_invocation_count": 0,
+      "olive_invocation_count": 0,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "recorded_utc": "2026-09-03T20:05:08.390516+00:00",
+      "reused_without_build": true,
+      "runner_dispatch_count": 0,
+      "source_attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+      "source_candidate_attempt_id": "9acde117-a80f-43c4-b2e7-fc66a932159e",
+      "source_parent_attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7"
+    },
+    "reuse_evidence_row": {
+      "mobius_invocation_count": 0,
+      "olive_invocation_count": 0,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "recorded_utc": "2026-09-03T20:05:08.390516+00:00",
+      "reused_attempt_id": "ed355905-4ee6-49be-885d-718aed449159",
+      "reused_without_build": true,
+      "runner_dispatch_count": 0,
+      "source_attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+      "source_candidate_attempt_id": "9acde117-a80f-43c4-b2e7-fc66a932159e",
+      "source_parent_attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7"
+    },
+    "reuse_evidence_row_matches_response": true,
+    "reuse_workflow_outcome": "reused",
+    "reuse_zero_build_verified": true,
+    "runner_dispatch_mapping_present_for_reuse_attempt": false,
+    "second_request_submitted": true,
+    "service_dispatch_observation": {
+      "attempt_mapping_count_after": 6,
+      "attempt_mapping_count_before": 6,
+      "jobs_after": 6,
+      "jobs_before": 6,
+      "new_job_created_for_reuse_attempt": false
+    },
+    "source_ids_match_expected_winner": true,
+    "winner_job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+    "winner_resolution": {
+      "available": true,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+      "source_parent_attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+      "winner_attempt_id": "99911b99-3d74-4621-8890-fe87f3318ae7",
+      "winner_candidate_attempt_id": "9acde117-a80f-43c4-b2e7-fc66a932159e",
+      "winner_candidate_id": "default-int4",
+      "winner_candidate_index": 0,
+      "winner_job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+      "winner_recipe_fingerprint": "d089580184b636ec9847ee55d60ec31afcbb63f8bad2e6bf559cfcb224da8895"
+    }
+  },
+  "started_utc": "2026-09-03T19:54:31.414991+00:00",
+  "workspace_retention": {
+    "action": "retained-success-workspace",
+    "attempt_state": "succeeded",
+    "job_id": "f52639a6-d8f6-4b95-bb46-540f2cd183f2",
+    "model_id": "Qwen/Qwen2-0.5B-Instruct"
+  }
+}

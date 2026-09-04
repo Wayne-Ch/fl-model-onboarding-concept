@@ -1,0 +1,22 @@
+{
+  "round": "round-7",
+  "subrun_id": "r7-20260903T173331Z",
+  "status": "invalid",
+  "classification": "invalid_shared_preflight_and_retry_orchestration_diagnostic",
+  "valid_baseline": false,
+  "invalid_reasons": [
+    "shared_preflight_probe_instability: olive --help/--version exceeded 30s and was classified as tool_unavailable for Qwen/Granite",
+    "retry_orchestration_defect: Smol default candidate had retryable optimized-only structural regression evidence, but fallback candidate was not launched"
+  ],
+  "corrective_commits": [
+    {
+      "sha": "698d4ed",
+      "title": "Fix preflight olive probe timeout flake"
+    },
+    {
+      "sha": "f52d7a2",
+      "title": "Fix fallback retry eligibility for advisory failures"
+    }
+  ],
+  "superseded_by_subrun_id": null
+}

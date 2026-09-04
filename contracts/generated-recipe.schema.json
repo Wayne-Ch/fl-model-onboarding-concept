@@ -1,0 +1,658 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Wayne-Ch/fl-model-onboarding-concept/contracts/generated-recipe.schema.json",
+  "title": "Generated Recipe Candidate",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "recipe",
+    "pinned_revision",
+    "provenance",
+    "fingerprint"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "recipe": {
+      "$ref": "#/$defs/recipe"
+    },
+    "pinned_revision": {
+      "$ref": "#/$defs/hex40"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "fingerprint": {
+      "$ref": "#/$defs/hex64"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "hex40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "modality": {
+      "type": "string",
+      "enum": [
+        "llm",
+        "asr"
+      ]
+    },
+    "recipe_status": {
+      "type": "string",
+      "enum": [
+        "experimental",
+        "verified",
+        "blocked"
+      ]
+    },
+    "capability_status": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "tool-supported-unverified",
+        "source-change-required"
+      ]
+    },
+    "resolution_outcome": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "not-eligible",
+        "ambiguous"
+      ]
+    },
+    "argument_confidence": {
+      "type": "string",
+      "enum": [
+        "evidence-pinned",
+        "candidate-unverified"
+      ]
+    },
+    "mobius_args": {
+      "type": "object",
+      "required": [
+        "task",
+        "ep",
+        "runtime",
+        "dtype"
+      ],
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "ep": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "dtype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "olive_args": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "input_source",
+        "task",
+        "precision",
+        "device",
+        "provider",
+        "log_level"
+      ],
+      "properties": {
+        "input_source": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "precision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "device": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "log_level": {
+          "type": "string"
+        },
+        "block_size": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ancillary_file_rule": {
+      "type": "object",
+      "required": [
+        "relative_path",
+        "required",
+        "source"
+      ],
+      "properties": {
+        "relative_path": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "optimization_choice": {
+      "type": "object",
+      "required": [
+        "strategy",
+        "precision",
+        "task_profile",
+        "skip_olive",
+        "default"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string"
+        },
+        "precision": {
+          "type": "string",
+          "enum": [
+            "int4"
+          ]
+        },
+        "task_profile": {
+          "type": "string"
+        },
+        "skip_olive": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence_row": {
+      "type": "object",
+      "required": [
+        "evidence_id",
+        "source_type",
+        "location",
+        "summary"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string"
+        },
+        "source_type": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "toolchain": {
+      "type": "object",
+      "required": [
+        "mobius_version",
+        "olive_version",
+        "onnx_version",
+        "ort_version",
+        "oga_version",
+        "foundry_sdk_version",
+        "foundry_cli_version"
+      ],
+      "properties": {
+        "mobius_version": {
+          "type": "string"
+        },
+        "olive_version": {
+          "type": "string"
+        },
+        "onnx_version": {
+          "type": "string"
+        },
+        "ort_version": {
+          "type": "string"
+        },
+        "oga_version": {
+          "type": "string"
+        },
+        "foundry_sdk_version": {
+          "type": "string"
+        },
+        "foundry_cli_version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "input_metadata": {
+      "type": "object",
+      "required": [
+        "model_id",
+        "revision_sha",
+        "model_type",
+        "architectures",
+        "task",
+        "requested_device",
+        "requested_precision",
+        "is_gated",
+        "requires_remote_code",
+        "config_files",
+        "tokenizer_files",
+        "available_files"
+      ],
+      "properties": {
+        "model_id": {
+          "type": "string"
+        },
+        "revision_sha": {
+          "$ref": "#/$defs/hex40"
+        },
+        "model_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "architectures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "task": {
+          "type": "string",
+          "const": "llm"
+        },
+        "requested_device": {
+          "type": "string",
+          "const": "cpu"
+        },
+        "requested_precision": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "int4"
+          ]
+        },
+        "is_gated": {
+          "type": "boolean",
+          "const": false
+        },
+        "requires_remote_code": {
+          "type": "boolean",
+          "const": false
+        },
+        "config_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "tokenizer_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "available_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "argument_provenance": {
+      "type": "object",
+      "required": [
+        "mobius_dtype_rule",
+        "mobius_dtype_confidence",
+        "olive_precision_rule",
+        "olive_precision_confidence",
+        "contains_unverified_arguments"
+      ],
+      "properties": {
+        "mobius_dtype_rule": {
+          "type": "string"
+        },
+        "mobius_dtype_confidence": {
+          "$ref": "#/$defs/argument_confidence"
+        },
+        "olive_precision_rule": {
+          "type": "string"
+        },
+        "olive_precision_confidence": {
+          "$ref": "#/$defs/argument_confidence"
+        },
+        "contains_unverified_arguments": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "gate_check": {
+      "type": "object",
+      "required": [
+        "passed",
+        "evidence"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean",
+          "const": true
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "metrics_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "promotion": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "promoted_from_fingerprint",
+        "new_version",
+        "status_reason",
+        "gate_evidence"
+      ],
+      "properties": {
+        "promoted_from_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "new_version": {
+          "type": "string"
+        },
+        "status_reason": {
+          "type": "string"
+        },
+        "gate_evidence": {
+          "type": "object",
+          "required": [
+            "mobius_build",
+            "olive_optimize",
+            "onnx_validation",
+            "ort_validation",
+            "oga_validation",
+            "fl_sdk_inference",
+            "quality_validation"
+          ],
+          "properties": {
+            "mobius_build": {
+              "$ref": "#/$defs/gate_check"
+            },
+            "olive_optimize": {
+              "$ref": "#/$defs/gate_check"
+            },
+            "onnx_validation": {
+              "$ref": "#/$defs/gate_check"
+            },
+            "ort_validation": {
+              "$ref": "#/$defs/gate_check"
+            },
+            "oga_validation": {
+              "$ref": "#/$defs/gate_check"
+            },
+            "fl_sdk_inference": {
+              "$ref": "#/$defs/gate_check"
+            },
+            "quality_validation": {
+              "$ref": "#/$defs/gate_check"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "trusted_candidate": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "candidate_index",
+        "candidate_id",
+        "resolved_block_size"
+      ],
+      "properties": {
+        "policy_id": {
+          "type": "string"
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "policy_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "candidate_index": {
+          "type": "integer"
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "resolved_block_size": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "compiler_version",
+        "generation_kind",
+        "capability_id",
+        "capability_version",
+        "capability_status",
+        "resolution_outcome",
+        "resolution_reason_code",
+        "matched_aliases",
+        "argument_provenance",
+        "evidence",
+        "toolchain",
+        "input_metadata",
+        "promotion"
+      ],
+      "properties": {
+        "compiler_version": {
+          "type": "string"
+        },
+        "generation_kind": {
+          "type": "string",
+          "const": "deterministic-recipe-agent-v1"
+        },
+        "capability_id": {
+          "type": "string"
+        },
+        "capability_version": {
+          "type": "string"
+        },
+        "capability_status": {
+          "$ref": "#/$defs/capability_status"
+        },
+        "resolution_outcome": {
+          "$ref": "#/$defs/resolution_outcome"
+        },
+        "resolution_reason_code": {
+          "type": "string"
+        },
+        "matched_aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "argument_provenance": {
+          "$ref": "#/$defs/argument_provenance"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence_row"
+          }
+        },
+        "toolchain": {
+          "$ref": "#/$defs/toolchain"
+        },
+        "input_metadata": {
+          "$ref": "#/$defs/input_metadata"
+        },
+        "promotion": {
+          "$ref": "#/$defs/promotion"
+        },
+        "trusted_candidate": {
+          "$ref": "#/$defs/trusted_candidate"
+        }
+      },
+      "additionalProperties": false
+    },
+    "recipe": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "status",
+        "status_reason",
+        "huggingface_model_id",
+        "modality",
+        "task_profile",
+        "verified_revision",
+        "preferred_revision",
+        "mobius",
+        "olive",
+        "ancillary_files",
+        "runtime_validation",
+        "inference_modality",
+        "optimization_choices",
+        "artifact_cache_prefix",
+        "model_name_prefix",
+        "success_message"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/recipe_status"
+        },
+        "status_reason": {
+          "type": "string"
+        },
+        "huggingface_model_id": {
+          "type": "string"
+        },
+        "modality": {
+          "$ref": "#/$defs/modality"
+        },
+        "task_profile": {
+          "type": "string"
+        },
+        "verified_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "preferred_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mobius": {
+          "$ref": "#/$defs/mobius_args"
+        },
+        "olive": {
+          "$ref": "#/$defs/olive_args"
+        },
+        "ancillary_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/ancillary_file_rule"
+          }
+        },
+        "runtime_validation": {
+          "type": "string"
+        },
+        "inference_modality": {
+          "$ref": "#/$defs/modality"
+        },
+        "optimization_choices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/optimization_choice"
+          }
+        },
+        "artifact_cache_prefix": {
+          "type": "string"
+        },
+        "model_name_prefix": {
+          "type": "string"
+        },
+        "success_message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,533 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Wayne-Ch/fl-model-onboarding-concept/contracts/architecture-capabilities.schema.json",
+  "title": "Architecture capabilities registry",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "capabilities"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/capability"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "tool-supported-unverified",
+        "source-change-required"
+      ]
+    },
+    "task": {
+      "type": "string",
+      "enum": [
+        "text-generation",
+        "speech-to-text"
+      ]
+    },
+    "modality": {
+      "type": "string",
+      "enum": [
+        "llm",
+        "asr"
+      ]
+    },
+    "device": {
+      "type": "string",
+      "enum": [
+        "cpu"
+      ]
+    },
+    "precision": {
+      "type": "string",
+      "enum": [
+        "int4",
+        "fp32"
+      ]
+    },
+    "request_precision": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "int4",
+        "fp32"
+      ]
+    },
+    "argument_confidence": {
+      "type": "string",
+      "enum": [
+        "evidence-pinned",
+        "candidate-unverified"
+      ]
+    },
+    "mobius_rules": {
+      "type": "object",
+      "required": [
+        "task",
+        "ep",
+        "runtime",
+        "dtype",
+        "dtype_rule",
+        "dtype_confidence"
+      ],
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "ep": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "dtype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dtype_rule": {
+          "type": "string"
+        },
+        "dtype_confidence": {
+          "$ref": "#/$defs/argument_confidence"
+        }
+      },
+      "additionalProperties": false
+    },
+    "olive_rules": {
+      "type": "object",
+      "required": [
+        "task",
+        "device",
+        "provider",
+        "precision",
+        "precision_rule",
+        "precision_confidence"
+      ],
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "device": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "precision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "precision_rule": {
+          "type": "string"
+        },
+        "precision_confidence": {
+          "$ref": "#/$defs/argument_confidence"
+        }
+      },
+      "additionalProperties": false
+    },
+    "required_artifact": {
+      "type": "object",
+      "required": [
+        "relative_path",
+        "required",
+        "source"
+      ],
+      "properties": {
+        "relative_path": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "oga_runtime_contract": {
+      "type": "object",
+      "required": [
+        "runtime",
+        "validator_profile",
+        "required_files",
+        "loader",
+        "notes"
+      ],
+      "properties": {
+        "runtime": {
+          "type": "string"
+        },
+        "validator_profile": {
+          "type": "string"
+        },
+        "required_files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "loader": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "optimization_choice": {
+      "type": "object",
+      "required": [
+        "strategy",
+        "precision",
+        "task_profile",
+        "skip_olive",
+        "default"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string"
+        },
+        "precision": {
+          "type": "string"
+        },
+        "task_profile": {
+          "type": "string"
+        },
+        "skip_olive": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "static_eligibility_constraints": {
+      "type": "object",
+      "required": [
+        "allow_gated",
+        "allow_remote_code",
+        "allow_private",
+        "supported_tasks",
+        "supported_devices",
+        "supported_request_precisions"
+      ],
+      "properties": {
+        "allow_gated": {
+          "type": "boolean"
+        },
+        "allow_remote_code": {
+          "type": "boolean"
+        },
+        "allow_private": {
+          "type": "boolean"
+        },
+        "supported_tasks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "llm",
+              "asr"
+            ]
+          }
+        },
+        "supported_devices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/device"
+          }
+        },
+        "supported_request_precisions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/request_precision"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "known_blocker": {
+      "type": "object",
+      "required": [
+        "blocker_id",
+        "owner",
+        "classification",
+        "message"
+      ],
+      "properties": {
+        "blocker_id": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string",
+          "enum": [
+            "fl-onboarding",
+            "mobius-producer",
+            "onnxruntime-genai",
+            "olive",
+            "foundry-local-sdk",
+            "upstream-model"
+          ]
+        },
+        "classification": {
+          "type": "string",
+          "enum": [
+            "missing-fl-verification",
+            "source-runtime-contract-incompatible",
+            "unsupported-task",
+            "unsupported-device",
+            "unsupported-precision",
+            "non-text-architecture"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "evidence_id",
+        "source_type",
+        "location",
+        "summary"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string"
+        },
+        "source_type": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "required": [
+        "capability_id",
+        "version",
+        "status",
+        "status_reason",
+        "allowed_status_transitions",
+        "family",
+        "model_type_aliases",
+        "architecture_aliases",
+        "task",
+        "modality",
+        "device",
+        "precision",
+        "mobius_rules",
+        "olive_rules",
+        "required_artifacts",
+        "oga_runtime_contract",
+        "optimization_choices",
+        "static_eligibility_constraints",
+        "known_blockers",
+        "evidence"
+      ],
+      "properties": {
+        "capability_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "status_reason": {
+          "type": "string"
+        },
+        "allowed_status_transitions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/status"
+          }
+        },
+        "family": {
+          "type": "string"
+        },
+        "model_type_aliases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "architecture_aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "task": {
+          "$ref": "#/$defs/task"
+        },
+        "modality": {
+          "$ref": "#/$defs/modality"
+        },
+        "device": {
+          "$ref": "#/$defs/device"
+        },
+        "precision": {
+          "$ref": "#/$defs/precision"
+        },
+        "mobius_rules": {
+          "$ref": "#/$defs/mobius_rules"
+        },
+        "olive_rules": {
+          "$ref": "#/$defs/olive_rules"
+        },
+        "required_artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/required_artifact"
+          }
+        },
+        "oga_runtime_contract": {
+          "$ref": "#/$defs/oga_runtime_contract"
+        },
+        "optimization_choices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/optimization_choice"
+          }
+        },
+        "static_eligibility_constraints": {
+          "$ref": "#/$defs/static_eligibility_constraints"
+        },
+        "known_blockers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/known_blocker"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verified"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mobius_rules": {
+                "properties": {
+                  "dtype_confidence": {
+                    "const": "evidence-pinned"
+                  }
+                }
+              },
+              "olive_rules": {
+                "properties": {
+                  "precision_confidence": {
+                    "const": "evidence-pinned"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "tool-supported-unverified"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mobius_rules": {
+                "properties": {
+                  "dtype_confidence": {
+                    "const": "candidate-unverified"
+                  }
+                }
+              },
+              "olive_rules": {
+                "properties": {
+                  "precision_confidence": {
+                    "const": "candidate-unverified"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "source-change-required"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mobius_rules": {
+                "properties": {
+                  "dtype_confidence": {
+                    "const": "evidence-pinned"
+                  }
+                }
+              },
+              "olive_rules": {
+                "properties": {
+                  "precision_confidence": {
+                    "const": "evidence-pinned"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

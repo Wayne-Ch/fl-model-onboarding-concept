@@ -1,0 +1,1719 @@
+{
+  "attempt": {
+    "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+    "build_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+    "candidate_selection": {
+      "aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 115.40347700000001
+      },
+      "candidates": [
+        {
+          "artifact_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/artifact/7608b03a87a219d004ac9c597faeae94b4b9b8d4d73e0b54930dd474cb40194e",
+          "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+          "attempt_state": "succeeded",
+          "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "disposition": null,
+          "disposition_reasons": [],
+          "eligibility_trigger": null,
+          "invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": 1,
+            "olive_optimize_invocation_count": 1,
+            "total_invocation_count": 2,
+            "wall_clock_seconds": 115.40347700000001
+          },
+          "package_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/package",
+          "quantization_override": null,
+          "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+          "role": "default",
+          "selection_status": "selected",
+          "validated_scope": {
+            "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+            "target_device": "cpu",
+            "target_ep": "cpu",
+            "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+          }
+        }
+      ],
+      "lineage_selection_state": "selected",
+      "max_candidates": 2,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "reuse": null,
+      "selected_candidate": {
+        "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:43:52.860469+00:00",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+      }
+    },
+    "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-03T20:40:10.569169+00:00",
+    "failure": null,
+    "finished_utc": "2026-09-03T20:43:52.827050+00:00",
+    "gates": [
+      {
+        "evidence_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/mobius_build/passed",
+        "finished_utc": "2026-09-03T20:43:24.547411+00:00",
+        "gate": "mobius_build",
+        "metrics_ref": null,
+        "sequence": 1,
+        "started_utc": "2026-09-03T20:43:24.547411+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/olive_optimize/passed",
+        "finished_utc": "2026-09-03T20:43:24.555125+00:00",
+        "gate": "olive_optimize",
+        "metrics_ref": null,
+        "sequence": 2,
+        "started_utc": "2026-09-03T20:43:24.555125+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/onnx_validation/passed",
+        "finished_utc": "2026-09-03T20:43:24.578637+00:00",
+        "gate": "onnx_validation",
+        "metrics_ref": null,
+        "sequence": 3,
+        "started_utc": "2026-09-03T20:43:24.578637+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/ort_validation/passed",
+        "finished_utc": "2026-09-03T20:43:24.594305+00:00",
+        "gate": "ort_validation",
+        "metrics_ref": null,
+        "sequence": 4,
+        "started_utc": "2026-09-03T20:43:24.594305+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/oga_validation/passed",
+        "finished_utc": "2026-09-03T20:43:24.618474+00:00",
+        "gate": "oga_validation",
+        "metrics_ref": null,
+        "sequence": 5,
+        "started_utc": "2026-09-03T20:43:24.618474+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/fl_sdk_inference/passed",
+        "finished_utc": "2026-09-03T20:43:24.635587+00:00",
+        "gate": "fl_sdk_inference",
+        "metrics_ref": null,
+        "sequence": 6,
+        "started_utc": "2026-09-03T20:43:24.635587+00:00",
+        "status": "passed"
+      },
+      {
+        "evidence_ref": "quality://b5d22a62-90e8-4336-befa-734ebb32bee9/quality_validation/baseline-passed",
+        "finished_utc": "2026-09-03T20:43:52.815032+00:00",
+        "gate": "quality_validation",
+        "metrics_ref": "quality-metrics://b5d22a62-90e8-4336-befa-734ebb32bee9/quality-validation-evidence.json",
+        "sequence": 7,
+        "started_utc": "2026-09-03T20:43:52.815032+00:00",
+        "status": "passed"
+      }
+    ],
+    "idempotency_key": "r7-20260903T203830Z-01",
+    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "profile_fingerprint": "3ba0f69d071bb52253c9dcd2d62030ebd4871fa2e686b5e162fd18597a1d74d9",
+    "quality_validation": {
+      "model_capability": {
+        "checks_passed": 0,
+        "confidence": {
+          "determinism_supported": false,
+          "level": "low",
+          "reasons": [
+            "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+            "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+            "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+            "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+            "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+            "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+          ]
+        },
+        "total_checks": 4,
+        "warnings": [
+          "arithmetic-addition-17-plus-28:shared_capability_failure",
+          "factual-red-planet:divergent_capability_failure",
+          "instruction-two-words-blue-river:divergent_capability_failure",
+          "format-json-answer-unit:shared_capability_failure"
+        ]
+      },
+      "recipe_integrity": {
+        "baseline_available": true,
+        "can_promote": true,
+        "gate_status": "passed",
+        "integrity_failures": [],
+        "regression_free": true,
+        "runtime_functional": true,
+        "status": "verified"
+      }
+    },
+    "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+    "request_fingerprint": "d9668fe30c057ef080a8472d9359ef91e9ea8c0badbdd1e0530ef3002c67030e",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+    "state": "succeeded",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+    "workflow_outcome": "selected"
+  },
+  "attempt_create": {
+    "payload": {
+      "attempt": {
+        "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "build_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+        "candidate_selection": {
+          "aggregate_invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": null,
+            "olive_optimize_invocation_count": null,
+            "total_invocation_count": null,
+            "wall_clock_seconds": null
+          },
+          "candidates": [
+            {
+              "artifact_ref": null,
+              "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+              "attempt_state": "running",
+              "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+              "candidate_id": "default-int4",
+              "candidate_index": 0,
+              "disposition": null,
+              "disposition_reasons": [],
+              "eligibility_trigger": null,
+              "invocation_counters": {
+                "estimated_cost_usd": null,
+                "mobius_build_invocation_count": null,
+                "olive_optimize_invocation_count": null,
+                "total_invocation_count": null,
+                "wall_clock_seconds": null
+              },
+              "package_ref": null,
+              "quantization_override": null,
+              "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+              "role": "default",
+              "selection_status": "not_selected",
+              "validated_scope": {
+                "environment_scope": null,
+                "target_device": null,
+                "target_ep": null,
+                "toolchain_fingerprint": null
+              }
+            }
+          ],
+          "lineage_selection_state": "pending",
+          "max_candidates": 2,
+          "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+          "policy_id": "cpu-int4-recipe-selection-v1",
+          "policy_version": "1.0.0",
+          "reuse": null,
+          "selected_candidate": null
+        },
+        "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+        "compiler_version": "1.0.0",
+        "created_utc": "2026-09-03T20:40:10.569169+00:00",
+        "failure": null,
+        "finished_utc": null,
+        "gates": [],
+        "idempotency_key": "r7-20260903T203830Z-01",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "profile_fingerprint": "3ba0f69d071bb52253c9dcd2d62030ebd4871fa2e686b5e162fd18597a1d74d9",
+        "quality_validation": null,
+        "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+        "request_fingerprint": "d9668fe30c057ef080a8472d9359ef91e9ea8c0badbdd1e0530ef3002c67030e",
+        "requested_device": "cpu",
+        "requested_precision": "auto",
+        "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+        "state": "running",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d",
+        "workflow_outcome": "pending"
+      },
+      "idempotent_replay": false,
+      "job": {
+        "artifacts": [],
+        "events": [
+          {
+            "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+            "sequence": 1,
+            "state": "queued",
+            "timestamp_utc": "2026-09-03T20:40:10.613940+00:00"
+          }
+        ],
+        "failure": null,
+        "finished_utc": null,
+        "job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+        "production_invocation_evidence": null,
+        "request": {
+          "allow_experimental": true,
+          "candidate": {
+            "huggingface_model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "key": "llm-tinyllama-tinyllama-1.1b-chat-v1.0",
+            "modality": "llm",
+            "notes": "Compiled from verified architecture capability 'llama-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+            "recommended_mobius_dtype": "f32",
+            "recommended_olive_precision": "int4"
+          },
+          "dry_run": false,
+          "enforce_cpu_target": true,
+          "external_data_format": "safetensors",
+          "generated_recipe_attempt": {
+            "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+            "confirmation_provenance": "api.confirm_automatic_recipe_attempt",
+            "confirmed": true,
+            "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577"
+          },
+          "hf_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+          "max_shard_size": "5GB",
+          "model_cache_dir": "scratch://round-7/r7-20260903T203830Z\\cache",
+          "optimization_precision": "int4",
+          "optimization_strategy": "mobius-olive",
+          "output_dir": "scratch://round-7/r7-20260903T203830Z\\workspace\\b5d22a62-90e8-4336-befa-734ebb32bee9\\output",
+          "recipe_artifact_cache_prefix": "tinyllama-1-1b-chat-v1-0",
+          "recipe_id": "tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4",
+          "recipe_model_name_prefix": "tinyllama-1-1b-chat-v1-0-onboarding",
+          "recipe_reason": "Generated recipe attempt execution confirmed via explicit confirm_automatic_recipe_attempt signal.",
+          "recipe_status": "experimental",
+          "recipe_version": "0.1.0",
+          "runtime": "ort-genai",
+          "skip_olive": false,
+          "task_profile": "llm-cpu-int4",
+          "workspace_root": "scratch://round-7/r7-20260903T203830Z\\workspace\\b5d22a62-90e8-4336-befa-734ebb32bee9"
+        },
+        "result_artifact_id": null,
+        "started_utc": "2026-09-03T20:40:10.613940+00:00",
+        "state": "queued",
+        "validations": []
+      }
+    },
+    "status_code": 200
+  },
+  "attempt_http_status": 200,
+  "event_count": 12,
+  "events_http_status": 200,
+  "failure_summary": {
+    "attempt_state": "succeeded",
+    "error_signature": null,
+    "first_failed_classification": null,
+    "first_failed_stage": null,
+    "next_action": null,
+    "preflight_recipe_status": "unregistered",
+    "preflight_recipe_unregistered_expected": true,
+    "prior_successful_gates": [
+      "mobius_build",
+      "olive_optimize",
+      "onnx_validation",
+      "ort_validation",
+      "oga_validation",
+      "fl_sdk_inference",
+      "quality_validation"
+    ],
+    "source_owner": null
+  },
+  "finished_utc": "2026-09-03T20:43:53.896543+00:00",
+  "generated_preview": {
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "argument_confidence": {
+        "contains_unverified_arguments": false,
+        "mobius_dtype_confidence": "evidence-pinned",
+        "olive_precision_confidence": "evidence-pinned"
+      },
+      "candidate_plan": {
+        "candidates": [
+          {
+            "candidate_id": "default-int4",
+            "candidate_index": 0,
+            "eligibility_trigger": null,
+            "quantization_override": null,
+            "role": "default"
+          },
+          {
+            "candidate_id": "int4-block-size-64",
+            "candidate_index": 1,
+            "eligibility_trigger": "retryable_optimized_structural_regression",
+            "quantization_override": {
+              "block_size": 64
+            },
+            "role": "quality_retry"
+          }
+        ],
+        "max_candidates": 2,
+        "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+        "policy_id": "cpu-int4-recipe-selection-v1",
+        "policy_version": "1.0.0"
+      },
+      "candidate_selection_reuse": null,
+      "capability": {
+        "capability": {
+          "capability_id": "llama-text-generation-cpu-int4-v1",
+          "family": "llama",
+          "known_blockers": [],
+          "modality": "llm",
+          "status": "verified",
+          "supported_devices": [
+            "cpu"
+          ],
+          "supported_request_precisions": [
+            "auto",
+            "int4"
+          ],
+          "supported_tasks": [
+            "llm"
+          ],
+          "version": "1.0.0"
+        },
+        "evidence": [
+          {
+            "evidence_id": "smollm2-llama-model-type",
+            "location": "docs/contract-probe-results.md#verified",
+            "source_type": "repo-doc",
+            "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+          },
+          {
+            "evidence_id": "smollm2-llama-runtime-happy-path",
+            "location": "docs/contract-probe-results.md#verified",
+            "source_type": "repo-doc",
+            "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+          }
+        ],
+        "matched_aliases": [
+          "llama",
+          "llamaforcausallm"
+        ],
+        "outcome": "exact",
+        "reason": "Resolved to capability 'llama-text-generation-cpu-int4-v1' (verified) via alias(es): llama, llamaforcausallm.",
+        "reason_code": "resolved"
+      },
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "experimental_until_verified": true,
+      "fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "recipe": {
+        "fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+        "pinned_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+        "provenance": {
+          "argument_provenance": {
+            "contains_unverified_arguments": false,
+            "mobius_dtype_confidence": "evidence-pinned",
+            "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+            "olive_precision_confidence": "evidence-pinned",
+            "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+          },
+          "capability_id": "llama-text-generation-cpu-int4-v1",
+          "capability_status": "verified",
+          "capability_version": "1.0.0",
+          "compiler_version": "1.0.0",
+          "evidence": [
+            {
+              "evidence_id": "smollm2-llama-model-type",
+              "location": "docs/contract-probe-results.md#verified",
+              "source_type": "repo-doc",
+              "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+            },
+            {
+              "evidence_id": "smollm2-llama-runtime-happy-path",
+              "location": "docs/contract-probe-results.md#verified",
+              "source_type": "repo-doc",
+              "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+            }
+          ],
+          "generation_kind": "deterministic-recipe-agent-v1",
+          "input_metadata": {
+            "architectures": [
+              "LlamaForCausalLM"
+            ],
+            "available_files": [
+              ".gitattributes",
+              "config.json",
+              "eval_results.json",
+              "generation_config.json",
+              "model.safetensors",
+              "README.md",
+              "special_tokens_map.json",
+              "tokenizer.json",
+              "tokenizer.model",
+              "tokenizer_config.json"
+            ],
+            "config_files": [
+              "config.json"
+            ],
+            "is_gated": false,
+            "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "model_type": "llama",
+            "requested_device": "cpu",
+            "requested_precision": "auto",
+            "requires_remote_code": false,
+            "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+            "task": "llm",
+            "tokenizer_files": [
+              "tokenizer.json",
+              "tokenizer.model",
+              "tokenizer_config.json"
+            ]
+          },
+          "matched_aliases": [
+            "llama",
+            "llamaforcausallm"
+          ],
+          "promotion": null,
+          "resolution_outcome": "exact",
+          "resolution_reason_code": "resolved",
+          "toolchain": {
+            "foundry_cli_version": "0.11.0",
+            "foundry_sdk_version": "1.2.4",
+            "mobius_version": "0.1.0",
+            "oga_version": "0.15.2",
+            "olive_version": "0.13.0",
+            "onnx_version": "1.22.0",
+            "ort_version": "1.29.0"
+          }
+        },
+        "recipe": {
+          "ancillary_files": [
+            {
+              "relative_path": "genai_config.json",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx",
+              "required": true,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "model.onnx.data",
+              "required": false,
+              "source": "olive-output-dir"
+            },
+            {
+              "relative_path": "tokenizer.json",
+              "required": true,
+              "source": "olive-output-dir"
+            }
+          ],
+          "artifact_cache_prefix": "tinyllama-1-1b-chat-v1-0",
+          "huggingface_model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+          "id": "tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4",
+          "inference_modality": "llm",
+          "mobius": {
+            "dtype": "f32",
+            "ep": "cpu",
+            "runtime": "ort-genai",
+            "task": "text-generation"
+          },
+          "modality": "llm",
+          "model_name_prefix": "tinyllama-1-1b-chat-v1-0-onboarding",
+          "olive": {
+            "device": "cpu",
+            "input_source": "mobius-output-dir",
+            "log_level": "1",
+            "precision": "int4",
+            "provider": "CPUExecutionProvider",
+            "task": "text-generation-with-past"
+          },
+          "optimization_choices": [
+            {
+              "default": true,
+              "precision": "int4",
+              "skip_olive": false,
+              "strategy": "mobius-olive",
+              "task_profile": "llm-cpu-int4"
+            }
+          ],
+          "preferred_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+          "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+          "status": "experimental",
+          "status_reason": "Compiled from verified architecture capability 'llama-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+          "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+          "task_profile": "llm-cpu-int4",
+          "verified_revision": null,
+          "version": "0.1.0"
+        },
+        "schema_version": "1.0.0"
+      },
+      "requires_explicit_attempt_confirmation": true,
+      "toolchain": {
+        "foundry_cli_version": "0.11.0",
+        "foundry_sdk_version": "1.2.4",
+        "mobius_version": "0.1.0",
+        "oga_version": "0.15.2",
+        "olive_version": "0.13.0",
+        "onnx_version": "1.22.0",
+        "ort_version": "1.29.0"
+      },
+      "validation_gates": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "verified_reuse": null
+    },
+    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6"
+  },
+  "generated_recipe_record": {
+    "canonical_payload": {
+      "fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "pinned_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+      "provenance": {
+        "argument_provenance": {
+          "contains_unverified_arguments": false,
+          "mobius_dtype_confidence": "evidence-pinned",
+          "mobius_dtype_rule": "Pinned by verified SmolLM2 and Granite probes.",
+          "olive_precision_confidence": "evidence-pinned",
+          "olive_precision_rule": "Pinned by verified SmolLM2 and Granite probes."
+        },
+        "capability_id": "llama-text-generation-cpu-int4-v1",
+        "capability_status": "verified",
+        "capability_version": "1.0.0",
+        "compiler_version": "1.0.0",
+        "evidence": [
+          {
+            "evidence_id": "smollm2-llama-model-type",
+            "location": "docs/contract-probe-results.md#verified",
+            "source_type": "repo-doc",
+            "summary": "mobius info recognized SmolLM2 as model_type=llama with default task text-generation."
+          },
+          {
+            "evidence_id": "smollm2-llama-runtime-happy-path",
+            "location": "docs/contract-probe-results.md#verified",
+            "source_type": "repo-doc",
+            "summary": "SmolLM2 path passed Olive INT4, OGA load/generation, and Foundry Local SDK chat inference."
+          }
+        ],
+        "generation_kind": "deterministic-recipe-agent-v1",
+        "input_metadata": {
+          "architectures": [
+            "LlamaForCausalLM"
+          ],
+          "available_files": [
+            ".gitattributes",
+            "config.json",
+            "eval_results.json",
+            "generation_config.json",
+            "model.safetensors",
+            "README.md",
+            "special_tokens_map.json",
+            "tokenizer.json",
+            "tokenizer.model",
+            "tokenizer_config.json"
+          ],
+          "config_files": [
+            "config.json"
+          ],
+          "is_gated": false,
+          "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+          "model_type": "llama",
+          "requested_device": "cpu",
+          "requested_precision": "auto",
+          "requires_remote_code": false,
+          "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+          "task": "llm",
+          "tokenizer_files": [
+            "tokenizer.json",
+            "tokenizer.model",
+            "tokenizer_config.json"
+          ]
+        },
+        "matched_aliases": [
+          "llama",
+          "llamaforcausallm"
+        ],
+        "promotion": null,
+        "resolution_outcome": "exact",
+        "resolution_reason_code": "resolved",
+        "toolchain": {
+          "foundry_cli_version": "0.11.0",
+          "foundry_sdk_version": "1.2.4",
+          "mobius_version": "0.1.0",
+          "oga_version": "0.15.2",
+          "olive_version": "0.13.0",
+          "onnx_version": "1.22.0",
+          "ort_version": "1.29.0"
+        }
+      },
+      "recipe": {
+        "ancillary_files": [
+          {
+            "relative_path": "genai_config.json",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx",
+            "required": true,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "model.onnx.data",
+            "required": false,
+            "source": "olive-output-dir"
+          },
+          {
+            "relative_path": "tokenizer.json",
+            "required": true,
+            "source": "olive-output-dir"
+          }
+        ],
+        "artifact_cache_prefix": "tinyllama-1-1b-chat-v1-0",
+        "huggingface_model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "id": "tinyllama-tinyllama-1-1b-chat-v1-0-llm-cpu-int4",
+        "inference_modality": "llm",
+        "mobius": {
+          "dtype": "f32",
+          "ep": "cpu",
+          "runtime": "ort-genai",
+          "task": "text-generation"
+        },
+        "modality": "llm",
+        "model_name_prefix": "tinyllama-1-1b-chat-v1-0-onboarding",
+        "olive": {
+          "device": "cpu",
+          "input_source": "mobius-output-dir",
+          "log_level": "1",
+          "precision": "int4",
+          "provider": "CPUExecutionProvider",
+          "task": "text-generation-with-past"
+        },
+        "optimization_choices": [
+          {
+            "default": true,
+            "precision": "int4",
+            "skip_olive": false,
+            "strategy": "mobius-olive",
+            "task_profile": "llm-cpu-int4"
+          }
+        ],
+        "preferred_revision": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+        "runtime_validation": "llm-cpu-oga-load-v1 (onnxruntime-genai; loader=onnxruntime_genai.Model(model_dir))",
+        "status": "experimental",
+        "status_reason": "Compiled from verified architecture capability 'llama-text-generation-cpu-int4-v1', but this exact model revision remains an experimental candidate until explicit Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates promote it.",
+        "success_message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "task_profile": "llm-cpu-int4",
+        "verified_revision": null,
+        "version": "0.1.0"
+      },
+      "schema_version": "1.0.0"
+    },
+    "canonical_payload_sha256": "71148211e037b36740bea380ffa351d00467fb0d6d3738734b30711dea4ab97d",
+    "capability_fingerprint": "286e622f6ffa4db8a93d3231939f8b0b12a25355e72c43f121e39c961c02b3a7",
+    "compiler_version": "1.0.0",
+    "created_utc": "2026-09-03T20:40:09.683618+00:00",
+    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "profile_fingerprint": "3ba0f69d071bb52253c9dcd2d62030ebd4871fa2e686b5e162fd18597a1d74d9",
+    "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+    "recipe_status": "experimental",
+    "requested_device": "cpu",
+    "requested_precision": "auto",
+    "revision_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+    "schema_version": "1.0.0",
+    "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+  },
+  "job": {
+    "artifacts": [
+      {
+        "artifact_id": "7608b03a87a219d004ac9c597faeae94b4b9b8d4d73e0b54930dd474cb40194e",
+        "description": "Immutable Foundry Local BYOM model package",
+        "kind": "model"
+      }
+    ],
+    "events": [
+      {
+        "message": "Generated recipe attempt queued; automatic recipe execution remains experimental until verified.",
+        "sequence": 1,
+        "state": "queued",
+        "timestamp_utc": "2026-09-03T20:40:10.613940+00:00"
+      },
+      {
+        "message": "Starting preflight checks.",
+        "sequence": 2,
+        "state": "preflight",
+        "timestamp_utc": "2026-09-03T20:40:10.650520+00:00"
+      },
+      {
+        "message": "Pinned Hugging Face revision fe8a4ea1ffedaf415f4da2f062534de366a451e6.",
+        "sequence": 3,
+        "state": "downloading",
+        "timestamp_utc": "2026-09-03T20:41:04.916618+00:00"
+      },
+      {
+        "message": "Running recipe Mobius cpu ort-genai f32 build.",
+        "sequence": 4,
+        "state": "mobius_building",
+        "timestamp_utc": "2026-09-03T20:41:04.926167+00:00"
+      },
+      {
+        "message": "Mobius output created; ONNX validation follows Olive.",
+        "sequence": 5,
+        "state": "mobius_validating",
+        "timestamp_utc": "2026-09-03T20:42:18.947312+00:00"
+      },
+      {
+        "message": "Running recipe Olive mobius-output-dir int4 optimization.",
+        "sequence": 6,
+        "state": "olive_optimizing",
+        "timestamp_utc": "2026-09-03T20:42:18.964737+00:00"
+      },
+      {
+        "message": "Creating immutable Foundry Local BYOM package.",
+        "sequence": 7,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-03T20:43:05.519262+00:00"
+      },
+      {
+        "message": "Staging decoder output reconciliation applied before runtime validation: {\"logits\": {\"after\": \"logits_Q4\", \"before\": \"logits\"}}",
+        "sequence": 8,
+        "state": "packaging",
+        "timestamp_utc": "2026-09-03T20:43:06.929904+00:00"
+      },
+      {
+        "message": "Validating ONNX, ORT CPU, and OGA generation.",
+        "sequence": 9,
+        "state": "runtime_validating",
+        "timestamp_utc": "2026-09-03T20:43:06.947176+00:00"
+      },
+      {
+        "message": "Foundry Local SDK discovered and loaded the BYOM package.",
+        "sequence": 10,
+        "state": "fl_loading",
+        "timestamp_utc": "2026-09-03T20:43:16.309354+00:00"
+      },
+      {
+        "message": "Running bounded Foundry Local SDK chat inference.",
+        "sequence": 11,
+        "state": "inferencing",
+        "timestamp_utc": "2026-09-03T20:43:16.322360+00:00"
+      },
+      {
+        "message": "Candidate recipe compiled deterministically; promotion requires successful Mobius, Olive, ONNX, ORT, OGA, FL SDK inference, and quality gates.",
+        "sequence": 12,
+        "state": "succeeded",
+        "timestamp_utc": "2026-09-03T20:43:24.525076+00:00"
+      }
+    ],
+    "failure": null,
+    "finished_utc": "2026-09-03T20:43:24.525076+00:00",
+    "job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+    "result_artifact_id": "7608b03a87a219d004ac9c597faeae94b4b9b8d4d73e0b54930dd474cb40194e",
+    "started_utc": "2026-09-03T20:40:10.613940+00:00",
+    "state": "succeeded",
+    "validations": [
+      {
+        "checks": [
+          "Candidate 'TinyLlama/TinyLlama-1.1B-Chat-v1.0' was not found in Foundry catalog."
+        ],
+        "failure": null,
+        "stage": "preflight",
+        "status": "passed"
+      },
+      {
+        "checks": [
+          "onnx_checker=1",
+          "ort_cpu_load=passed",
+          "oga_generation=passed"
+        ],
+        "failure": null,
+        "stage": "runtime_validating",
+        "status": "passed"
+      },
+      {
+        "checks": [
+          "foundry_local_sdk_chat=passed"
+        ],
+        "failure": null,
+        "stage": "inferencing",
+        "status": "passed"
+      }
+    ]
+  },
+  "job_poll_timed_out": false,
+  "lingering_processes_after_close": [],
+  "manifest_catalog_match": {
+    "confidence": "none",
+    "matched": false,
+    "matched_entry": null,
+    "reason": "No catalog entry matches normalized HF name 'tinyllama-1-1b-chat-v1-0'"
+  },
+  "manifest_recipe_exists": false,
+  "manifest_sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+  "model_detail": {
+    "build_blockers": [],
+    "buildable": true,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "recipe_reason": "No recipe is registered for model 'TinyLlama/TinyLlama-1.1B-Chat-v1.0' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "sha": "fe8a4ea1ffedaf415f4da2f062534de366a451e6",
+    "task": "llm",
+    "warnings": []
+  },
+  "model_detail_http_status": 200,
+  "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "model_index": 1,
+  "preflight": {
+    "blockers": [
+      {
+        "classification": "invalid_request",
+        "message": "No recipe is registered for model 'TinyLlama/TinyLlama-1.1B-Chat-v1.0' (llm). Build remains blocked until a recipe is added.",
+        "stage": "preflight"
+      }
+    ],
+    "cache_key": "63f079ab9519bef2b2dcc8e5093e957901a29a53ab770fd45abd8de8e04d0d58",
+    "cached": false,
+    "foundry_catalog_matches_count": 0,
+    "foundry_catalog_status": "live",
+    "generated_recipe": {
+      "compile_error": null,
+      "eligible_for_automatic_recipe_attempt": true,
+      "fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "verified_reuse": null
+    },
+    "ok": false,
+    "recipe_reason": "No recipe is registered for model 'TinyLlama/TinyLlama-1.1B-Chat-v1.0' (llm). Build remains blocked until a recipe is added.",
+    "recipe_status": "unregistered",
+    "tools": [],
+    "warnings": []
+  },
+  "preflight_http_status": 200,
+  "preflight_recipe_unregistered_expected": true,
+  "preview_http_status": 200,
+  "quality_validation_evidence": {
+    "baseline_comparison": {
+      "passed": true,
+      "regressions": []
+    },
+    "batch_worker": {
+      "baseline": {
+        "request": {
+          "batch_timeout_seconds": 3600,
+          "expected_model_load_count": 1,
+          "max_tokens": 64,
+          "mode": "single-worker-batch",
+          "model_name": "tinyllama-1-1b-chat-v1-0-onboarding-b5d22a62-90e-mobius-baseline:1",
+          "outer_command_timeout_seconds": 3615,
+          "outer_timeout_grace_seconds": 15,
+          "per_prompt_timeout_seconds": 900,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ]
+        },
+        "response": {
+          "completed_prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ],
+          "duration_seconds": 17.703,
+          "failed_prompt_id": null,
+          "failure_stage": null,
+          "ok": true,
+          "prompt_order_preserved": true,
+          "results": [
+            {
+              "duration_seconds": 5.531,
+              "prompt_id": "arithmetic-addition-17-plus-28",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.781,
+              "prompt_id": "factual-red-planet",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.703,
+              "prompt_id": "instruction-two-words-blue-river",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 2.281,
+              "prompt_id": "format-json-answer-unit",
+              "timed_out": false
+            }
+          ]
+        }
+      },
+      "optimized": {
+        "request": {
+          "batch_timeout_seconds": 3600,
+          "expected_model_load_count": 1,
+          "max_tokens": 64,
+          "mode": "single-worker-batch",
+          "model_name": "tinyllama-1-1b-chat-v1-0-onboarding-7608b03a87a2:1",
+          "outer_command_timeout_seconds": 3615,
+          "outer_timeout_grace_seconds": 15,
+          "per_prompt_timeout_seconds": 900,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ]
+        },
+        "response": {
+          "completed_prompt_ids": [
+            "arithmetic-addition-17-plus-28",
+            "factual-red-planet",
+            "instruction-two-words-blue-river",
+            "format-json-answer-unit"
+          ],
+          "duration_seconds": 9.328,
+          "failed_prompt_id": null,
+          "failure_stage": null,
+          "ok": true,
+          "prompt_order_preserved": true,
+          "results": [
+            {
+              "duration_seconds": 1.734,
+              "prompt_id": "arithmetic-addition-17-plus-28",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 0.422,
+              "prompt_id": "factual-red-planet",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 1.703,
+              "prompt_id": "instruction-two-words-blue-river",
+              "timed_out": false
+            },
+            {
+              "duration_seconds": 1.766,
+              "prompt_id": "format-json-answer-unit",
+              "timed_out": false
+            }
+          ]
+        }
+      },
+      "prompt_order": [
+        "arithmetic-addition-17-plus-28",
+        "factual-red-planet",
+        "instruction-two-words-blue-river",
+        "format-json-answer-unit"
+      ]
+    },
+    "deterministic_inference": {
+      "max_tokens": 64,
+      "seed": 17,
+      "temperature": 0.0
+    },
+    "failure_excerpt": [
+      {
+        "baseline_failures": [
+          "exact_match_failed",
+          "max_words_exceeded"
+        ],
+        "baseline_output_text": "17 + 28 = 45\n\nTo answer this question using only digits, we can use the following formula:\n\n45 = 17 + 28\n\nThe answer is: 45.",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "exact_match_failed",
+          "max_words_exceeded"
+        ],
+        "optimized_output_text": "Answer: 35\n\n17 + 28 = 45\n\nExplanation:\n\n1. 17 is added to 28, and the result is 45.\n\n2. 45 is added to 28, and the result is",
+        "optimized_passed": false,
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      },
+      {
+        "baseline_failures": [
+          "allowed_answers_failed",
+          "max_words_exceeded"
+        ],
+        "baseline_output_text": "The correct answer is Mars.",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "allowed_answers_failed"
+        ],
+        "optimized_output_text": "Answer: Mars.",
+        "optimized_passed": false,
+        "prompt_id": "factual-red-planet"
+      },
+      {
+        "baseline_failures": [
+          "max_words_exceeded"
+        ],
+        "baseline_output_text": "Output: \"Blue River\"",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "required_token_missing:blue",
+          "required_token_missing:river",
+          "relevance_keyword_missing",
+          "max_words_exceeded"
+        ],
+        "optimized_output_text": "To output exactly two words, we can use the `split()` function with a regular expression to split the input string into an array of words. Here's the modified program:\n\n```python\nimport re\n\ndef split_words(input_string):\n    \"\"\"\n    This function takes a string",
+        "optimized_passed": false,
+        "prompt_id": "instruction-two-words-blue-river"
+      },
+      {
+        "baseline_failures": [
+          "forbidden_token_present:```",
+          "json_format_invalid"
+        ],
+        "baseline_output_text": "```\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+        "baseline_passed": false,
+        "optimized_failures": [
+          "forbidden_token_present:```",
+          "json_format_invalid"
+        ],
+        "optimized_output_text": "```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```\n\nThis is a valid JSON object with keys `answer` and `unit`. The `answer` key contains the value `12`, while the `unit` key contains the value `",
+        "optimized_passed": false,
+        "prompt_id": "format-json-answer-unit"
+      }
+    ],
+    "metrics_ref": "quality-metrics://b5d22a62-90e8-4336-befa-734ebb32bee9/quality-validation-evidence.json",
+    "model_capability": {
+      "checks_passed": 0,
+      "confidence": {
+        "determinism_supported": false,
+        "level": "low",
+        "reasons": [
+          "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+          "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+          "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+          "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+        ]
+      },
+      "per_prompt": [
+        {
+          "baseline_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_status": "failed",
+          "category": "arithmetic",
+          "comparison": "matched_fail",
+          "optimized_failures": [
+            "exact_match_failed",
+            "max_words_exceeded"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "arithmetic-addition-17-plus-28",
+          "warnings": [
+            "shared_capability_failure"
+          ]
+        },
+        {
+          "baseline_failures": [
+            "allowed_answers_failed",
+            "max_words_exceeded"
+          ],
+          "baseline_status": "failed",
+          "category": "factual-recall",
+          "comparison": "divergent_fail",
+          "optimized_failures": [
+            "allowed_answers_failed"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "factual-red-planet",
+          "warnings": [
+            "divergent_capability_failure"
+          ]
+        },
+        {
+          "baseline_failures": [
+            "max_words_exceeded"
+          ],
+          "baseline_status": "failed",
+          "category": "instruction-following",
+          "comparison": "divergent_fail",
+          "optimized_failures": [
+            "required_token_missing:blue",
+            "required_token_missing:river",
+            "relevance_keyword_missing",
+            "max_words_exceeded"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "instruction-two-words-blue-river",
+          "warnings": [
+            "divergent_capability_failure"
+          ]
+        },
+        {
+          "baseline_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "baseline_status": "failed",
+          "category": "output-format",
+          "comparison": "matched_fail",
+          "optimized_failures": [
+            "forbidden_token_present:```",
+            "json_format_invalid"
+          ],
+          "optimized_status": "failed",
+          "prompt_id": "format-json-answer-unit",
+          "warnings": [
+            "shared_capability_failure"
+          ]
+        }
+      ],
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure",
+        "factual-red-planet:divergent_capability_failure",
+        "instruction-two-words-blue-river:divergent_capability_failure",
+        "format-json-answer-unit:shared_capability_failure"
+      ]
+    },
+    "per_prompt": [
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "17 + 28 = 45\n\nTo answer this question using only digits, we can use the following formula:\n\n45 = 17 + 28\n\nThe answer is: 45.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "arithmetic",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "exact_match_failed",
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "Answer: 35\n\n17 + 28 = 45\n\nExplanation:\n\n1. 17 is added to 28, and the result is 45.\n\n2. 45 is added to 28, and the result is",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "What is 17 + 28? Reply using only digits.",
+        "prompt_id": "arithmetic-addition-17-plus-28"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "allowed_answers_failed",
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "The correct answer is Mars.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "factual-recall",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "allowed_answers_failed"
+            ],
+            "passed": false
+          },
+          "output_text": "Answer: Mars.",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Which planet is known as the Red Planet? Reply with one word.",
+        "prompt_id": "factual-red-planet"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "Output: \"Blue River\"",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "instruction-following",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "required_token_missing:blue",
+              "required_token_missing:river",
+              "relevance_keyword_missing",
+              "max_words_exceeded"
+            ],
+            "passed": false
+          },
+          "output_text": "To output exactly two words, we can use the `split()` function with a regular expression to split the input string into an array of words. Here's the modified program:\n\n```python\nimport re\n\ndef split_words(input_string):\n    \"\"\"\n    This function takes a string",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Output exactly two words: blue river",
+        "prompt_id": "instruction-two-words-blue-river"
+      },
+      {
+        "baseline": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "passed": false
+          },
+          "output_text": "```\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "category": "output-format",
+        "optimized": {
+          "applied_determinism": {
+            "max_tokens": 64,
+            "seed": 17,
+            "temperature": 0.0
+          },
+          "checks": {
+            "determinism": {
+              "fully_enforced": false,
+              "mismatched_fields": [],
+              "recorded": true,
+              "unsupported_fields": [
+                "temperature",
+                "seed"
+              ]
+            },
+            "failures": [
+              "forbidden_token_present:```",
+              "json_format_invalid"
+            ],
+            "passed": false
+          },
+          "output_text": "```json\n{\n  \"answer\": 12,\n  \"unit\": \"cm\"\n}\n```\n\nThis is a valid JSON object with keys `answer` and `unit`. The `answer` key contains the value `12`, while the `unit` key contains the value `",
+          "unsupported_determinism_fields": [
+            "temperature",
+            "seed"
+          ]
+        },
+        "prompt": "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.",
+        "prompt_id": "format-json-answer-unit"
+      }
+    ],
+    "profile_id": "textgen-basic-quality-v1",
+    "profile_version": "1.0.0",
+    "promotion_evidence": {
+      "baseline_comparison_gate": "passed",
+      "can_promote": true,
+      "functional_gate": "passed",
+      "metrics_capture_gate": "unavailable",
+      "notes": [
+        "Optional latency/memory/package metrics were not supplied.",
+        "Model capability confidence is low because deterministic inference settings were only partially enforced."
+      ]
+    },
+    "recipe_verification": {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    "ref_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+    "schema_version": "1.0.0",
+    "status": "loaded",
+    "unsupported_determinism_fields_reported_by_runtime": [
+      "temperature",
+      "seed"
+    ]
+  },
+  "resource_after": {
+    "cache_bytes": 12687799260,
+    "disk_free_gb": 1091.314,
+    "disk_used_gb": 815.128,
+    "runtime_bytes": 22670202417,
+    "state_bytes": 249936,
+    "timestamp_utc": "2026-09-03T20:43:53.862877+00:00",
+    "workspace_bytes": 9982153221
+  },
+  "resource_before": {
+    "cache_bytes": 12099957404,
+    "disk_free_gb": 1101.175,
+    "disk_used_gb": 805.266,
+    "runtime_bytes": 12099957404,
+    "state_bytes": 0,
+    "timestamp_utc": "2026-09-03T20:40:03.410512+00:00",
+    "workspace_bytes": 0
+  },
+  "round7_first_request": {
+    "candidate_selection": {
+      "aggregate_invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 115.40347700000001
+      },
+      "candidates": [
+        {
+          "artifact_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/artifact/7608b03a87a219d004ac9c597faeae94b4b9b8d4d73e0b54930dd474cb40194e",
+          "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+          "attempt_state": "succeeded",
+          "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+          "candidate_id": "default-int4",
+          "candidate_index": 0,
+          "disposition": null,
+          "disposition_reasons": [],
+          "eligibility_trigger": null,
+          "invocation_counters": {
+            "estimated_cost_usd": null,
+            "mobius_build_invocation_count": 1,
+            "olive_optimize_invocation_count": 1,
+            "total_invocation_count": 2,
+            "wall_clock_seconds": 115.40347700000001
+          },
+          "package_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/package",
+          "quantization_override": null,
+          "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+          "role": "default",
+          "selection_status": "selected",
+          "validated_scope": {
+            "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+            "target_device": "cpu",
+            "target_ep": "cpu",
+            "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+          }
+        }
+      ],
+      "lineage_selection_state": "selected",
+      "max_candidates": 2,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "reuse": null,
+      "selected_candidate": {
+        "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+        "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+        "candidate_id": "default-int4",
+        "candidate_index": 0,
+        "selected_by": "validation",
+        "selected_utc": "2026-09-03T20:43:52.860469+00:00",
+        "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+      }
+    },
+    "first_request_aggregate_invocation_counters": {
+      "estimated_cost_usd": null,
+      "mobius_build_invocation_count": 1,
+      "olive_optimize_invocation_count": 1,
+      "total_invocation_count": 2,
+      "wall_clock_seconds": 115.40347700000001
+    },
+    "first_request_behavior_observation": {
+      "actual": {
+        "aggregate_mobius_build_invocation_count": 1,
+        "aggregate_olive_optimize_invocation_count": 1,
+        "candidate_count": 1,
+        "selected_candidate_index": 0,
+        "selected_candidate_role": "default",
+        "workflow_outcome": "selected"
+      },
+      "expected": {
+        "aggregate_mobius_build_invocation_count": 1,
+        "aggregate_olive_optimize_invocation_count": 1,
+        "default_candidate_expected": "verified-and-selected",
+        "fallback_candidate_expected": "not-registered",
+        "selected_candidate_index": 0,
+        "selected_candidate_role": "default"
+      },
+      "matches_expected": true,
+      "mismatch_fields": []
+    },
+    "winner_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+    "winner_attempt_state": "succeeded",
+    "winner_candidate": {
+      "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+      "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+      "candidate_id": "default-int4",
+      "candidate_index": 0,
+      "selected_by": "validation",
+      "selected_utc": "2026-09-03T20:43:52.860469+00:00",
+      "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation."
+    },
+    "winner_candidate_timeline_entry": {
+      "artifact_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/artifact/7608b03a87a219d004ac9c597faeae94b4b9b8d4d73e0b54930dd474cb40194e",
+      "attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+      "attempt_state": "succeeded",
+      "candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+      "candidate_id": "default-int4",
+      "candidate_index": 0,
+      "disposition": null,
+      "disposition_reasons": [],
+      "eligibility_trigger": null,
+      "invocation_counters": {
+        "estimated_cost_usd": null,
+        "mobius_build_invocation_count": 1,
+        "olive_optimize_invocation_count": 1,
+        "total_invocation_count": 2,
+        "wall_clock_seconds": 115.40347700000001
+      },
+      "package_ref": "job://b5d22a62-90e8-4336-befa-734ebb32bee9/package",
+      "quantization_override": null,
+      "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+      "role": "default",
+      "selection_status": "selected",
+      "validated_scope": {
+        "environment_scope": "foundry-local-onboarding:CPUExecutionProvider",
+        "target_device": "cpu",
+        "target_ep": "cpu",
+        "toolchain_fingerprint": "fa0e873479662bc7af42469c6a64b8981dc9e696eda2e201229beab3107f235d"
+      }
+    },
+    "winner_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+    "winner_model_capability": {
+      "checks_passed": 0,
+      "confidence": {
+        "determinism_supported": false,
+        "level": "low",
+        "reasons": [
+          "optimized:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "baseline:arithmetic-addition-17-plus-28:determinism_unsupported:temperature,seed",
+          "optimized:factual-red-planet:determinism_unsupported:temperature,seed",
+          "baseline:factual-red-planet:determinism_unsupported:temperature,seed",
+          "optimized:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "baseline:instruction-two-words-blue-river:determinism_unsupported:temperature,seed",
+          "optimized:format-json-answer-unit:determinism_unsupported:temperature,seed",
+          "baseline:format-json-answer-unit:determinism_unsupported:temperature,seed"
+        ]
+      },
+      "total_checks": 4,
+      "warnings": [
+        "arithmetic-addition-17-plus-28:shared_capability_failure",
+        "factual-red-planet:divergent_capability_failure",
+        "instruction-two-words-blue-river:divergent_capability_failure",
+        "format-json-answer-unit:shared_capability_failure"
+      ]
+    },
+    "winner_recipe_verification": {
+      "baseline_available": true,
+      "can_promote": true,
+      "gate_status": "passed",
+      "integrity_failures": [],
+      "regression_free": true,
+      "runtime_functional": true,
+      "status": "verified"
+    },
+    "workflow_outcome": "selected"
+  },
+  "round7_second_request_reuse": {
+    "attempt_build_job_id": null,
+    "build_job_alias_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+    "build_job_alias_matches_winner_job": true,
+    "create_http_status": 200,
+    "idempotency_key": "r7-20260903T203830Z-reuse-01",
+    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "model_index": 1,
+    "poll_http_status": 200,
+    "preview_http_status": 200,
+    "recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577",
+    "reuse_attempt_id": "4c14c212-fe9f-4689-a062-d9e448696a29",
+    "reuse_attempt_state": "succeeded",
+    "reuse_evidence": {
+      "mobius_invocation_count": 0,
+      "olive_invocation_count": 0,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "recorded_utc": "2026-09-03T20:57:52.205430+00:00",
+      "reused_without_build": true,
+      "runner_dispatch_count": 0,
+      "source_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+      "source_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+      "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42"
+    },
+    "reuse_evidence_row": {
+      "mobius_invocation_count": 0,
+      "olive_invocation_count": 0,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "policy_version": "1.0.0",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "recorded_utc": "2026-09-03T20:57:52.205430+00:00",
+      "reused_attempt_id": "4c14c212-fe9f-4689-a062-d9e448696a29",
+      "reused_without_build": true,
+      "runner_dispatch_count": 0,
+      "source_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+      "source_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+      "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42"
+    },
+    "reuse_evidence_row_matches_response": true,
+    "reuse_workflow_outcome": "reused",
+    "reuse_zero_build_verified": true,
+    "runner_dispatch_mapping_present_for_reuse_attempt": false,
+    "second_request_submitted": true,
+    "service_dispatch_observation": {
+      "attempt_mapping_count_after": 6,
+      "attempt_mapping_count_before": 6,
+      "jobs_after": 6,
+      "jobs_before": 6,
+      "new_job_created_for_reuse_attempt": false
+    },
+    "source_ids_match_expected_winner": true,
+    "winner_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+    "winner_resolution": {
+      "available": true,
+      "policy_fingerprint": "01196dda2c937c6d5f17a7294e80994d093736f20cb8efccfd1ca18f8405a0e9",
+      "quality_profile_fingerprint": "ebb3083003408a1f7c4712a5750413570cad63ac680044d9a22fb4c8db356a57",
+      "selection_reason": "Candidate 0 ('default-int4') verified: recipe integrity passed strict baseline/optimized quality validation.",
+      "source_parent_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+      "winner_attempt_id": "e991dfec-25c0-4ba2-b944-114c610d8d42",
+      "winner_candidate_attempt_id": "0cfd78c0-d2d0-489e-8956-1316d4dc31d2",
+      "winner_candidate_id": "default-int4",
+      "winner_candidate_index": 0,
+      "winner_job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+      "winner_recipe_fingerprint": "fde0420b626832d11a9138f3b69ae9f43713cb8c8c67446f350d8c7a51b98577"
+    }
+  },
+  "started_utc": "2026-09-03T20:40:03.410512+00:00",
+  "workspace_retention": {
+    "action": "retained-success-workspace",
+    "attempt_state": "succeeded",
+    "job_id": "b5d22a62-90e8-4336-befa-734ebb32bee9",
+    "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+  }
+}

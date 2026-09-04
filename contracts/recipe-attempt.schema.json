@@ -1,0 +1,760 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Wayne-Ch/fl-model-onboarding-concept/contracts/recipe-attempt.schema.json",
+  "title": "Recipe Attempt Store Records",
+  "description": "Typed immutable records persisted by RecipeAttemptStore for generated candidates, attempts, and verified promotions.",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/generated_recipe_record"
+    },
+    {
+      "$ref": "#/$defs/recipe_attempt"
+    },
+    {
+      "$ref": "#/$defs/verified_recipe_record"
+    },
+    {
+      "$ref": "#/$defs/candidate_attempt_record"
+    },
+    {
+      "$ref": "#/$defs/recipe_candidate_lineage_record"
+    }
+  ],
+  "$defs": {
+    "hex40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iso_datetime": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T.+$"
+    },
+    "recipe_status": {
+      "type": "string",
+      "enum": [
+        "experimental",
+        "verified",
+        "blocked"
+      ]
+    },
+    "attempt_state": {
+      "type": "string",
+      "enum": [
+        "generated",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "attempt_gate_name": {
+      "type": "string",
+      "enum": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ]
+    },
+    "attempt_gate_status": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed",
+        "not_run",
+        "unavailable"
+      ]
+    },
+    "attempt_failure_classification": {
+      "type": "string",
+      "enum": [
+        "gate_failed",
+        "validation_failed",
+        "interrupted",
+        "cancelled",
+        "internal_error"
+      ]
+    },
+    "gate_check": {
+      "type": "object",
+      "required": [
+        "passed",
+        "evidence"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean",
+          "const": true
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "metrics_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "promotion_evidence": {
+      "type": "object",
+      "required": [
+        "mobius_build",
+        "olive_optimize",
+        "onnx_validation",
+        "ort_validation",
+        "oga_validation",
+        "fl_sdk_inference",
+        "quality_validation"
+      ],
+      "properties": {
+        "mobius_build": {
+          "$ref": "#/$defs/gate_check"
+        },
+        "olive_optimize": {
+          "$ref": "#/$defs/gate_check"
+        },
+        "onnx_validation": {
+          "$ref": "#/$defs/gate_check"
+        },
+        "ort_validation": {
+          "$ref": "#/$defs/gate_check"
+        },
+        "oga_validation": {
+          "$ref": "#/$defs/gate_check"
+        },
+        "fl_sdk_inference": {
+          "$ref": "#/$defs/gate_check"
+        },
+        "quality_validation": {
+          "$ref": "#/$defs/gate_check"
+        }
+      },
+      "additionalProperties": false
+    },
+    "attempt_gate_result": {
+      "type": "object",
+      "required": [
+        "sequence",
+        "gate",
+        "status",
+        "evidence_ref",
+        "metrics_ref",
+        "started_utc",
+        "finished_utc"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer"
+        },
+        "gate": {
+          "$ref": "#/$defs/attempt_gate_name"
+        },
+        "status": {
+          "$ref": "#/$defs/attempt_gate_status"
+        },
+        "evidence_ref": {
+          "type": "string"
+        },
+        "metrics_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        },
+        "finished_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        }
+      },
+      "additionalProperties": false
+    },
+    "attempt_failure": {
+      "type": "object",
+      "required": [
+        "classification",
+        "stage",
+        "message",
+        "evidence_refs",
+        "source_owner",
+        "next_action"
+      ],
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/attempt_failure_classification"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_owner": {
+          "type": "string"
+        },
+        "next_action": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "generated_recipe_record": {
+      "type": "object",
+      "required": [
+        "record_type",
+        "recipe_fingerprint",
+        "schema_version",
+        "recipe_status",
+        "model_id",
+        "revision_sha",
+        "requested_device",
+        "requested_precision",
+        "compiler_version",
+        "capability_fingerprint",
+        "toolchain_fingerprint",
+        "profile_fingerprint",
+        "canonical_json",
+        "created_utc"
+      ],
+      "properties": {
+        "record_type": {
+          "type": "string",
+          "const": "generated_recipe_record"
+        },
+        "recipe_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "schema_version": {
+          "type": "string",
+          "const": "1.0.0"
+        },
+        "recipe_status": {
+          "$ref": "#/$defs/recipe_status"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "revision_sha": {
+          "$ref": "#/$defs/hex40"
+        },
+        "requested_device": {
+          "type": "string"
+        },
+        "requested_precision": {
+          "type": "string"
+        },
+        "compiler_version": {
+          "type": "string"
+        },
+        "capability_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "toolchain_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "profile_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "canonical_json": {
+          "type": "string"
+        },
+        "created_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        }
+      },
+      "additionalProperties": false
+    },
+    "recipe_attempt": {
+      "type": "object",
+      "required": [
+        "record_type",
+        "attempt_id",
+        "idempotency_key",
+        "request_fingerprint",
+        "recipe_fingerprint",
+        "model_id",
+        "revision_sha",
+        "requested_device",
+        "requested_precision",
+        "compiler_version",
+        "capability_fingerprint",
+        "toolchain_fingerprint",
+        "profile_fingerprint",
+        "created_utc",
+        "finished_utc",
+        "state",
+        "gate_results",
+        "failure"
+      ],
+      "properties": {
+        "record_type": {
+          "type": "string",
+          "const": "recipe_attempt"
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "request_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "recipe_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "revision_sha": {
+          "$ref": "#/$defs/hex40"
+        },
+        "requested_device": {
+          "type": "string"
+        },
+        "requested_precision": {
+          "type": "string"
+        },
+        "compiler_version": {
+          "type": "string"
+        },
+        "capability_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "toolchain_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "profile_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "created_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        },
+        "finished_utc": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/attempt_state"
+        },
+        "gate_results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attempt_gate_result"
+          }
+        },
+        "failure": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "classification",
+            "stage",
+            "message",
+            "evidence_refs",
+            "source_owner",
+            "next_action"
+          ],
+          "properties": {
+            "classification": {
+              "$ref": "#/$defs/attempt_failure_classification"
+            },
+            "stage": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "source_owner": {
+              "type": "string"
+            },
+            "next_action": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "verified_recipe_record": {
+      "type": "object",
+      "required": [
+        "record_type",
+        "verified_fingerprint",
+        "source_recipe_fingerprint",
+        "attempt_id",
+        "schema_version",
+        "model_id",
+        "revision_sha",
+        "requested_device",
+        "requested_precision",
+        "compiler_version",
+        "capability_fingerprint",
+        "toolchain_fingerprint",
+        "profile_fingerprint",
+        "promoted_utc",
+        "promotion_evidence",
+        "canonical_json"
+      ],
+      "properties": {
+        "record_type": {
+          "type": "string",
+          "const": "verified_recipe_record"
+        },
+        "verified_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "source_recipe_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string",
+          "const": "1.0.0"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "revision_sha": {
+          "$ref": "#/$defs/hex40"
+        },
+        "requested_device": {
+          "type": "string"
+        },
+        "requested_precision": {
+          "type": "string"
+        },
+        "compiler_version": {
+          "type": "string"
+        },
+        "capability_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "toolchain_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "profile_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "promoted_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        },
+        "promotion_evidence": {
+          "$ref": "#/$defs/promotion_evidence"
+        },
+        "canonical_json": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "candidate_selection_status": {
+      "type": "string",
+      "enum": [
+        "not_selected",
+        "selected"
+      ]
+    },
+    "candidate_lineage_selection_state": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "selected",
+        "exhausted"
+      ]
+    },
+    "candidate_attempt_record": {
+      "type": "object",
+      "description": "Slice 2: a durable child candidate under a recipe-selection lineage. Reuses an existing recipe_attempt (via attempt_id) for its own gate/state execution instead of duplicating it.",
+      "required": [
+        "record_type",
+        "candidate_attempt_id",
+        "parent_attempt_id",
+        "attempt_id",
+        "candidate_index",
+        "candidate_id",
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "quality_profile_fingerprint",
+        "quantization_override_block_size",
+        "eligibility_trigger",
+        "disposition",
+        "disposition_reasons",
+        "recipe_fingerprint",
+        "candidate_fingerprint",
+        "created_utc",
+        "attempt_state",
+        "artifact_ref",
+        "package_ref",
+        "mobius_build_invocation_count",
+        "olive_optimize_invocation_count",
+        "total_invocation_count",
+        "wall_clock_seconds",
+        "estimated_cost_usd",
+        "selection_status",
+        "selected_by",
+        "selection_reason",
+        "selected_utc",
+        "validated_target_device",
+        "validated_target_ep",
+        "validated_toolchain_fingerprint",
+        "validated_environment_scope"
+      ],
+      "properties": {
+        "record_type": {
+          "type": "string",
+          "const": "candidate_attempt_record"
+        },
+        "candidate_attempt_id": {
+          "type": "string"
+        },
+        "parent_attempt_id": {
+          "type": "string"
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "candidate_index": {
+          "type": "integer"
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "policy_id": {
+          "type": "string"
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "policy_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "quality_profile_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "quantization_override_block_size": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "eligibility_trigger": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disposition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disposition_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recipe_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "candidate_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "created_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        },
+        "attempt_state": {
+          "$ref": "#/$defs/attempt_state"
+        },
+        "artifact_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mobius_build_invocation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "olive_optimize_invocation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "total_invocation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "wall_clock_seconds": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "estimated_cost_usd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "selection_status": {
+          "$ref": "#/$defs/candidate_selection_status"
+        },
+        "selected_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selection_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selected_utc": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validated_target_device": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validated_target_ep": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validated_toolchain_fingerprint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validated_environment_scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "recipe_candidate_lineage_record": {
+      "type": "object",
+      "description": "Slice 2: the parent-level selection record for one recipe-attempt's candidate plan.",
+      "required": [
+        "record_type",
+        "parent_attempt_id",
+        "policy_id",
+        "policy_version",
+        "policy_fingerprint",
+        "policy_max_candidates",
+        "quality_profile_fingerprint",
+        "created_utc",
+        "selection_state",
+        "selected_candidate_attempt_id",
+        "selection_reason",
+        "finalized_utc"
+      ],
+      "properties": {
+        "record_type": {
+          "type": "string",
+          "const": "recipe_candidate_lineage_record"
+        },
+        "parent_attempt_id": {
+          "type": "string"
+        },
+        "policy_id": {
+          "type": "string"
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "policy_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "policy_max_candidates": {
+          "type": "integer"
+        },
+        "quality_profile_fingerprint": {
+          "$ref": "#/$defs/hex64"
+        },
+        "created_utc": {
+          "$ref": "#/$defs/iso_datetime"
+        },
+        "selection_state": {
+          "$ref": "#/$defs/candidate_lineage_selection_state"
+        },
+        "selected_candidate_attempt_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selection_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finalized_utc": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

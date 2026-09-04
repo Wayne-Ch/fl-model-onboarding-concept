@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0.0",
+  "policies": [
+    {
+      "policy_id": "cpu-int4-recipe-selection-v1",
+      "version": "1.0.0",
+      "target_device": "cpu",
+      "quantization": "int4",
+      "max_candidates": 2,
+      "candidates": [
+        {
+          "candidate_index": 0,
+          "candidate_id": "default-int4",
+          "description": "Existing default CPU INT4 quantization arguments. Always eligible; carries no override.",
+          "quantization_override": null,
+          "eligibility_trigger": null
+        },
+        {
+          "candidate_index": 1,
+          "candidate_id": "int4-block-size-64",
+          "description": "Same recipe with the supported Olive INT4 block_size=64 override, as proven in the SmolLM JSON-regression diagnostics. Only planned after a retryable optimized-only structural regression is observed; not a static architecture/model default.",
+          "quantization_override": {
+            "block_size": 64
+          },
+          "eligibility_trigger": "retryable_optimized_structural_regression"
+        }
+      ]
+    }
+  ]
+}

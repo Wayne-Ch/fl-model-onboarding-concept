@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 from dataclasses import replace
@@ -84,6 +85,7 @@ class FakeHFMetadata:
             safetensors_parameter_count=256,
             card_data={"license": "apache-2.0"},
             sibling_count=10,
+            sibling_files=("config.json", "tokenizer.json", "model.safetensors"),
         )
 
 
@@ -159,15 +161,66 @@ class DeterministicSuccessRunner:
             persist()
             if cancellation_event.is_set():
                 return
-        artifact_path = job.request.output_dir / "artifact.bin"
-        artifact_path.write_bytes(b"artifact")
+        baseline_dir = job.request.workspace_root / "mobius"
+        baseline_dir.mkdir(parents=True, exist_ok=False)
+        (baseline_dir / "model.onnx").write_text("baseline", encoding="utf-8")
+        (baseline_dir / "inference_model.json").write_text(
+            json.dumps({"Name": f"baseline-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
+        artifact_path = job.request.output_dir / "optimized-package"
+        artifact_path.mkdir(parents=True, exist_ok=False)
+        (artifact_path / "model.onnx").write_text("optimized", encoding="utf-8")
+        (artifact_path / "inference_model.json").write_text(
+            json.dumps({"Name": f"optimized-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
         job.register_artifact(
             BuildArtifact(
                 artifact_id=f"artifact-{job.job_id}",
                 kind=ArtifactKind.MODEL,
                 path=artifact_path,
                 description="runtime artifact",
-                size_bytes=artifact_path.stat().st_size,
+                size_bytes=(artifact_path / "model.onnx").stat().st_size,
+            )
+        )
+        transition(job, JobState.SUCCEEDED, "Build succeeded.")
+        job.finished_utc = datetime.now(timezone.utc)
+        persist()
+
+
+class MissingBaselineSuccessRunner:
+    def run(self, job: BuildJob, *, persist, cancellation_event):  # noqa: ANN001
+        if cancellation_event.is_set():
+            return
+        for stage in (
+            JobState.DOWNLOADING,
+            JobState.MOBIUS_BUILDING,
+            JobState.MOBIUS_VALIDATING,
+            JobState.OLIVE_OPTIMIZING,
+            JobState.PACKAGING,
+            JobState.RUNTIME_VALIDATING,
+            JobState.FL_LOADING,
+            JobState.INFERENCING,
+        ):
+            transition(job, stage, f"Reached '{stage.value}'")
+            persist()
+            if cancellation_event.is_set():
+                return
+        artifact_path = job.request.output_dir / "optimized-package"
+        artifact_path.mkdir(parents=True, exist_ok=False)
+        (artifact_path / "model.onnx").write_text("optimized", encoding="utf-8")
+        (artifact_path / "inference_model.json").write_text(
+            json.dumps({"Name": f"optimized-{job.job_id}"}, indent=2),
+            encoding="utf-8",
+        )
+        job.register_artifact(
+            BuildArtifact(
+                artifact_id=f"artifact-{job.job_id}",
+                kind=ArtifactKind.MODEL,
+                path=artifact_path,
+                description="runtime artifact",
+                size_bytes=(artifact_path / "model.onnx").stat().st_size,
             )
         )
         transition(job, JobState.SUCCEEDED, "Build succeeded.")
@@ -190,13 +243,30 @@ class SlowCancellableRunner:
 
 
 class EchoTextBackend:
+    _QUALITY_RESPONSES = {
+        "What is 17 + 28? Reply using only digits.": "45",
+        "Which planet is known as the Red Planet? Reply with one word.": "Mars",
+        "Output exactly two words: blue river": "blue river",
+        "Return valid JSON object with keys answer and unit, where answer is 12 and unit is cm.": (
+            '{"answer":12,"unit":"cm"}'
+        ),
+    }
+
     def infer(self, *, artifact, job, prompt: str, max_tokens: int) -> str:  # noqa: ANN001
+        quality_response = self._QUALITY_RESPONSES.get(prompt)
+        if quality_response is not None:
+            return quality_response
         return f"{artifact.artifact_id}:{job.job_id}:{prompt}:{max_tokens}"
 
 
 class EchoAsrBackend:
     def infer(self, *, artifact, job, audio_bytes: bytes, filename: str) -> str:  # noqa: ANN001
         return f"{artifact.artifact_id}:{job.job_id}:{filename}:{len(audio_bytes)}"
+
+
+class EmptyFoundryCatalog:
+    def list_matches(self, search_query: str):  # noqa: ARG002
+        return ()
 
 
 def _service(
@@ -206,13 +276,15 @@ def _service(
     text_backend=None,
     asr_backend=None,
     recipe_registry: RecipeRegistry | None = None,
+    hf_metadata=None,
+    foundry_catalog=None,
 ) -> LocalOnboardingService:
     return LocalOnboardingService(
         db_path=tmp_path / "state.sqlite3",
         workspace_base=tmp_path / "w",
         model_cache_dir=tmp_path / "cache",
-        hf_metadata=FakeHFMetadata(),  # type: ignore[arg-type]
-        foundry_catalog=FakeFoundryCatalog(),  # type: ignore[arg-type]
+        hf_metadata=hf_metadata or FakeHFMetadata(),  # type: ignore[arg-type]
+        foundry_catalog=foundry_catalog or FakeFoundryCatalog(),  # type: ignore[arg-type]
         preflight_inspector=PassingPreflightInspector(),  # type: ignore[arg-type]
         build_stage_runner=stage_runner,  # type: ignore[arg-type]
         text_inference_backend=text_backend,  # type: ignore[arg-type]
@@ -454,6 +526,137 @@ def test_preflight_build_idempotency_and_event_polling(tmp_path: Path) -> None:
         empty = client.get(f"/api/builds/{job_id}/events", params={"after": last_sequence})
         assert empty.status_code == 200
         assert empty.json()["events"] == []
+
+
+def test_generated_recipe_preview_and_attempt_endpoints(tmp_path: Path) -> None:
+    app = create_app(
+        service=_service(
+            tmp_path,
+            stage_runner=DeterministicSuccessRunner(),
+            text_backend=EchoTextBackend(),
+            foundry_catalog=EmptyFoundryCatalog(),
+        )
+    )
+    with TestClient(app) as client:
+        preview = client.get(
+            "/api/recipes/generated/preview",
+            params={"id": "owner/unregistered-model", "task": "llm"},
+        )
+        assert preview.status_code == 200
+        preview_body = preview.json()
+        generated = preview_body["generated_recipe"]
+        assert generated["eligible_for_automatic_recipe_attempt"] is True
+        fingerprint = generated["fingerprint"]
+        assert isinstance(fingerprint, str) and len(fingerprint) == 64
+
+        denied = client.post(
+            "/api/recipes/generated/attempts",
+            headers={"Idempotency-Key": "generated-api-1"},
+            json={
+                "model_id": "owner/unregistered-model",
+                "recipe_fingerprint": fingerprint,
+                "confirm_automatic_recipe_attempt": False,
+            },
+        )
+        assert denied.status_code == 400
+        assert denied.json()["code"] == "AUTOMATIC_RECIPE_ATTEMPT_CONFIRMATION_REQUIRED"
+
+        created = client.post(
+            "/api/recipes/generated/attempts",
+            headers={"Idempotency-Key": "generated-api-1"},
+            json={
+                "model_id": "owner/unregistered-model",
+                "recipe_fingerprint": fingerprint,
+                "confirm_automatic_recipe_attempt": True,
+            },
+        )
+        assert created.status_code == 200
+        created_body = created.json()
+        attempt_id = created_body["attempt"]["attempt_id"]
+        job_id = created_body["job"]["job_id"]
+        assert created_body["attempt"]["state"] == "running"
+
+        terminal = _wait_for_terminal(client, job_id)
+        assert terminal["state"] == "succeeded"
+
+        attempt = client.get(f"/api/recipes/generated/attempts/{attempt_id}")
+        assert attempt.status_code == 200
+        attempt_body = attempt.json()
+        assert attempt_body["state"] == "succeeded"
+        assert attempt_body["build_job_id"] == job_id
+        assert [row["gate"] for row in attempt_body["gates"]] == [
+            "mobius_build",
+            "olive_optimize",
+            "onnx_validation",
+            "ort_validation",
+            "oga_validation",
+            "fl_sdk_inference",
+            "quality_validation",
+        ]
+        assert all(row["status"] == "passed" for row in attempt_body["gates"])
+        quality_gate = next(row for row in attempt_body["gates"] if row["gate"] == "quality_validation")
+        assert "baseline-passed" in quality_gate["evidence_ref"]
+        quality_validation = attempt_body["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "verified"
+        assert quality_validation["model_capability"]["checks_passed"] == 4
+        assert quality_validation["model_capability"]["total_checks"] == 4
+
+        reuse_preview = client.get(
+            "/api/recipes/generated/preview",
+            params={"id": "owner/unregistered-model", "task": "llm"},
+        )
+        assert reuse_preview.status_code == 200
+        reuse = reuse_preview.json()["generated_recipe"]
+        assert reuse["eligible_for_automatic_recipe_attempt"] is False
+        assert reuse["verified_reuse"]["available"] is True
+        assert reuse["verified_reuse"]["source_recipe_fingerprint"] == fingerprint
+
+
+def test_generated_recipe_attempt_api_reports_baseline_not_run_gate(tmp_path: Path) -> None:
+    app = create_app(
+        service=_service(
+            tmp_path,
+            stage_runner=MissingBaselineSuccessRunner(),
+            text_backend=EchoTextBackend(),
+            foundry_catalog=EmptyFoundryCatalog(),
+        )
+    )
+    with TestClient(app) as client:
+        preview = client.get(
+            "/api/recipes/generated/preview",
+            params={"id": "owner/unregistered-model", "task": "llm"},
+        )
+        assert preview.status_code == 200
+        fingerprint = preview.json()["generated_recipe"]["fingerprint"]
+
+        created = client.post(
+            "/api/recipes/generated/attempts",
+            headers={"Idempotency-Key": "generated-api-baseline-missing"},
+            json={
+                "model_id": "owner/unregistered-model",
+                "recipe_fingerprint": fingerprint,
+                "confirm_automatic_recipe_attempt": True,
+            },
+        )
+        assert created.status_code == 200
+        attempt_id = created.json()["attempt"]["attempt_id"]
+        job_id = created.json()["job"]["job_id"]
+
+        terminal = _wait_for_terminal(client, job_id)
+        assert terminal["state"] == "succeeded"
+
+        attempt = client.get(f"/api/recipes/generated/attempts/{attempt_id}")
+        assert attempt.status_code == 200
+        attempt_body = attempt.json()
+        assert attempt_body["state"] == "failed"
+        quality_gate = next(row for row in attempt_body["gates"] if row["gate"] == "quality_validation")
+        assert quality_gate["status"] == "not_run"
+        assert "baseline-not-run" in quality_gate["evidence_ref"]
+        quality_validation = attempt_body["quality_validation"]
+        assert quality_validation["recipe_integrity"]["status"] == "inconclusive"
+        assert quality_validation["model_capability"] is None
+        assert attempt_body["failure"]["classification"] == "validation_failed"
+        assert "Quality baseline not run" in attempt_body["failure"]["message"]
 
 
 def test_asr_preflight_is_a_structured_unsupported_blocker(tmp_path: Path) -> None:
